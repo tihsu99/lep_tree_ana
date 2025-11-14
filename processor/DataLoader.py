@@ -5,29 +5,44 @@ import logging
 import vector
 import glob
 import os
+import awkward as ak
+import copy
 
 log = logging.getLogger(__name__)
 
-def filter_event(row):
-    # no kaon, lambda and Xi0
-    if not all(status != 4 for status in row['GenPart_status']):
-        return False
-    flag_final_products = row['GenPart_status'] == 1
-    abs_pdg_ids = abs(row['GenPart_pdgId'])
-    # ensure single pion decay: exactly two charged pions, no neutral pions, no short-lived particles, no kaons, eta, omega, neutrinos other than nu_tau
-    num_pipm = sum(abs_pdg_ids[flag_final_products] == 211)
-    num_short_lived = sum(row['GenPart_status'] == 4)
-    # in turn: 111 (neutral pions), 321 (kaons), 221 (eta), 223 (omega), 14 (muon neutrinos), 12 (electron neutrinos)
+def filter_event(events: ak.Array) -> dict:
+    original_events = copy.deepcopy(events)
+    filtered_events = {}
+
+    genpart_pdgid = events['GenPart_pdgId']
+    genpart_abspdgid = abs(genpart_pdgid)
+    genpart_status = events['GenPart_status']
+    is_finalstatus = genpart_status==1
+
+    ##############################
+    # tau tau > pi+ pi- v v events
+    ##############################
+    pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+    # no kaon, lambda and Xi0: no status=4 particles
+    pass_filter = ~ak.any((genpart_status == 4), axis=1) & pass_filter
+    # exactly one pi+ and one pi- in final status particles
+    pass_filter = (ak.sum((genpart_pdgid == 211) & is_finalstatus, axis=1) == 1) & pass_filter
+    pass_filter = (ak.sum((genpart_pdgid == -211) & is_finalstatus, axis=1) == 1) & pass_filter
+
+    # no neutral pions, no short-lived particles, no kaons, eta, omega, neutrinos other than nu_tau
+    num_short_lived = ak.sum((genpart_status == 4), axis=1)
     num_unwanted = \
-        sum(abs_pdg_ids == 111) + \
-        sum(abs_pdg_ids == 321) + \
-        sum(abs_pdg_ids == 221) + \
-        sum(abs_pdg_ids == 223) + \
-        sum(abs_pdg_ids == 14)  + \
-        sum(abs_pdg_ids == 12)  
-    if num_pipm != 2 or num_short_lived > 0 or num_unwanted > 0:
-        return False
-    return True
+        ak.sum((genpart_abspdgid == 111), axis=1) + \
+        ak.sum((genpart_abspdgid == 321), axis=1) + \
+        ak.sum((genpart_abspdgid == 221), axis=1) + \
+        ak.sum((genpart_abspdgid == 223), axis=1) + \
+        ak.sum((genpart_abspdgid == 14), axis=1)  + \
+        ak.sum((genpart_abspdgid == 12), axis=1)      
+    pass_filter = (num_short_lived == 0) & (num_unwanted == 0) & pass_filter
+    filtered_events['single_pion_decay'] = original_events[pass_filter]
+
+    return filtered_events
+
 
 class DataLoader:
     def __init__(self, config):
@@ -54,14 +69,16 @@ class DataLoader:
         }
 
         _data_loaded = False
-        if os.path.exists(self.config.get("output_dir", "./") + "/filtered_data.h5"):
+        if os.path.exists(self.config.get("output_dir", "./") + "/filtered_data.parquet"):
             # ask user if they want to load existing data
             load_existing = input(f"Filtered data file already exists. Do you want to reload and filter data from input files? (y/n): ")
             if load_existing.lower() == 'y':
                 log.info("Re-loading and filtering data from input files.")
             else:
                 log.info("Loading existing filtered data.")
-                self.data = pd.read_hdf(self.config.get("output_dir", "./") + "/filtered_data.h5", key='GenPart')
+                loaded = ak.from_parquet(self.config.get("output_dir", "./") + "/filtered_data.parquet")
+                for key in loaded.fields:
+                    self.data[key] = loaded[key]
                 self.structured_data = np.load(self.config.get("output_dir", "./") + "/filtered_data_structured.npy", allow_pickle=True).item()
                 _data_loaded = True
 
@@ -83,7 +100,7 @@ class DataLoader:
             for key in self.structured_data
         }
 
-        log.info(f"DataLoader initialization complete. Loaded {self.data['GenPart'].index.nunique()} events from {len(self.input_files)} files.")
+        log.info(f"DataLoader initialization complete. Loaded {len(all_files)} files.")
 
     
 
@@ -95,71 +112,61 @@ class DataLoader:
         common_evt_branches = ["Event_evtNumber"]
         gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
         gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
-        # for b in tree.keys():
-        #     try:
-        #         btype = tree[b].typename
-        #         if "[]" in btype or "ROOT::Math" in btype or "/" in b:
-        #             log.debug(f"Skipping branch {b} of type {btype}.")
-        #             continue
-        #         elif "GenPart" in b:
-        #             log.info(f"Loading branch {b} of type {btype} for GenPart.")
-        #             gen_part_branches.append(b)
-        #     except:
-        #         log.warning(f"Could not interpret branch {b}. Skipping.")
-        #         continue
-        
+
+        part_branches = ["pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", ]
+        part_branches = [f'Part_{b}' for b in part_branches]
+
+        branches_to_load = common_evt_branches + gen_part_branches + part_branches
+
+        os.makedirs(self.config.get("output_dir", "./") + "/filtered_data_files/", exist_ok=True)
         # Load data from all files
         initial_total_num_events = 0
         for file in self.input_files:
-            path_filtered_single_file = self.config.get("output_dir", "./") + "/filtered_data_files/" + os.path.basename(file).replace('.root', '_filtered.h5')
+            path_filtered_single_file = self.config.get("output_dir", "./") + "/filtered_data_files/" + os.path.basename(file).replace('.root', '_filtered.parquet')
             if os.path.exists(path_filtered_single_file):
                 log.info(f"Filtered data file for {file} already exists at {path_filtered_single_file}. Loading filtered data.")
-                with pd.HDFStore(path_filtered_single_file, mode='r') as store:
-                    for key in store.keys():
-                        key_clean = key.lstrip('/')
-                        df = store.get(key_clean)
-                        df['evtNumber'] = df['Event_evtNumber'] + initial_total_num_events
-                        # df['evtNumber'] = df['Event_evtNumber']
-                        df = df.set_index('evtNumber', drop=False)
-                        initial_total_num_events = initial_total_num_events + df['initial_total_num_events'].iloc[0]
-                        self.data.setdefault(key_clean, []).append(df)
+                filtered_events = ak.from_parquet(path_filtered_single_file)
+                for key in filtered_events.fields:
+                    evt = filtered_events[key]
+                    evt['evtNumber'] = evt['Event_evtNumber'] + initial_total_num_events
+                    initial_total_num_events = initial_total_num_events + evt['initial_total_num_events'][0]
+                    self.data.setdefault(key, []).append(evt)
             else:
-                continue
                 log.info(f"Loading data from file: {file}")
                 try:
                     f = ur.open(file)
                     tree = f[self.tree_name]
-                    df_genpart = tree.arrays(common_evt_branches + gen_part_branches, library="pd")
-                    df_genpart['initial_total_num_events'] = len(df_genpart.groupby(level=0))
+                    # load all events as awkward array 
+                    events = tree.arrays(branches_to_load, library="ak")
+
                     # adjust event index to be unique across files
                     # the original Event_evtNumber starts from 1 for each file
-                    df_genpart['evtNumber'] = df_genpart['Event_evtNumber'] + initial_total_num_events
-                    df_genpart = df_genpart.set_index('evtNumber', drop=False)
-                    initial_total_num_events = df_genpart['evtNumber'].max()
+                    if len(events) == 0:
+                        continue
+                    events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
+                    events['initial_total_num_events'] = len(events)
+
+                    # filter events
+                    self.filter_results['initial_total_num_events'] += initial_total_num_events
+                    events_pass_filter = filter_event(events)
+                    for key, evt in events_pass_filter.items():
+                        self.filter_results[key] = self.filter_results.get(key, 0) + len(evt)
+
+                    # save filtered events
+                    log.info(f"Saving filtered data from file: {file}")
+                    ak.to_parquet( ak.zip(events_pass_filter), path_filtered_single_file)
+
+                    # record filtered events into self.data
+                    for key, evt in events_pass_filter.items():
+                        self.data.setdefault(key, []).append(evt)
+
                 except Exception as e:
                     log.error(f"Error reading file {file} or tree {self.tree_name}: {e}")
                     continue
 
-                # filter events
-                data_pass_filter = self.filter_data({
-                    'GenPart': df_genpart
-                    })
-
-                # save filtered results of each file into a separate HDF5 file
-                log.info(f"Saving filtered data from file: {file}")
-                os.makedirs(os.path.dirname(path_filtered_single_file), exist_ok=True)
-                with pd.HDFStore(path_filtered_single_file, mode='w') as store:
-                    for key, df in data_pass_filter.items():
-                        store.put(key, df)
-                log.info(f"Filtered data from file saved to: {path_filtered_single_file}")
-                
-                # store filtered data
-                for key in data_pass_filter:
-                    self.data.setdefault(key, []).append(data_pass_filter[key])
-
         # Concatenate data from all files
         for key in self.data:
-            self.data[key] = pd.concat(self.data[key], axis=0)
+            self.data[key] = ak.concatenate(self.data[key], axis=0)
             self.data[key]['initial_total_num_events'] = initial_total_num_events
 
         # Log filter results
@@ -175,46 +182,54 @@ class DataLoader:
     
     def structure_data(self):
         # structured data as input of postanalysis
-        # interpretation of status code: https://github.com/jingyucms/Delphi-Sim-Pipeline/blob/main/pythia8_generate.cpp#L17-L43 and https://pythia.org/latest-manual/ParticleProperties.html
-        truth_particles = self.data['GenPart']
-        flag_intermediate_state = (truth_particles['GenPart_status']==21)
-        flag_tau1 = ((truth_particles['GenPart_pdgId']==-15) & flag_intermediate_state)
-        flag_tau2 = ((truth_particles['GenPart_pdgId']==15) & flag_intermediate_state)
-        flag_Z = ((truth_particles['GenPart_pdgId']==23) & flag_intermediate_state)
-
-        flag_final_status = (truth_particles['GenPart_status']==1)
-        flag_vischild_tau1 = ((truth_particles['GenPart_pdgId']==211) & flag_final_status)
-        flag_vischild_tau2 = ((truth_particles['GenPart_pdgId']==-211) & flag_final_status)
-
-        def get_p4(df, flag):
-            p4 = np.zeros((len(df[flag].groupby(level=0)), 4))
-            grouped = df[flag].groupby(level=0)
+        def get_p4(events, flag, prefix='GenPart_vector'):
+            p4 = np.zeros((len(events), 4))
             # # make sure there is only one entry per event
             # assert all(grouped.size() == 1), "Multiple entries found for events in get_p4."
             # if there are multiple entries, take the last one
-            p4[:, 0] = grouped['GenPart_vector_fCoordinates_fX'].last().values
-            p4[:, 1] = grouped['GenPart_vector_fCoordinates_fY'].last().values
-            p4[:, 2] = grouped['GenPart_vector_fCoordinates_fZ'].last().values
-            p4[:, 3] = grouped['GenPart_vector_fCoordinates_fT'].last().values
+            p4[:, 0] = (events[f'{prefix}_fCoordinates_fX'][flag][...,-1])
+            p4[:, 1] = (events[f'{prefix}_fCoordinates_fY'][flag][...,-1])
+            p4[:, 2] = (events[f'{prefix}_fCoordinates_fZ'][flag][...,-1])
+            p4[:, 3] = (events[f'{prefix}_fCoordinates_fT'][flag][...,-1])
             return p4
+        # interpretation of status code: https://github.com/jingyucms/Delphi-Sim-Pipeline/blob/main/pythia8_generate.cpp#L17-L43 and https://pythia.org/latest-manual/ParticleProperties.html
 
-        return {
-                'TRUTH/tau1_p4': get_p4(truth_particles, ((truth_particles['GenPart_pdgId']==-15) & flag_intermediate_state)),
-                'TRUTH/tau2_p4': get_p4(truth_particles, ((truth_particles['GenPart_pdgId']==15) & flag_intermediate_state)),
-                'TRUTH/vischild_tau1_p4': get_p4(truth_particles, ((truth_particles['GenPart_pdgId']==211) & flag_final_status)),
-                'TRUTH/vischild_tau2_p4': get_p4(truth_particles, ((truth_particles['GenPart_pdgId']==-211) & flag_final_status)),
-                'TRUTH/nu_tau1_p4': get_p4(truth_particles, (truth_particles['GenPart_pdgId']==-16) & flag_final_status),
-                'TRUTH/nu_tau2_p4': get_p4(truth_particles, (truth_particles['GenPart_pdgId']==16) & flag_final_status),
-                'TRUTH/Z_p4': get_p4(truth_particles, ((truth_particles['GenPart_pdgId']==23) & flag_intermediate_state)),
+        for channel, events in self.data.items():
+            # truth info
+            truth_flag_intermediate_state = (events['GenPart_status']==21)
+            truth_flag_tau1 = ((events['GenPart_pdgId']==-15) & truth_flag_intermediate_state)
+            truth_flag_tau2 = ((events['GenPart_pdgId']==15) & truth_flag_intermediate_state)
+            truth_flag_Z = ((events['GenPart_pdgId']==23) & truth_flag_intermediate_state)
+
+            truth_flag_final_status = (events['GenPart_status']==1)
+            truth_flag_vischild_tau1 = ((events['GenPart_pdgId']==211) & truth_flag_final_status)
+            truth_flag_vischild_tau2 = ((events['GenPart_pdgId']==-211) & truth_flag_final_status)
+            truth_flag_nu1 = ((events['GenPart_pdgId']==16) & truth_flag_final_status)
+            truth_flag_nu2 = ((events['GenPart_pdgId']==-16) & truth_flag_final_status)
+
+            # reco_flag_pip = ((events['Part_pdgId']==41))
+            # reco_flag_pim = ((events['Part_pdgId']==-41))
+            return {
+                f'{channel}/TRUTH/tau1_p4': get_p4(events, truth_flag_tau1),
+                f'{channel}/TRUTH/tau2_p4': get_p4(events, truth_flag_tau2),
+                f'{channel}/TRUTH/vischild_tau1_p4': get_p4(events, truth_flag_vischild_tau1),
+                f'{channel}/TRUTH/vischild_tau2_p4': get_p4(events, truth_flag_vischild_tau2),
+                f'{channel}/TRUTH/Z_p4': get_p4(events, truth_flag_Z),
+                f'{channel}/TRUTH/nu_tau1_p4': get_p4(events, truth_flag_nu1),
+                f'{channel}/TRUTH/nu_tau2_p4': get_p4(events, truth_flag_nu2),
+                # f'{channel}/RECO/piplus_p4': get_p4(events, reco_flag_pip, prefix='Part_fourMomentum'),
+                # f'{channel}/RECO/piminus_p4': get_p4(events, reco_flag_pim, prefix='Part_fourMomentum'),
             }
     
     def save_data(self):
-        output_file = self.config.get("output_dir", "./") + "/filtered_data.h5"
-        with pd.HDFStore(output_file, mode='w') as store:
-            for key, df in self.data.items():
-                store.put(key, df)
-        # To load the data, use: pd.read_hdf(output_file, key='GenPart')
+        output_file = self.config.get("output_dir", "./") + "/filtered_data.parquet"
+        ak.to_parquet(ak.zip(self.data), output_file)
         log.info(f"Data saved to {output_file}.")
+        # test loading saved data
+        loaded_test = ak.from_parquet(output_file)
+        for key in loaded_test.fields:
+            print(f"Loaded test field {key} has {len(loaded_test[key])} events.")
+            print(loaded_test[key])
 
         # ...
         structured_output_file = output_file.replace('.h5', '_structured.npy')

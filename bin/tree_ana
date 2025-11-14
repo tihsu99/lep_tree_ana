@@ -36,22 +36,13 @@ if __name__ == "__main__":
     analysis_config['DataLoader'] = {
         "tree_name": "t",
 
-        "input_files": "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251029_Ztautau_singlePionDecay/simana_job_17827112_*_ttree.root",
-        "output_dir": "251029",
-
-        # "output_dir": args.output_dir,
+        # "input_files": "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree.root",
+        "input_files": [
+            # "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_17903056_87_ttree.root",
+            "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree.root",
+        ],
+        "output_dir": "251108_Ztautau_pipm",
     }
-    analysis_config["DataLoader"]["input_files"] = "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251031_Ztautau_singlePi/simana_job_*_ttree.root",
-    analysis_config["DataLoader"]["output_dir"] = "251031"
-
-    analysis_config["DataLoader"]["input_files"] = "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251102_Ztautau_pipm/simana_job_*_ttree.root"
-    analysis_config["DataLoader"]["output_dir"] = "251102"
-
-    # analysis_config["DataLoader"]["input_files"] = "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251104_Ztautau_inclusive/simana_job_*_ttree.root"
-    # analysis_config["DataLoader"]["output_dir"] = "251104_Ztautau_inclusive"
-
-    analysis_config["DataLoader"]["input_files"] = "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree.root"
-    analysis_config["DataLoader"]["output_dir"] = "251108_Ztautau_pipm"
 
     analysis_config["AngularProcessor"] = {
         "output_dir": analysis_config["DataLoader"]["output_dir"],
