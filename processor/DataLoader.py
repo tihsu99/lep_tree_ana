@@ -232,7 +232,7 @@ class DataLoader:
             print(loaded_test[key])
 
         # ...
-        structured_output_file = output_file.replace('.h5', '_structured.npy')
+        structured_output_file = output_file.replace('.parquet', '_structured.npy')
         np.save(structured_output_file, self.structured_data)
         # To load the structured data, use: np.load(structured_output_file, allow_pickle=True).item()
         log.info(f"Structured data saved to {structured_output_file}.")
