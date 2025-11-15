@@ -10,36 +10,43 @@ import copy
 
 log = logging.getLogger(__name__)
 
-def filter_event(events: ak.Array) -> dict:
+def filter_event(events: ak.Array, filter_log_dict: dict) -> dict:
     original_events = copy.deepcopy(events)
     filtered_events = {}
 
     genpart_pdgid = events['GenPart_pdgId']
     genpart_abspdgid = abs(genpart_pdgid)
     genpart_status = events['GenPart_status']
+    recpart_pdgid = events['Part_pdgId']
+    recpart_abspdgid = abs(recpart_pdgid)
+    recpart_charge = events['Part_charge']
     is_finalstatus = genpart_status==1
 
     ##############################
     # tau tau > pi+ pi- v v events
     ##############################
     pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
-    # no kaon, lambda and Xi0: no status=4 particles
-    pass_filter = ~ak.any((genpart_status == 4), axis=1) & pass_filter
-    # exactly one pi+ and one pi- in final status particles
-    pass_filter = (ak.sum((genpart_pdgid == 211) & is_finalstatus, axis=1) == 1) & pass_filter
-    pass_filter = (ak.sum((genpart_pdgid == -211) & is_finalstatus, axis=1) == 1) & pass_filter
+    # # Now all the truth-level selections have been moved to the simulation stage
+    # # no kaon, lambda and Xi0: no status=4 particles
+    # pass_filter = ~ak.any((genpart_status == 4), axis=1) & pass_filter
+    # # exactly one pi+ and one pi- in final status particles
+    # pass_filter = (ak.sum((genpart_pdgid == 211) & is_finalstatus, axis=1) == 1) & pass_filter
+    # pass_filter = (ak.sum((genpart_pdgid == -211) & is_finalstatus, axis=1) == 1) & pass_filter
 
-    # no neutral pions, no short-lived particles, no kaons, eta, omega, neutrinos other than nu_tau
-    num_short_lived = ak.sum((genpart_status == 4), axis=1)
-    num_unwanted = \
-        ak.sum((genpart_abspdgid == 111), axis=1) + \
-        ak.sum((genpart_abspdgid == 321), axis=1) + \
-        ak.sum((genpart_abspdgid == 221), axis=1) + \
-        ak.sum((genpart_abspdgid == 223), axis=1) + \
-        ak.sum((genpart_abspdgid == 14), axis=1)  + \
-        ak.sum((genpart_abspdgid == 12), axis=1)      
-    pass_filter = (num_short_lived == 0) & (num_unwanted == 0) & pass_filter
-    filtered_events['single_pion_decay'] = original_events[pass_filter]
+    # # no neutral pions, no short-lived particles, no kaons, eta, omega, neutrinos other than nu_tau
+    # num_short_lived = ak.sum((genpart_status == 4), axis=1)
+    # num_unwanted = \
+    #     ak.sum((genpart_abspdgid == 111), axis=1) + \
+    #     ak.sum((genpart_abspdgid == 321), axis=1) + \
+    #     ak.sum((genpart_abspdgid == 221), axis=1) + \
+    #     ak.sum((genpart_abspdgid == 223), axis=1) + \
+    #     ak.sum((genpart_abspdgid == 14), axis=1)  + \
+    #     ak.sum((genpart_abspdgid == 12), axis=1)      
+    # pass_filter = (num_short_lived == 0) & (num_unwanted == 0) & pass_filter
+    # no less than two pions (regardless of charge for now) in reco particles
+    pass_filter = (ak.sum((recpart_abspdgid == 41), axis=1) >= 2) & pass_filter
+    filter_log_dict['no less than two reco pions'] = filter_log_dict.get('no less than two reco pions', 0) + ak.sum(pass_filter)
+    filtered_events['pipi'] = original_events[pass_filter]
 
     return filtered_events
 
@@ -113,7 +120,7 @@ class DataLoader:
         gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
         gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
 
-        part_branches = ["pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", ]
+        part_branches = ["charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", ]
         part_branches = [f'Part_{b}' for b in part_branches]
 
         branches_to_load = common_evt_branches + gen_part_branches + part_branches
@@ -147,13 +154,13 @@ class DataLoader:
                     events['initial_total_num_events'] = len(events)
 
                     # filter events
-                    self.filter_results['initial_total_num_events'] += initial_total_num_events
-                    events_pass_filter = filter_event(events)
-                    for key, evt in events_pass_filter.items():
-                        self.filter_results[key] = self.filter_results.get(key, 0) + len(evt)
+                    self.filter_results['initial_total_num_events'] += len(events)
+                    events_pass_filter = filter_event(events, self.filter_results)
+                    # for key, evt in events_pass_filter.items():
+                    #     self.filter_results[key] = self.filter_results.get(key, 0) + len(evt)
 
                     # save filtered events
-                    log.info(f"Saving filtered data from file: {file}")
+                    log.info(f"Saving filtered data to {path_filtered_single_file}.")
                     ak.to_parquet( ak.zip(events_pass_filter), path_filtered_single_file)
 
                     # record filtered events into self.data
@@ -225,11 +232,11 @@ class DataLoader:
         output_file = self.config.get("output_dir", "./") + "/filtered_data.parquet"
         ak.to_parquet(ak.zip(self.data), output_file)
         log.info(f"Data saved to {output_file}.")
-        # test loading saved data
-        loaded_test = ak.from_parquet(output_file)
-        for key in loaded_test.fields:
-            print(f"Loaded test field {key} has {len(loaded_test[key])} events.")
-            print(loaded_test[key])
+        # # test loading saved data
+        # loaded_test = ak.from_parquet(output_file)
+        # for key in loaded_test.fields:
+        #     print(f"Loaded test field {key} has {len(loaded_test[key])} events.")
+        #     print(loaded_test[key])
 
         # ...
         structured_output_file = output_file.replace('.parquet', '_structured.npy')
@@ -238,27 +245,7 @@ class DataLoader:
         log.info(f"Structured data saved to {structured_output_file}.")
 
 
-    def filter_data(self, df_dict: dict) -> dict:
-        random_df = next(iter(df_dict.values()))
-        self.filter_results['initial_total_num_events'] += len(random_df.groupby(level=0))
-        pass_filter = pd.Series([True] * len(random_df), index=random_df.index)
-        
-        # Apply filter to GenPart dataframe
-        assert 'GenPart' in df_dict, "GenPart dataframe not found in input dictionary."
-        pass_genpart_filter = df_dict['GenPart'].groupby(level=0).apply(filter_event)
-        self.filter_results['single pion filter'] = self.filter_results.get('single pion filter', 0) + sum(pass_genpart_filter)
-        pass_filter &= pass_genpart_filter
-
-        # get idx of events passing the filter
-        idx_to_keep = pass_filter[pass_filter].index.unique()
-
-        return {
-            key: df.loc[idx_to_keep]
-            for key, df in df_dict.items()
-        }
-
-
-    def run(self, df: pd.DataFrame):
+    def run(self, dl):
         pass
 
 

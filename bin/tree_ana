@@ -7,7 +7,7 @@ import argparse
 from importlib import import_module
 
 from utils.wrappers import timeit
-from processor import AngularProcessor, DataLoader, KinematicsMethodProcessor
+from processor import DataLoader
 pd.set_option('display.max_columns', None)
 
 
@@ -38,18 +38,21 @@ if __name__ == "__main__":
 
         # "input_files": "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree.root",
         "input_files": [
-            # "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_17903056_87_ttree.root",
-            "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree.root",
+            # "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_17903056_88_ttree_pipi.root",
+            "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root",
         ],
         "output_dir": "251108_Ztautau_pipm",
     }
 
-    analysis_config["AngularProcessor"] = {
-        "output_dir": analysis_config["DataLoader"]["output_dir"],
-    }
+    # analysis_config["PlotProcessor"] = {
+    #     "output_dir": analysis_config["DataLoader"]["output_dir"],
+    # }
     # analysis_config["KinematicsMethodProcessor"] = {
     #     "output_dir": analysis_config["DataLoader"]["output_dir"],
     # }
+    analysis_config["TemporaryProcessor"] = {
+        "output_dir": analysis_config["DataLoader"]["output_dir"],
+    }
 
     os.makedirs(analysis_config["DataLoader"]["output_dir"], exist_ok = True)
 
