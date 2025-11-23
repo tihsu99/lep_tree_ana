@@ -87,9 +87,9 @@ class TemporaryProcessor(BaseProcessor):
                 linestyle2='dashed',
                 label1=f'Reconstructed Pions - {label}',
                 label2=f'Generated Pions - {label}',
-                xlabel='Pion $p_{T}$ [GeV]',
+                xlabel='Pion $p$ [GeV]',
                 ylabel='Entries',
-                title='Pion $p_{T}$ Distribution',
+                title='Pion $p$ Distribution',
                 ratio_color=color,
                 ratio_ylabel='Reco / Gen',
             )
@@ -259,51 +259,65 @@ class TemporaryProcessor(BaseProcessor):
         #######################################################
         fig, ax = plt.subplots(dpi=300)
         bins = np.linspace(0, 100, 51)
-        color_iter = get_color_iterator(len(events_dict))
-        for label, events in events_dict.items():
-            color = next(color_iter)
-            sum_px = ak.sum(events['Part_fourMomentum_fCoordinates_fX'], axis=1)
-            sum_py = ak.sum(events['Part_fourMomentum_fCoordinates_fY'], axis=1)
-            sum_pz = ak.sum(events['Part_fourMomentum_fCoordinates_fZ'], axis=1)
-            sum_E = ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=1)
+        events = events_dict.get(RegionNameOfInterest)
+        label = RegionNameOfInterest
+        sum_px = ak.sum(events['Part_fourMomentum_fCoordinates_fX'], axis=1)
+        sum_py = ak.sum(events['Part_fourMomentum_fCoordinates_fY'], axis=1)
+        sum_pz = ak.sum(events['Part_fourMomentum_fCoordinates_fZ'], axis=1)
+        # sum_E = ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=1)
 
-            missing_px = -sum_px
-            missing_py = -sum_py
-            missing_pz = -sum_pz
-            missing_E = cme - sum_E
+        missing_px = -sum_px
+        missing_py = -sum_py
+        missing_pz = -sum_pz
+        missing_E = (missing_px**2 + missing_py**2 + missing_pz**2)**0.5
+        # missing_E = cme - sum_E
 
-            missing_p4 = vector.zip({
-                "px": missing_px,
-                "py": missing_py,
-                "pz": missing_pz,
-                "E": missing_E,
-            })
+        missing_p4 = vector.zip({
+            "px": missing_px,
+            "py": missing_py,
+            "pz": missing_pz,
+            "E": missing_E,
+        })
 
-            # pion p4
-            flag_pi_plus = (events['Part_charge'] == 1) & (abs(events['Part_pdgId']) == 41)
-            flag_pi_minus = (events['Part_charge'] == -1) & (abs(events['Part_pdgId']) == 41)
-            flag_radiative = (events['Part_pdgId'] == 21)
-            reco_pi_plus_p4 = get_p4(events, flag_pi_plus, prefix='Part_fourMomentum')
-            reco_pi_minus_p4 = get_p4(events, flag_pi_minus, prefix='Part_fourMomentum')
-            reco_radiative_p4 = vector.zip({
-                "px": ak.sum(events['Part_fourMomentum_fCoordinates_fX'][flag_radiative], axis=1),
-                "py": ak.sum(events['Part_fourMomentum_fCoordinates_fY'][flag_radiative], axis=1),
-                "pz": ak.sum(events['Part_fourMomentum_fCoordinates_fZ'][flag_radiative], axis=1),
-                "E": ak.sum(events['Part_fourMomentum_fCoordinates_fT'][flag_radiative], axis=1),
-            })
+        # pion p4
+        flag_pi_plus = (events['Part_charge'] == 1) & (abs(events['Part_pdgId']) == 41)
+        flag_pi_minus = (events['Part_charge'] == -1) & (abs(events['Part_pdgId']) == 41)
+        flag_radiation = (events['Part_pdgId'] == 21)
+        reco_pi_plus_p4 = get_p4(events, flag_pi_plus, prefix='Part_fourMomentum')
+        reco_pi_minus_p4 = get_p4(events, flag_pi_minus, prefix='Part_fourMomentum')
+        reco_radiation_p4 = vector.zip({
+            "px": ak.sum(events['Part_fourMomentum_fCoordinates_fX'][flag_radiation], axis=1),
+            "py": ak.sum(events['Part_fourMomentum_fCoordinates_fY'][flag_radiation], axis=1),
+            "pz": ak.sum(events['Part_fourMomentum_fCoordinates_fZ'][flag_radiation], axis=1),
+            "E": ak.sum(events['Part_fourMomentum_fCoordinates_fT'][flag_radiation], axis=1),
+        })
+        di_pion_p4 = reco_pi_plus_p4 + reco_pi_minus_p4
+        di_pion_plus_radiation_p4 = di_pion_p4 + reco_radiation_p4
+        total_p4 = di_pion_plus_radiation_p4 + missing_p4
+        total_mass = total_p4.mass
 
-            di_pion_p4 = reco_pi_plus_p4 + reco_pi_minus_p4
-            di_pion_plus_radiative_p4 = di_pion_p4 + reco_radiative_p4
-            total_p4 = di_pion_plus_radiative_p4 + missing_p4
-            total_mass = total_p4.mass
+        # truth neutrino p4
+        flag_gen_nu = (abs(events['GenPart_pdgId'])) == 16
+        truth_nu_p4 = vector.zip({
+            "px": ak.sum(events['GenPart_vector_fCoordinates_fX'][flag_gen_nu], axis=1),
+            "py": ak.sum(events['GenPart_vector_fCoordinates_fY'][flag_gen_nu], axis=1),
+            "pz": ak.sum(events['GenPart_vector_fCoordinates_fZ'][flag_gen_nu], axis=1),
+            "E": ak.sum(events['GenPart_vector_fCoordinates_fT'][flag_gen_nu], axis=1),
+        })
+        di_pion_plus_truth_nu_p4 = di_pion_p4 + truth_nu_p4
+        di_pion_plus_radiation_plus_truth_nu_p4 = di_pion_plus_radiation_p4 + truth_nu_p4
 
-            ax.hist(ak.to_numpy(total_mass), bins=bins, histtype='step', density=False, label=f"{label} - pi+ pi- + radiative + missing", linestyle='solid', color=color, linewidth=1.5)
-            ax.hist(ak.to_numpy(di_pion_plus_radiative_p4.mass), bins=bins, histtype='step', density=False, label=f'{label} - di-pion + radiative', linestyle='dashed', color=color, linewidth=1.5)
-            # ax.hist(ak.to_numpy(di_pion_p4.mass), bins=bins, histtype='step', density=False, label=f'{label} - di-pion', linestyle='dashed', color=color, linewidth=1.5)
+        color_iter = get_color_iterator(5)
+        ax.hist(ak.to_numpy(total_mass), bins=bins, histtype='step', density=False, label=f"{label} - pi+ pi- + radiation + missing", color=next(color_iter), linewidth=1.5, alpha=0.7)
+        ax.hist(ak.to_numpy(di_pion_plus_radiation_p4.mass), bins=bins, histtype='step', density=False, label=f'{label} - di-pion + radiation', color=next(color_iter), linewidth=1.5, alpha=0.7)
+        ax.hist(ak.to_numpy(di_pion_p4.mass), bins=bins, histtype='step', density=False, label=f'{label} - di-pion', color=next(color_iter), linewidth=1.5, alpha=0.7)
+        ax.hist(ak.to_numpy(di_pion_plus_truth_nu_p4.mass), bins=bins, histtype='step', density=False, label=f'{label} - di-pion + truth neutrinos', color=next(color_iter), linewidth=1.5, alpha=0.7)
+        ax.hist(ak.to_numpy(di_pion_plus_radiation_plus_truth_nu_p4.mass), bins=bins, histtype='step', density=False, label=f'{label} - di-pion + radiation + truth neutrinos', color=next(color_iter), linewidth=1.5, alpha=0.7)
         ax.set_xlabel('Invariant Mass [GeV]')
         ax.set_ylabel('Entries')
+        # ax.set_yscale('log')
         ax.set_title('Invariant Mass Distribution')
-        ax.legend()
+        ax.legend(loc='upper left', fontsize='small')
         fig.tight_layout()
         fig.savefig(os.path.join(self.output_dir, 'invariant_mass_distribution.png'))
 
