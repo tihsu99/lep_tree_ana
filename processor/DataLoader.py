@@ -34,12 +34,12 @@ def filter_event(events: ak.Array, filter_log_dict: dict):
 
     # no other hadronic particles in reco particles
     pass_filter = (ak.sum(
-        (recpart_abspdgid == 47) &  # pi0
-        (recpart_abspdgid == 42) &  # kaon+
-        (recpart_abspdgid == 61) &  # KS
-        (recpart_abspdgid == 62) &  # KL
-        (recpart_abspdgid == 65) &  # proton
-        (recpart_abspdgid == 66) &  # neutron
+        (recpart_abspdgid == 47) |  # pi0
+        (recpart_abspdgid == 42) |  # kaon+
+        (recpart_abspdgid == 61) |  # KS
+        (recpart_abspdgid == 62) |  # KL
+        (recpart_abspdgid == 65) |  # proton
+        (recpart_abspdgid == 66) |  # neutron
         (recpart_abspdgid == 81),  # lambda
       axis=1) == 0) & pass_filter
     filter_key = 'no other hadronic particles in reco'
@@ -47,8 +47,7 @@ def filter_event(events: ak.Array, filter_log_dict: dict):
 
     # no electrons or muons in reco particles
     pass_filter = (ak.sum(
-        (recpart_abspdgid == 2) &  # electron
-        (recpart_abspdgid == -2) &  # positron
+        (recpart_abspdgid == 2) |  # electron
         (recpart_abspdgid == 6),  # muon
       axis=1) == 0) & pass_filter
     filter_key = 'no electrons or muons in reco'    
