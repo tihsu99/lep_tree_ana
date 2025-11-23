@@ -57,7 +57,7 @@ class TemporaryProcessor(BaseProcessor):
 
 
         #######################################################
-        # plot pt of reco and truth pions
+        # plot p of reco and truth pions
         #######################################################
         # fig, ax = plt.subplots(dpi=300)
         fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(6, 8), gridspec_kw={'height_ratios': [3, 1]})
@@ -69,12 +69,12 @@ class TemporaryProcessor(BaseProcessor):
             flag_reco_pi = (abs(events['Part_pdgId']) == 41)
             flag_gen_pi = (abs(events['GenPart_pdgId']) == 211)
 
-            pt_reco_pions = (events['Part_fourMomentum_fCoordinates_fX'][flag_reco_pi]**2 + events['Part_fourMomentum_fCoordinates_fY'][flag_reco_pi]**2)**0.5
-            pt_gen_pions = (events['GenPart_vector_fCoordinates_fX'][flag_gen_pi]**2 + events['GenPart_vector_fCoordinates_fY'][flag_gen_pi]**2)**0.5
+            p_reco_pions = (events['Part_fourMomentum_fCoordinates_fX'][flag_reco_pi]**2 + events['Part_fourMomentum_fCoordinates_fY'][flag_reco_pi]**2 + events['Part_fourMomentum_fCoordinates_fZ'][flag_reco_pi]**2)**0.5
+            p_gen_pions = (events['GenPart_vector_fCoordinates_fX'][flag_gen_pi]**2 + events['GenPart_vector_fCoordinates_fY'][flag_gen_pi]**2 + events['GenPart_vector_fCoordinates_fZ'][flag_gen_pi]**2)**0.5
 
             # ratio plot
-            hist_reco, bin_edges = np.histogram(ak.to_numpy(ak.flatten(pt_reco_pions)), bins=bins)
-            hist_gen, _ = np.histogram(ak.to_numpy(ak.flatten(pt_gen_pions)), bins=bins)
+            hist_reco, bin_edges = np.histogram(ak.to_numpy(ak.flatten(p_reco_pions)), bins=bins)
+            hist_gen, _ = np.histogram(ak.to_numpy(ak.flatten(p_gen_pions)), bins=bins)
             plotter.do_ratio_plot(
                 bin_centers,
                 hist_reco,
@@ -96,7 +96,7 @@ class TemporaryProcessor(BaseProcessor):
 
         ax.set_yscale('log')
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'pt_distribution.png'))
+        fig.savefig(os.path.join(self.output_dir, 'p_distribution.png'))
 
         # bar plot pdgId of reco particles
         pdgid_parser = {
@@ -117,9 +117,9 @@ class TemporaryProcessor(BaseProcessor):
         fig, ax = plt.subplots(dpi=300)
         unique_pdgIds = np.unique(ak.flatten(events_dict['raw']['Part_pdgId']))
         x_axis = [pdgid_parser.get(pdgId, str(pdgId)) for pdgId in unique_pdgIds]
-        # pt distribution for each pdgId
-        fig_pt, ax_pt = plt.subplots(dpi=300)
-        bins_pt = np.linspace(0, 100, 51)
+        # p distribution for each pdgId
+        fig_p, ax_p = plt.subplots(dpi=300)
+        bins_p = np.linspace(0, 100, 51)
 
         color_iter = get_color_iterator(len(events_dict))
         for label, events in events_dict.items():
@@ -129,9 +129,9 @@ class TemporaryProcessor(BaseProcessor):
                 count = ak.sum(ak.sum(flag, axis=1))
                 pdgId_coutnts[pdgid_parser.get(pdgId, str(pdgId))] = count
                 if label==RegionNameOfInterest:
-                    # pt distribution for each pdgId
-                    pt_values = (events['Part_fourMomentum_fCoordinates_fX'][flag]**2 + events['Part_fourMomentum_fCoordinates_fY'][flag]**2)**0.5
-                    ax_pt.hist(ak.to_numpy(ak.flatten(pt_values)), bins=bins_pt, histtype='step', density=False, label=f'{pdgid_parser.get(pdgId, str(pdgId))}', linewidth=1.5)
+                    # p distribution for each pdgId
+                    p_values = (events['Part_fourMomentum_fCoordinates_fX'][flag]**2 + events['Part_fourMomentum_fCoordinates_fY'][flag]**2 + events['Part_fourMomentum_fCoordinates_fZ'][flag]**2)**0.5
+                    ax_p.hist(ak.to_numpy(ak.flatten(p_values)), bins=bins_p, histtype='step', density=False, label=f'{pdgid_parser.get(pdgId, str(pdgId))}', linewidth=1.5)
 
             ax.bar(x_axis, [pdgId_coutnts[x] for x in x_axis], label=label, alpha=0.7,  linewidth=1.5, fill=False, edgecolor=next(color_iter))
 
@@ -143,13 +143,13 @@ class TemporaryProcessor(BaseProcessor):
         fig.tight_layout()
         fig.savefig(os.path.join(self.output_dir, 'pdgId_distribution.png'))
 
-        ax_pt.set_xlabel('Reconstructed Particle $p_{T}$ [GeV]')
-        ax_pt.set_ylabel('Entries')
-        ax_pt.set_yscale('log')
-        ax_pt.set_title('Reconstructed Particle $p_{T}$ Distribution in SR')
-        ax_pt.legend()
-        fig_pt.tight_layout()
-        fig_pt.savefig(os.path.join(self.output_dir, 'pdgId_pt_distribution_sr.png'))
+        ax_p.set_xlabel('Reconstructed Particle $p_{T}$ [GeV]')
+        ax_p.set_ylabel('Entries')
+        ax_p.set_yscale('log')
+        ax_p.set_title('Reconstructed Particle $p_{T}$ Distribution in SR')
+        ax_p.legend()
+        fig_p.tight_layout()
+        fig_p.savefig(os.path.join(self.output_dir, 'pdgId_p_distribution_sr.png'))
 
         #######################################################
         # plot sum pT
@@ -170,9 +170,22 @@ class TemporaryProcessor(BaseProcessor):
         fig.tight_layout()
         fig.savefig(os.path.join(self.output_dir, 'sum_reco_pt.png'))
 
-        # #######################################################
-        # # plot total E
-        # #######################################################
+        #######################################################
+        # plot total E
+        #######################################################
+        fig, ax = plt.subplots(dpi=300)
+        bins = np.linspace(0, 200, 51)
+        color_iter = get_color_iterator(len(events_dict))
+        for label, events in events_dict.items():
+            color = next(color_iter)
+            total_reco_E = ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=1)
+            ax.hist(ak.to_numpy(total_reco_E), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+        ax.set_xlabel('Total Reconstructed Particle Energy [GeV]')
+        ax.set_ylabel('Entries')
+        ax.set_title('Total Reconstructed Particle Energy per Event')
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.output_dir, 'total_reco_energy.png'))
         # fig, ax = plt.subplots(2, 2, dpi=300, figsize=(12, 10))
         # bins = np.linspace(0, 200, 51)
         # color_iter = get_color_iterator(len(events_dict))
@@ -269,15 +282,24 @@ class TemporaryProcessor(BaseProcessor):
             # pion p4
             flag_pi_plus = (events['Part_charge'] == 1) & (abs(events['Part_pdgId']) == 41)
             flag_pi_minus = (events['Part_charge'] == -1) & (abs(events['Part_pdgId']) == 41)
+            flag_radiative = (events['Part_pdgId'] == 21)
             reco_pi_plus_p4 = get_p4(events, flag_pi_plus, prefix='Part_fourMomentum')
             reco_pi_minus_p4 = get_p4(events, flag_pi_minus, prefix='Part_fourMomentum')
+            reco_radiative_p4 = vector.zip({
+                "px": ak.sum(events['Part_fourMomentum_fCoordinates_fX'][flag_radiative], axis=1),
+                "py": ak.sum(events['Part_fourMomentum_fCoordinates_fY'][flag_radiative], axis=1),
+                "pz": ak.sum(events['Part_fourMomentum_fCoordinates_fZ'][flag_radiative], axis=1),
+                "E": ak.sum(events['Part_fourMomentum_fCoordinates_fT'][flag_radiative], axis=1),
+            })
 
             di_pion_p4 = reco_pi_plus_p4 + reco_pi_minus_p4
-            total_p4 = di_pion_p4 + missing_p4
+            di_pion_plus_radiative_p4 = di_pion_p4 + reco_radiative_p4
+            total_p4 = di_pion_plus_radiative_p4 + missing_p4
             total_mass = total_p4.mass
 
-            ax.hist(ak.to_numpy(total_mass), bins=bins, histtype='step', density=False, label=f"{label} - pi+ pi- + missing", linestyle='solid', color=color, linewidth=1.5)
-            ax.hist(ak.to_numpy(di_pion_p4.mass), bins=bins, histtype='step', density=False, label=f'{label} - di-pion', linestyle='dashed', color=color, linewidth=1.5)
+            ax.hist(ak.to_numpy(total_mass), bins=bins, histtype='step', density=False, label=f"{label} - pi+ pi- + radiative + missing", linestyle='solid', color=color, linewidth=1.5)
+            ax.hist(ak.to_numpy(di_pion_plus_radiative_p4.mass), bins=bins, histtype='step', density=False, label=f'{label} - di-pion + radiative', linestyle='dashed', color=color, linewidth=1.5)
+            # ax.hist(ak.to_numpy(di_pion_p4.mass), bins=bins, histtype='step', density=False, label=f'{label} - di-pion', linestyle='dashed', color=color, linewidth=1.5)
         ax.set_xlabel('Invariant Mass [GeV]')
         ax.set_ylabel('Entries')
         ax.set_title('Invariant Mass Distribution')

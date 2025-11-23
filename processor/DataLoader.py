@@ -107,7 +107,7 @@ class DataLoader:
                 for file in glob.glob(self.config.get("output_dir", "./") + "/filtered___*.parquet"):
                     key = os.path.basename(file).split("___")[-1].replace('.parquet', '')
                     self.data[key] = ak.from_parquet(file)
-                self.structured_data = np.load(self.config.get("output_dir", "./") + "/filtered_data_structured.npy", allow_pickle=True).item()
+                self.structured_data = np.load(self.config.get("output_dir", "./") + f"/filtered_{self.region_of_interest}_structured.npy", allow_pickle=True).item()
                 _data_loaded = True
 
         if not _data_loaded:
