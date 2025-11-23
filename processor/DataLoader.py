@@ -46,7 +46,13 @@ def filter_event(events: ak.Array, filter_log_dict: dict) -> dict:
     # no less than two pions (regardless of charge for now) in reco particles
     pass_filter = (ak.sum((recpart_abspdgid == 41), axis=1) >= 2) & pass_filter
     filter_log_dict['no less than two reco pions'] = filter_log_dict.get('no less than two reco pions', 0) + ak.sum(pass_filter)
-    filtered_events['pipi'] = original_events[pass_filter]
+    # # exactly two reco pions 
+    # pass_filter = (ak.sum((recpart_abspdgid == 41), axis=1) == 2) & pass_filter
+    # filter_log_dict['exactly two reco pions'] = filter_log_dict.get('exactly two reco pions', 0) + ak.sum(pass_filter)
+    # # one positive and one negative reco pion
+    # pass_filter = (ak.sum((recpart_charge)))
+
+    filtered_events['hadhad'] = original_events[pass_filter]
 
     return filtered_events
 
@@ -116,11 +122,11 @@ class DataLoader:
         f = ur.open(self.input_files[0])
         tree = f[self.tree_name]
 
-        common_evt_branches = ["Event_evtNumber"]
+        common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart"]
         gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
         gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
 
-        part_branches = ["charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", ]
+        part_branches = ["charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood"]
         part_branches = [f'Part_{b}' for b in part_branches]
 
         branches_to_load = common_evt_branches + gen_part_branches + part_branches
@@ -153,11 +159,14 @@ class DataLoader:
                     events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
                     events['initial_total_num_events'] = len(events)
 
+                    # select Part_xxx via isGood flag
+                    events['Part_isGood'] = events['Part_isGood']==1
+                    for part_branch in part_branches:
+                        events[part_branch] = events[part_branch][events['Part_isGood']] 
+
                     # filter events
                     self.filter_results['initial_total_num_events'] += len(events)
                     events_pass_filter = filter_event(events, self.filter_results)
-                    # for key, evt in events_pass_filter.items():
-                    #     self.filter_results[key] = self.filter_results.get(key, 0) + len(evt)
 
                     # save filtered events
                     log.info(f"Saving filtered data to {path_filtered_single_file}.")
@@ -194,10 +203,10 @@ class DataLoader:
             # # make sure there is only one entry per event
             # assert all(grouped.size() == 1), "Multiple entries found for events in get_p4."
             # if there are multiple entries, take the last one
-            p4[:, 0] = (events[f'{prefix}_fCoordinates_fX'][flag][...,-1])
-            p4[:, 1] = (events[f'{prefix}_fCoordinates_fY'][flag][...,-1])
-            p4[:, 2] = (events[f'{prefix}_fCoordinates_fZ'][flag][...,-1])
-            p4[:, 3] = (events[f'{prefix}_fCoordinates_fT'][flag][...,-1])
+            p4[:, 0] = ak.firsts((events[f'{prefix}_fCoordinates_fX'][flag][...,::-1])).to_numpy()
+            p4[:, 1] = ak.firsts((events[f'{prefix}_fCoordinates_fY'][flag][...,::-1])).to_numpy()
+            p4[:, 2] = ak.firsts((events[f'{prefix}_fCoordinates_fZ'][flag][...,::-1])).to_numpy()
+            p4[:, 3] = ak.firsts((events[f'{prefix}_fCoordinates_fT'][flag][...,::-1])).to_numpy()
             return p4
         # interpretation of status code: https://github.com/jingyucms/Delphi-Sim-Pipeline/blob/main/pythia8_generate.cpp#L17-L43 and https://pythia.org/latest-manual/ParticleProperties.html
 
