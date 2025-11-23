@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import uproot as ur
+import matplotlib.pyplot as plt
 import logging
 import vector
 import glob
@@ -10,9 +11,11 @@ import copy
 
 log = logging.getLogger(__name__)
 
-def filter_event(events: ak.Array, filter_log_dict: dict) -> dict:
+def filter_event(events: ak.Array, filter_log_dict: dict):
     original_events = copy.deepcopy(events)
-    filtered_events = {}
+    filtered_events = {
+        'raw': original_events,
+    }
 
     genpart_pdgid = events['GenPart_pdgId']
     genpart_abspdgid = abs(genpart_pdgid)
@@ -22,39 +25,50 @@ def filter_event(events: ak.Array, filter_log_dict: dict) -> dict:
     recpart_charge = events['Part_charge']
     is_finalstatus = genpart_status==1
 
-    ##############################
-    # tau tau > pi+ pi- v v events
-    ##############################
-    pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
-    # # Now all the truth-level selections have been moved to the simulation stage
-    # # no kaon, lambda and Xi0: no status=4 particles
-    # pass_filter = ~ak.any((genpart_status == 4), axis=1) & pass_filter
-    # # exactly one pi+ and one pi- in final status particles
-    # pass_filter = (ak.sum((genpart_pdgid == 211) & is_finalstatus, axis=1) == 1) & pass_filter
-    # pass_filter = (ak.sum((genpart_pdgid == -211) & is_finalstatus, axis=1) == 1) & pass_filter
 
-    # # no neutral pions, no short-lived particles, no kaons, eta, omega, neutrinos other than nu_tau
-    # num_short_lived = ak.sum((genpart_status == 4), axis=1)
-    # num_unwanted = \
-    #     ak.sum((genpart_abspdgid == 111), axis=1) + \
-    #     ak.sum((genpart_abspdgid == 321), axis=1) + \
-    #     ak.sum((genpart_abspdgid == 221), axis=1) + \
-    #     ak.sum((genpart_abspdgid == 223), axis=1) + \
-    #     ak.sum((genpart_abspdgid == 14), axis=1)  + \
-    #     ak.sum((genpart_abspdgid == 12), axis=1)      
-    # pass_filter = (num_short_lived == 0) & (num_unwanted == 0) & pass_filter
+    pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
     # no less than two pions (regardless of charge for now) in reco particles
     pass_filter = (ak.sum((recpart_abspdgid == 41), axis=1) >= 2) & pass_filter
-    filter_log_dict['no less than two reco pions'] = filter_log_dict.get('no less than two reco pions', 0) + ak.sum(pass_filter)
-    # # exactly two reco pions 
-    # pass_filter = (ak.sum((recpart_abspdgid == 41), axis=1) == 2) & pass_filter
-    # filter_log_dict['exactly two reco pions'] = filter_log_dict.get('exactly two reco pions', 0) + ak.sum(pass_filter)
-    # # one positive and one negative reco pion
-    # pass_filter = (ak.sum((recpart_charge)))
+    filter_key = 'no less than two reco pions'
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+
+    # no other hadronic particles in reco particles
+    pass_filter = (ak.sum(
+        (recpart_abspdgid == 47) &  # pi0
+        (recpart_abspdgid == 42) &  # kaon+
+        (recpart_abspdgid == 61) &  # KS
+        (recpart_abspdgid == 62) &  # KL
+        (recpart_abspdgid == 65) &  # proton
+        (recpart_abspdgid == 66) &  # neutron
+        (recpart_abspdgid == 81),  # lambda
+      axis=1) == 0) & pass_filter
+    filter_key = 'no other hadronic particles in reco'
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+
+    # no electrons or muons in reco particles
+    pass_filter = (ak.sum(
+        (recpart_abspdgid == 2) &  # electron
+        (recpart_abspdgid == -2) &  # positron
+        (recpart_abspdgid == 6),  # muon
+      axis=1) == 0) & pass_filter
+    filter_key = 'no electrons or muons in reco'    
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+
+    # exactly two reco pions 
+    pass_filter = (ak.sum((recpart_abspdgid == 41), axis=1) == 2) & pass_filter
+    filter_key = 'exactly two pions'
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+
+    # one pi+ and one pi-
+    charge_ary_of_pions = recpart_charge[recpart_abspdgid == 41]
+    flag_pi_plus_and_pi_minus = (ak.sum(charge_ary_of_pions == 1, axis=1) == 1 )& (ak.sum(charge_ary_of_pions == -1, axis=1) == 1)
+    filter_key = 'one pi+ and one pi-'
+    pass_filter = flag_pi_plus_and_pi_minus & pass_filter
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
 
     filtered_events['hadhad'] = original_events[pass_filter]
 
-    return filtered_events
+    return filtered_events, filter_log_dict
 
 
 class DataLoader:
@@ -62,6 +76,7 @@ class DataLoader:
         self.config = config
         self.tree_name = self.config.get("tree_name", "t")
         self.input_files = self.config.get("input_files", [])
+        self.region_of_interest = self.config.get("region_of_interest", "hadhad")
 
         if not self.input_files:
             raise ValueError("Input files must be specified.")
@@ -82,16 +97,17 @@ class DataLoader:
         }
 
         _data_loaded = False
-        if os.path.exists(self.config.get("output_dir", "./") + "/filtered_data.parquet"):
+        # if os.path.exists(self.config.get("output_dir", "./") + "/filtered_data.parquet"):
+        if len(glob.glob(self.config.get("output_dir", "./") + "/filtered___*.parquet")) > 0:
             # ask user if they want to load existing data
             load_existing = input(f"Filtered data file already exists. Do you want to reload and filter data from input files? (y/n): ")
             if load_existing.lower() == 'y':
                 log.info("Re-loading and filtering data from input files.")
             else:
                 log.info("Loading existing filtered data.")
-                loaded = ak.from_parquet(self.config.get("output_dir", "./") + "/filtered_data.parquet")
-                for key in loaded.fields:
-                    self.data[key] = loaded[key]
+                for file in glob.glob(self.config.get("output_dir", "./") + "/filtered___*.parquet"):
+                    key = os.path.basename(file).split("___")[-1].replace('.parquet', '')
+                    self.data[key] = ak.from_parquet(file)
                 self.structured_data = np.load(self.config.get("output_dir", "./") + "/filtered_data_structured.npy", allow_pickle=True).item()
                 _data_loaded = True
 
@@ -135,12 +151,14 @@ class DataLoader:
         # Load data from all files
         initial_total_num_events = 0
         for file in self.input_files:
-            path_filtered_single_file = self.config.get("output_dir", "./") + "/filtered_data_files/" + os.path.basename(file).replace('.root', '_filtered.parquet')
-            if os.path.exists(path_filtered_single_file):
-                log.info(f"Filtered data file for {file} already exists at {path_filtered_single_file}. Loading filtered data.")
-                filtered_events = ak.from_parquet(path_filtered_single_file)
-                for key in filtered_events.fields:
-                    evt = filtered_events[key]
+            # path_filtered_single_file = self.config.get("output_dir", "./") + "/filtered_data_files/" + os.path.basename(file).replace('.root', '_filtered.parquet')
+            path_filtered_single_file_prefix = self.config.get("output_dir", "./") + "/filtered_data_files/" + os.path.basename(file).replace('.root', '')
+            if len(glob.glob(path_filtered_single_file_prefix + "*_filtered.parquet")) > 0:
+                log.info(f"Filtered data file for {file} already exists at {path_filtered_single_file_prefix}. Loading filtered data.")
+                log.warning(f"These files are not included in the filter cutflow statistics!")
+                for filtered_file in glob.glob(path_filtered_single_file_prefix + "*.parquet"):
+                    key = os.path.basename(filtered_file).split("___")[-1].replace('.parquet', '')
+                    evt = ak.from_parquet(filtered_file)
                     evt['evtNumber'] = evt['Event_evtNumber'] + initial_total_num_events
                     initial_total_num_events = initial_total_num_events + evt['initial_total_num_events'][0]
                     self.data.setdefault(key, []).append(evt)
@@ -166,11 +184,13 @@ class DataLoader:
 
                     # filter events
                     self.filter_results['initial_total_num_events'] += len(events)
-                    events_pass_filter = filter_event(events, self.filter_results)
+                    events_pass_filter, self.filter_results = filter_event(events, self.filter_results)
 
                     # save filtered events
-                    log.info(f"Saving filtered data to {path_filtered_single_file}.")
-                    ak.to_parquet( ak.zip(events_pass_filter), path_filtered_single_file)
+                    log.info(f"Saving filtered data to {path_filtered_single_file_prefix}.")
+                    for key, evt in events_pass_filter.items():
+                        path_filtered_single_file = path_filtered_single_file_prefix + f"___{key}.parquet"
+                        ak.to_parquet(evt, path_filtered_single_file)
 
                     # record filtered events into self.data
                     for key, evt in events_pass_filter.items():
@@ -189,6 +209,39 @@ class DataLoader:
         if self.filter_results['initial_total_num_events'] > 0:
             for key, value in self.filter_results.items():
                 log.info(f"Filter result - {key}: {value}. Filter efficiency: {value / self.filter_results['initial_total_num_events']:.4f}")
+            # plot filter results
+            cutflow_labels = list(self.filter_results.keys())
+            cutflow_values = [self.filter_results[key] for key in cutflow_labels]
+            fig, ax = plt.subplots(dpi=300, figsize=(8,8))
+            p = ax.bar(cutflow_labels, cutflow_values)
+            ax.bar_label(p, labels=[f"{v}" for v in cutflow_values], padding=3)
+            ax.set_ylabel('Number of Events')
+            ax.set_title('Event Cutflow')
+            # rotate x, fontsize to small
+            plt.xticks(rotation=45, ha='right', fontsize=8)
+            fig.tight_layout()
+            fig.savefig(self.config.get("output_dir", "./") + "/cutflow.pdf")
+
+            cutflow_normalized = [v / self.filter_results['initial_total_num_events'] for v in cutflow_values]
+            fig, ax = plt.subplots(dpi=300, figsize=(8,8))
+            p = ax.bar(cutflow_labels, cutflow_normalized)
+            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_normalized], padding=3)
+            ax.set_ylabel('Efficiency')
+            ax.set_title('Event Cutflow Efficiency')
+            plt.xticks(rotation=45, ha='right', fontsize=8)
+            fig.tight_layout()
+            fig.savefig(self.config.get("output_dir", "./") + "/cutflow_efficiency.pdf")
+
+            cutflow_relative = [cutflow_values[i] / cutflow_values[i-1] if i > 0 else 1.0 for i in range(len(cutflow_values))]
+            fig, ax = plt.subplots(dpi=300, figsize=(8,8))
+            p = ax.bar(cutflow_labels, cutflow_relative)
+            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_relative], padding=3)
+            ax.set_ylabel('Relative Efficiency')
+            ax.set_title('Event Cutflow Relative Efficiency')
+            plt.xticks(rotation=45, ha='right', fontsize=8)
+            fig.tight_layout()
+            fig.savefig(self.config.get("output_dir", "./") + "/cutflow_relative_efficiency.pdf")
+
 
         # get structured data
         self.structured_data = self.structure_data()
@@ -210,45 +263,45 @@ class DataLoader:
             return p4
         # interpretation of status code: https://github.com/jingyucms/Delphi-Sim-Pipeline/blob/main/pythia8_generate.cpp#L17-L43 and https://pythia.org/latest-manual/ParticleProperties.html
 
-        for channel, events in self.data.items():
-            # truth info
-            truth_flag_intermediate_state = (events['GenPart_status']==21)
-            truth_flag_tau1 = ((events['GenPart_pdgId']==-15) & truth_flag_intermediate_state)
-            truth_flag_tau2 = ((events['GenPart_pdgId']==15) & truth_flag_intermediate_state)
-            truth_flag_Z = ((events['GenPart_pdgId']==23) & truth_flag_intermediate_state)
+        # for channel, events in self.data.items():
+        channel = self.region_of_interest
+        events = self.data[channel]
+        # truth info
+        truth_flag_intermediate_state = (events['GenPart_status']==21)
+        truth_flag_tau1 = ((events['GenPart_pdgId']==-15) & truth_flag_intermediate_state)
+        truth_flag_tau2 = ((events['GenPart_pdgId']==15) & truth_flag_intermediate_state)
+        truth_flag_Z = ((events['GenPart_pdgId']==23) & truth_flag_intermediate_state)
 
-            truth_flag_final_status = (events['GenPart_status']==1)
-            truth_flag_vischild_tau1 = ((events['GenPart_pdgId']==211) & truth_flag_final_status)
-            truth_flag_vischild_tau2 = ((events['GenPart_pdgId']==-211) & truth_flag_final_status)
-            truth_flag_nu1 = ((events['GenPart_pdgId']==16) & truth_flag_final_status)
-            truth_flag_nu2 = ((events['GenPart_pdgId']==-16) & truth_flag_final_status)
+        truth_flag_final_status = (events['GenPart_status']==1)
+        truth_flag_vischild_tau1 = ((events['GenPart_pdgId']==211) & truth_flag_final_status)
+        truth_flag_vischild_tau2 = ((events['GenPart_pdgId']==-211) & truth_flag_final_status)
+        truth_flag_nu1 = ((events['GenPart_pdgId']==16) & truth_flag_final_status)
+        truth_flag_nu2 = ((events['GenPart_pdgId']==-16) & truth_flag_final_status)
 
-            # reco_flag_pip = ((events['Part_pdgId']==41))
-            # reco_flag_pim = ((events['Part_pdgId']==-41))
-            return {
-                f'{channel}/TRUTH/tau1_p4': get_p4(events, truth_flag_tau1),
-                f'{channel}/TRUTH/tau2_p4': get_p4(events, truth_flag_tau2),
-                f'{channel}/TRUTH/vischild_tau1_p4': get_p4(events, truth_flag_vischild_tau1),
-                f'{channel}/TRUTH/vischild_tau2_p4': get_p4(events, truth_flag_vischild_tau2),
-                f'{channel}/TRUTH/Z_p4': get_p4(events, truth_flag_Z),
-                f'{channel}/TRUTH/nu_tau1_p4': get_p4(events, truth_flag_nu1),
-                f'{channel}/TRUTH/nu_tau2_p4': get_p4(events, truth_flag_nu2),
-                # f'{channel}/RECO/piplus_p4': get_p4(events, reco_flag_pip, prefix='Part_fourMomentum'),
-                # f'{channel}/RECO/piminus_p4': get_p4(events, reco_flag_pim, prefix='Part_fourMomentum'),
-            }
+        # reco_flag_pip = ((events['Part_pdgId']==41))
+        # reco_flag_pim = ((events['Part_pdgId']==-41))
+        return {
+            f'{channel}/TRUTH/tau1_p4': get_p4(events, truth_flag_tau1),
+            f'{channel}/TRUTH/tau2_p4': get_p4(events, truth_flag_tau2),
+            f'{channel}/TRUTH/vischild_tau1_p4': get_p4(events, truth_flag_vischild_tau1),
+            f'{channel}/TRUTH/vischild_tau2_p4': get_p4(events, truth_flag_vischild_tau2),
+            f'{channel}/TRUTH/Z_p4': get_p4(events, truth_flag_Z),
+            f'{channel}/TRUTH/nu_tau1_p4': get_p4(events, truth_flag_nu1),
+            f'{channel}/TRUTH/nu_tau2_p4': get_p4(events, truth_flag_nu2),
+            # f'{channel}/RECO/piplus_p4': get_p4(events, reco_flag_pip, prefix='Part_fourMomentum'),
+            # f'{channel}/RECO/piminus_p4': get_p4(events, reco_flag_pim, prefix='Part_fourMomentum'),
+        }
     
     def save_data(self):
-        output_file = self.config.get("output_dir", "./") + "/filtered_data.parquet"
-        ak.to_parquet(ak.zip(self.data), output_file)
-        log.info(f"Data saved to {output_file}.")
-        # # test loading saved data
-        # loaded_test = ak.from_parquet(output_file)
-        # for key in loaded_test.fields:
-        #     print(f"Loaded test field {key} has {len(loaded_test[key])} events.")
-        #     print(loaded_test[key])
+        output_file_prefix = self.config.get("output_dir", "./") + "/filtered"
+        for key, evt in self.data.items():
+            output_file = output_file_prefix + f"___{key}.parquet"
+            log.info(f"Saving data for channel {key} to {output_file}.")
+            ak.to_parquet(evt, output_file)
 
-        # ...
-        structured_output_file = output_file.replace('.parquet', '_structured.npy')
+        log.info(f"Data saved to {output_file}.")
+
+        structured_output_file = self.config.get("output_dir", "./") + f"/filtered_{self.region_of_interest}_structured.npy"
         np.save(structured_output_file, self.structured_data)
         # To load the structured data, use: np.load(structured_output_file, allow_pickle=True).item()
         log.info(f"Structured data saved to {structured_output_file}.")
@@ -282,33 +335,3 @@ if __name__ == "__main__":
     print(df)
     ary = np.load("filtered_data_structured.npy", allow_pickle=True).item()
     print(ary)
-
-    # input_file = "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251029_Ztautau_singlePionDecay/simana_job_17827112_47_ttree.root"
-    # tree_name = "t"
-
-    # f = ur.open(input_file)
-    # tree = f[tree_name]
-
-    # gen_part_branches = []
-    # for b in tree.keys():
-    #     try:
-    #         btype = tree[b].typename
-    #         print(b, btype)
-    #         if "[]" in btype or "ROOT::Math" in btype or "/" in b:
-    #             continue
-    #         elif "GenPart" in b:
-    #             gen_part_branches.append(b)
-    #     except:
-    #         print(f"Could not interpret branch {b}. Skipping.")
-    #         continue
-
-
-    # print(gen_part_branches)
-    # gen_part_df = tree.arrays(gen_part_branches, library="pd")
-    # print(gen_part_df)
-
-    # flag_filtered = gen_part_df.groupby(level=0).apply(filter_event)
-
-    # print(flag_filtered)
-    # print(flag_filtered[flag_filtered].index)
-    # print(f"Filter efficiency: {sum(flag_filtered) / len(flag_filtered):.4f}")

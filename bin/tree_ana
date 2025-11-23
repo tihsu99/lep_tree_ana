@@ -35,11 +35,11 @@ if __name__ == "__main__":
     analysis_config = {}
     analysis_config['DataLoader'] = {
         "tree_name": "t",
+        "region_of_interest": "hadhad",
 
-        # "input_files": "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree.root",
         "input_files": [
-            # "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_17903056_88_ttree_pipi.root",
-            "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root",
+            # "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root",
+            "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_17903058_6_ttree_pipi.root",
         ],
         "output_dir": "251108_Ztautau_pipm",
     }
