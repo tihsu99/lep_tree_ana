@@ -1,9 +1,28 @@
 import numpy as np
 from BaseProcessor import BaseProcessor
+import utils.plotter as plotter
 import DataLoader
 import matplotlib.pyplot as plt
 import os
 import vector
+import awkward as ak
+
+cme = 91.25 # GeV
+def get_color_iterator(n):
+    return iter(plt.cm.tab10.colors * (n // 10 + 1))
+
+def get_p4(events, flag, prefix='Part_fourMomentum'):
+    px = ak.firsts(events[f'{prefix}_fCoordinates_fX'][flag][...,::-1]).to_numpy()
+    py = ak.firsts(events[f'{prefix}_fCoordinates_fY'][flag][...,::-1]).to_numpy()
+    pz = ak.firsts(events[f'{prefix}_fCoordinates_fZ'][flag][...,::-1]).to_numpy()
+    E =  ak.firsts(events[f'{prefix}_fCoordinates_fT'][flag][...,::-1]).to_numpy()
+    p4 = vector.zip({
+        "px": px,
+        "py": py,
+        "pz": pz,
+        "E": E,
+    })
+    return p4
 
 class PlotProcessor(BaseProcessor):
     def __init__(self, config):
@@ -216,11 +235,25 @@ class PlotProcessor(BaseProcessor):
             missing_pT = (sum_px**2 + sum_py**2)**0.5
             missing_pz = abs(sum_pz)
             # missing_E = np.maximum(cme - sum_E, 0)
-            missing_E = cme - sum_E
+            # missing_E = cme - sum_E
+            missing_E = (missing_pT**2 + missing_pz**2)**0.5
+
+            # truth neutrino p4
+            flag_gen_nu = (abs(events['GenPart_pdgId'])) == 16
+            truth_nu_px = ak.sum(events['GenPart_vector_fCoordinates_fX'][flag_gen_nu], axis=1)
+            truth_nu_py = ak.sum(events['GenPart_vector_fCoordinates_fY'][flag_gen_nu], axis=1)
+            truth_nu_pz = ak.sum(events['GenPart_vector_fCoordinates_fZ'][flag_gen_nu], axis=1)
+            truth_nu_E = ak.sum(events['GenPart_vector_fCoordinates_fT'][flag_gen_nu], axis=1)
+            truth_nu_pT = (truth_nu_px**2 + truth_nu_py**2)**0.5
+            truth_nu_pz = abs(truth_nu_pz)
+
 
             ax[0].hist(ak.to_numpy(missing_pT), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+            ax[0].hist(ak.to_numpy(truth_nu_pT), bins=bins, histtype='step', density=False, label=f'{label} - truth neutrinos', color=color, linewidth=1.5, linestyle='dashed', alpha=0.7)
             ax[1].hist(ak.to_numpy(missing_pz), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+            ax[1].hist(ak.to_numpy(truth_nu_pz), bins=bins, histtype='step', density=False, label=f'{label} - truth neutrinos', color=color, linewidth=1.5, linestyle='dashed', alpha=0.7)
             ax[2].hist(ak.to_numpy(missing_E), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+            ax[2].hist(ak.to_numpy(truth_nu_E), bins=bins, histtype='step', density=False, label=f'{label} - truth neutrinos', color=color, linewidth=1.5, linestyle='dashed', alpha=0.7)
 
         ax[0].set_xlabel('Missing Transverse Momentum [GeV]')
         ax[0].set_ylabel('Entries')
