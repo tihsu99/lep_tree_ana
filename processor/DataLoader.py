@@ -65,17 +65,18 @@ def filter_event(events: ak.Array, filter_log_dict: dict):
     pass_filter = flag_pi_plus_and_pi_minus & pass_filter
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
 
-    filtered_events['hadhad'] = original_events[pass_filter]
+    filtered_events['pipi'] = original_events[pass_filter]
 
     return filtered_events, filter_log_dict
 
 
 class DataLoader:
-    def __init__(self, config):
+    def __init__(self, config, output_dir):
         self.config = config
+        self.output_dir = output_dir
         self.tree_name = self.config.get("tree_name", "t")
         self.input_files = self.config.get("input_files", [])
-        self.region_of_interest = self.config.get("region_of_interest", "hadhad")
+        self.region_of_interest = self.config.get("region_of_interest", "pipi")
 
         if not self.input_files:
             raise ValueError("Input files must be specified.")
@@ -90,43 +91,28 @@ class DataLoader:
             self.input_files = all_files
 
         self.data = {}
-        self.structured_data = {}
         self.filter_results = {
             'initial_total_num_events': 0,
         }
 
         _data_loaded = False
-        # if os.path.exists(self.config.get("output_dir", "./") + "/filtered_data.parquet"):
-        if len(glob.glob(self.config.get("output_dir", "./") + "/filtered___*.parquet")) > 0:
+        # if os.path.exists(self.output_dir + "/filtered_data.parquet"):
+        if len(glob.glob(self.output_dir + "/filtered___*.parquet")) > 0:
             # ask user if they want to load existing data
             load_existing = input(f"Filtered data file already exists. Do you want to reload and filter data from input files? (y/n): ")
             if load_existing.lower() == 'y':
                 log.info("Re-loading and filtering data from input files.")
             else:
                 log.info("Loading existing filtered data.")
-                for file in glob.glob(self.config.get("output_dir", "./") + "/filtered___*.parquet"):
+                for file in glob.glob(self.output_dir + "/filtered___*.parquet"):
                     key = os.path.basename(file).split("___")[-1].replace('.parquet', '')
                     self.data[key] = ak.from_parquet(file)
-                self.structured_data = np.load(self.config.get("output_dir", "./") + f"/filtered_{self.region_of_interest}_structured.npy", allow_pickle=True).item()
                 _data_loaded = True
 
         if not _data_loaded:
             self.load_data()
             self.save_data()
             _data_loaded = True
-
-        # vectorize the data
-        def vectorize_p4(key):
-            return vector.zip({
-                "px": self.structured_data[key][:, 0],
-                "py": self.structured_data[key][:, 1],
-                "pz": self.structured_data[key][:, 2],
-                "E": self.structured_data[key][:, 3],
-            })
-        self.vectored_data = {
-            key.removesuffix("_p4"): vectorize_p4(key)
-            for key in self.structured_data
-        }
 
         log.info(f"DataLoader initialization complete. Loaded {len(all_files)} files.")
 
@@ -146,12 +132,12 @@ class DataLoader:
 
         branches_to_load = common_evt_branches + gen_part_branches + part_branches
 
-        os.makedirs(self.config.get("output_dir", "./") + "/filtered_data_files/", exist_ok=True)
+        os.makedirs(self.output_dir + "/filtered_data_files/", exist_ok=True)
         # Load data from all files
         initial_total_num_events = 0
         for file in self.input_files:
-            # path_filtered_single_file = self.config.get("output_dir", "./") + "/filtered_data_files/" + os.path.basename(file).replace('.root', '_filtered.parquet')
-            path_filtered_single_file_prefix = self.config.get("output_dir", "./") + "/filtered_data_files/" + os.path.basename(file).replace('.root', '')
+            # path_filtered_single_file = self.output_dir + "/filtered_data_files/" + os.path.basename(file).replace('.root', '_filtered.parquet')
+            path_filtered_single_file_prefix = self.output_dir + "/filtered_data_files/" + os.path.basename(file).replace('.root', '')
             if len(glob.glob(path_filtered_single_file_prefix + "*_filtered.parquet")) > 0:
                 log.info(f"Filtered data file for {file} already exists at {path_filtered_single_file_prefix}. Loading filtered data.")
                 log.warning(f"These files are not included in the filter cutflow statistics!")
@@ -219,7 +205,7 @@ class DataLoader:
             # rotate x, fontsize to small
             plt.xticks(rotation=45, ha='right', fontsize=8)
             fig.tight_layout()
-            fig.savefig(self.config.get("output_dir", "./") + "/cutflow.pdf")
+            fig.savefig(self.output_dir + "/cutflow.pdf")
 
             cutflow_normalized = [v / self.filter_results['initial_total_num_events'] for v in cutflow_values]
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
@@ -229,7 +215,7 @@ class DataLoader:
             ax.set_title('Event Cutflow Efficiency')
             plt.xticks(rotation=45, ha='right', fontsize=8)
             fig.tight_layout()
-            fig.savefig(self.config.get("output_dir", "./") + "/cutflow_efficiency.pdf")
+            fig.savefig(self.output_dir + "/cutflow_efficiency.pdf")
 
             cutflow_relative = [cutflow_values[i] / cutflow_values[i-1] if i > 0 else 1.0 for i in range(len(cutflow_values))]
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
@@ -239,60 +225,13 @@ class DataLoader:
             ax.set_title('Event Cutflow Relative Efficiency')
             plt.xticks(rotation=45, ha='right', fontsize=8)
             fig.tight_layout()
-            fig.savefig(self.config.get("output_dir", "./") + "/cutflow_relative_efficiency.pdf")
-
-
-        # get structured data
-        self.structured_data = self.structure_data()
+            fig.savefig(self.output_dir + "/cutflow_relative_efficiency.pdf")
 
         return self.data
 
     
-    def structure_data(self):
-        # structured data as input of postanalysis
-        def get_p4(events, flag, prefix='GenPart_vector'):
-            p4 = np.zeros((len(events), 4))
-            # # make sure there is only one entry per event
-            # assert all(grouped.size() == 1), "Multiple entries found for events in get_p4."
-            # if there are multiple entries, take the last one
-            p4[:, 0] = ak.firsts((events[f'{prefix}_fCoordinates_fX'][flag][...,::-1])).to_numpy()
-            p4[:, 1] = ak.firsts((events[f'{prefix}_fCoordinates_fY'][flag][...,::-1])).to_numpy()
-            p4[:, 2] = ak.firsts((events[f'{prefix}_fCoordinates_fZ'][flag][...,::-1])).to_numpy()
-            p4[:, 3] = ak.firsts((events[f'{prefix}_fCoordinates_fT'][flag][...,::-1])).to_numpy()
-            return p4
-        # interpretation of status code: https://github.com/jingyucms/Delphi-Sim-Pipeline/blob/main/pythia8_generate.cpp#L17-L43 and https://pythia.org/latest-manual/ParticleProperties.html
-
-        # for channel, events in self.data.items():
-        channel = self.region_of_interest
-        events = self.data[channel]
-        # truth info
-        truth_flag_intermediate_state = (events['GenPart_status']==21)
-        truth_flag_tau1 = ((events['GenPart_pdgId']==-15) & truth_flag_intermediate_state)
-        truth_flag_tau2 = ((events['GenPart_pdgId']==15) & truth_flag_intermediate_state)
-        truth_flag_Z = ((events['GenPart_pdgId']==23) & truth_flag_intermediate_state)
-
-        truth_flag_final_status = (events['GenPart_status']==1)
-        truth_flag_vischild_tau1 = ((events['GenPart_pdgId']==211) & truth_flag_final_status)
-        truth_flag_vischild_tau2 = ((events['GenPart_pdgId']==-211) & truth_flag_final_status)
-        truth_flag_nu1 = ((events['GenPart_pdgId']==16) & truth_flag_final_status)
-        truth_flag_nu2 = ((events['GenPart_pdgId']==-16) & truth_flag_final_status)
-
-        # reco_flag_pip = ((events['Part_pdgId']==41))
-        # reco_flag_pim = ((events['Part_pdgId']==-41))
-        return {
-            f'{channel}/TRUTH/tau1_p4': get_p4(events, truth_flag_tau1),
-            f'{channel}/TRUTH/tau2_p4': get_p4(events, truth_flag_tau2),
-            f'{channel}/TRUTH/vischild_tau1_p4': get_p4(events, truth_flag_vischild_tau1),
-            f'{channel}/TRUTH/vischild_tau2_p4': get_p4(events, truth_flag_vischild_tau2),
-            f'{channel}/TRUTH/Z_p4': get_p4(events, truth_flag_Z),
-            f'{channel}/TRUTH/nu_tau1_p4': get_p4(events, truth_flag_nu1),
-            f'{channel}/TRUTH/nu_tau2_p4': get_p4(events, truth_flag_nu2),
-            # f'{channel}/RECO/piplus_p4': get_p4(events, reco_flag_pip, prefix='Part_fourMomentum'),
-            # f'{channel}/RECO/piminus_p4': get_p4(events, reco_flag_pim, prefix='Part_fourMomentum'),
-        }
-    
     def save_data(self):
-        output_file_prefix = self.config.get("output_dir", "./") + "/filtered"
+        output_file_prefix = self.output_dir + "/filtered"
         for key, evt in self.data.items():
             output_file = output_file_prefix + f"___{key}.parquet"
             log.info(f"Saving data for channel {key} to {output_file}.")
@@ -300,10 +239,10 @@ class DataLoader:
 
         log.info(f"Data saved to {output_file}.")
 
-        structured_output_file = self.config.get("output_dir", "./") + f"/filtered_{self.region_of_interest}_structured.npy"
-        np.save(structured_output_file, self.structured_data)
-        # To load the structured data, use: np.load(structured_output_file, allow_pickle=True).item()
-        log.info(f"Structured data saved to {structured_output_file}.")
+        # structured_output_file = self.output_dir + f"/filtered_{self.region_of_interest}_structured.npy"
+        # np.save(structured_output_file, self.structured_data)
+        # # To load the structured data, use: np.load(structured_output_file, allow_pickle=True).item()
+        # log.info(f"Structured data saved to {structured_output_file}.")
 
 
     def run(self, dl):
@@ -327,10 +266,10 @@ if __name__ == "__main__":
 
     loader = DataLoader(config)
 
-    import numpy as np
-    import pandas as pd
-    # test reading output file
-    df = pd.read_hdf("filtered_data.h5")
-    print(df)
-    ary = np.load("filtered_data_structured.npy", allow_pickle=True).item()
-    print(ary)
+    # import numpy as np
+    # import pandas as pd
+    # # test reading output file
+    # df = pd.read_hdf("filtered_data.h5")
+    # print(df)
+    # ary = np.load("filtered_data_structured.npy", allow_pickle=True).item()
+    # print(ary)

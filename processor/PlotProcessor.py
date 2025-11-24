@@ -25,10 +25,10 @@ def get_p4(events, flag, prefix='Part_fourMomentum'):
     return p4
 
 class PlotProcessor(BaseProcessor):
-    def __init__(self, config):
+    def __init__(self, config, output_dir):
         super().__init__(config)
         self.config = config
-        self.output_dir = self.config.get("output_dir", "./") + "/plots/"
+        self.output_dir = output_dir + "/plots/"
         os.makedirs(self.output_dir, exist_ok=True)
 
 
