@@ -143,10 +143,10 @@ class PlotProcessor(BaseProcessor):
         fig.tight_layout()
         fig.savefig(os.path.join(self.output_dir, 'pdgId_distribution.png'))
 
-        ax_p.set_xlabel('Reconstructed Particle $p_{T}$ [GeV]')
+        ax_p.set_xlabel('Reconstructed Particle $p$ [GeV]')
         ax_p.set_ylabel('Entries')
         ax_p.set_yscale('log')
-        ax_p.set_title('Reconstructed Particle $p_{T}$ Distribution in SR')
+        ax_p.set_title('Reconstructed Particle $p$ Distribution in SR')
         ax_p.legend()
         fig_p.tight_layout()
         fig_p.savefig(os.path.join(self.output_dir, 'pdgId_p_distribution_sr.png'))
