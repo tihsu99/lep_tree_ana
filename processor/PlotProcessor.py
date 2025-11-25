@@ -416,7 +416,7 @@ class PlotProcessor(BaseProcessor):
             # plot thrust magnitude
             ax[0,0].hist(ak.to_numpy(thrust_magnitude), bins=np.linspace(0, 1, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
             # log(1-Thrust)
-            ax[0,1].hist(ak.to_numpy(-np.log10(1 - thrust_magnitude + 1e-6)), bins=np.linspace(0, 6, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
+            ax[0,1].hist(ak.to_numpy(-np.log10(1 - thrust_magnitude + 1e-6)), bins=np.linspace(0, 12, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
             # plot thrust theta
             ax[1,0].hist(ak.to_numpy(thrust_theta * 180/np.pi), bins=np.linspace(0, 180, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
             # plot thrust cosine
