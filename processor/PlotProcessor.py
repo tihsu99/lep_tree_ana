@@ -58,11 +58,11 @@ class PlotProcessor(BaseProcessor):
 
 
         #######################################################
-        # plot pion p, eta, energy
+        # plot pion p, costh, energy
         #######################################################
         fig, ax = plt.subplots(3, 1, dpi=300, figsize=(6, 12))
         bins_p = np.linspace(0, 50, 51)
-        bins_eta = np.linspace(-5, 5, 51)
+        bins_costh = np.linspace(-1, 1, 51)
         bins_E = np.linspace(0, 100, 51)
         color_iter = get_color_iterator(len(events_dict))
         for label, events in events_dict.items():
@@ -71,18 +71,18 @@ class PlotProcessor(BaseProcessor):
 
             p_reco_pions = (events['Part_fourMomentum_fCoordinates_fX'][flag_reco_pi]**2 + events['Part_fourMomentum_fCoordinates_fY'][flag_reco_pi]**2 + events['Part_fourMomentum_fCoordinates_fZ'][flag_reco_pi]**2)**0.5
             E_reco_pions = events['Part_fourMomentum_fCoordinates_fT'][flag_reco_pi]
-            eta_reco_pions = 0.5 * np.log((p_reco_pions + events['Part_fourMomentum_fCoordinates_fZ'][flag_reco_pi]) / (p_reco_pions - events['Part_fourMomentum_fCoordinates_fZ'][flag_reco_pi] + 1e-12))
+            costh_reco_pions = events['Part_fourMomentum_fCoordinates_fZ'][flag_reco_pi] / p_reco_pions
 
             ax[0].hist(ak.to_numpy(ak.flatten(p_reco_pions)), bins=bins_p, histtype='step', density=False, label=label, color=color, linewidth=1.5)
-            ax[1].hist(ak.to_numpy(ak.flatten(eta_reco_pions)), bins=bins_eta, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+            ax[1].hist(ak.to_numpy(ak.flatten(costh_reco_pions)), bins=bins_costh, histtype='step', density=False, label=label, color=color, linewidth=1.5)
             ax[2].hist(ak.to_numpy(ak.flatten(E_reco_pions)), bins=bins_E, histtype='step', density=False, label=label, color=color, linewidth=1.5)
         ax[0].set_xlabel('Reconstructed Pion $p$ [GeV]')
         ax[0].set_ylabel('Entries')
         ax[0].set_title('Reconstructed Pion $p$ Distribution')
         ax[0].legend()
-        ax[1].set_xlabel('Reconstructed Pion $\eta$')
+        ax[1].set_xlabel('Reconstructed Pion $cos\theta$')
         ax[1].set_ylabel('Entries')
-        ax[1].set_title('Reconstructed Pion $\eta$ Distribution')
+        ax[1].set_title('Reconstructed Pion $cos\theta$ Distribution')
         ax[1].legend()
         ax[2].set_xlabel('Reconstructed Pion Energy [GeV]')
         ax[2].set_ylabel('Entries')
@@ -90,7 +90,7 @@ class PlotProcessor(BaseProcessor):
         ax[2].legend()
         fig.tight_layout()
         fig.savefig(os.path.join(self.output_dir, 'reco_pion_properties.png'))
-        
+
 
 
         #######################################################
