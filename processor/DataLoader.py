@@ -17,14 +17,9 @@ def filter_event(events: ak.Array, filter_log_dict: dict):
         'raw': original_events,
     }
 
-    genpart_pdgid = events['GenPart_pdgId']
-    genpart_abspdgid = abs(genpart_pdgid)
-    genpart_status = events['GenPart_status']
     recpart_pdgid = events['Part_pdgId']
     recpart_abspdgid = abs(recpart_pdgid)
     recpart_charge = events['Part_charge']
-    is_finalstatus = genpart_status==1
-
 
     pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
     # no less than two pions (regardless of charge for now) in reco particles
@@ -77,6 +72,7 @@ class DataLoader:
         self.tree_name = self.config.get("tree_name", "t")
         self.input_files = self.config.get("input_files", [])
         self.region_of_interest = self.config.get("region_of_interest", "pipi")
+        self.is_data = self.config.get("is_data", False)
 
         if not self.input_files:
             raise ValueError("Input files must be specified.")
@@ -126,11 +122,13 @@ class DataLoader:
         common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart"]
         gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
         gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
-
+        
         part_branches = ["charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood"]
         part_branches = [f'Part_{b}' for b in part_branches]
 
-        branches_to_load = common_evt_branches + gen_part_branches + part_branches
+        branches_to_load = common_evt_branches + part_branches
+        if not self.is_data:
+            branches_to_load += gen_part_branches
 
         os.makedirs(self.output_dir + "/filtered_data_files/", exist_ok=True)
         # Load data from all files

@@ -5,8 +5,7 @@ DataLoader:
   region_of_interest: "pipi"
   is_data: false
   input_files:
-    # - "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root"
-    - "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_17903058_9*_ttree_pipi.root"
+    - "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root"
 
 Processors:
   PlotProcessor: None

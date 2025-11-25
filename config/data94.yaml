@@ -1,0 +1,12 @@
+default_output_dir: "./output/data94/"
+
+DataLoader:
+  tree_name: "t"
+  region_of_interest: "pipi"
+  is_data: true
+  input_files:
+    - "/eos/user/c/cmo/project/ZtautauLep/simulation/run/collision_data/v94c/91.25/nanoaod_*.al_ttree.root"
+
+Processors:
+  PlotProcessor: None
+  TemporaryProcessor: None
