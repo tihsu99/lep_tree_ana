@@ -69,6 +69,7 @@ class DataLoader:
     def __init__(self, config, output_dir):
         self.config = config
         self.output_dir = output_dir
+        os.makedirs(self.output_dir, exist_ok=True)
         self.tree_name = self.config.get("tree_name", "t")
         self.input_files = self.config.get("input_files", [])
         self.region_of_interest = self.config.get("region_of_interest", "pipi")
@@ -130,58 +131,60 @@ class DataLoader:
         if not self.is_data:
             branches_to_load += gen_part_branches
 
-        os.makedirs(self.output_dir + "/filtered_data_files/", exist_ok=True)
+        # os.makedirs(self.output_dir + "/filtered_data_files/", exist_ok=True)
         # Load data from all files
         initial_total_num_events = 0
         for file in self.input_files:
-            # path_filtered_single_file = self.output_dir + "/filtered_data_files/" + os.path.basename(file).replace('.root', '_filtered.parquet')
-            path_filtered_single_file_prefix = self.output_dir + "/filtered_data_files/" + os.path.basename(file).replace('.root', '')
-            if len(glob.glob(path_filtered_single_file_prefix + "*_filtered.parquet")) > 0:
-                log.info(f"Filtered data file for {file} already exists at {path_filtered_single_file_prefix}. Loading filtered data.")
-                log.warning(f"These files are not included in the filter cutflow statistics!")
-                for filtered_file in glob.glob(path_filtered_single_file_prefix + "*.parquet"):
-                    key = os.path.basename(filtered_file).split("___")[-1].replace('.parquet', '')
-                    evt = ak.from_parquet(filtered_file)
-                    evt['evtNumber'] = evt['Event_evtNumber'] + initial_total_num_events
-                    initial_total_num_events = initial_total_num_events + evt['initial_total_num_events'][0]
-                    self.data.setdefault(key, []).append(evt)
-            else:
-                log.info(f"Loading data from file: {file}")
-                try:
-                    f = ur.open(file)
-                    tree = f[self.tree_name]
-                    # load all events as awkward array 
-                    events = tree.arrays(branches_to_load, library="ak")
+            # # path_filtered_single_file = self.output_dir + "/filtered_data_files/" + os.path.basename(file).replace('.root', '_filtered.parquet')
+            # path_filtered_single_file_prefix = self.output_dir + "/filtered_data_files/" + os.path.basename(file).replace('.root', '')
+            # if len(glob.glob(path_filtered_single_file_prefix + "*_filtered.parquet")) > 0:
+            #     log.info(f"Filtered data file for {file} already exists at {path_filtered_single_file_prefix}. Loading filtered data.")
+            #     log.warning(f"These files are not included in the filter cutflow statistics!")
+            #     for filtered_file in glob.glob(path_filtered_single_file_prefix + "*.parquet"):
+            #         key = os.path.basename(filtered_file).split("___")[-1].replace('.parquet', '')
+            #         evt = ak.from_parquet(filtered_file)
+            #         evt['evtNumber'] = evt['Event_evtNumber'] + initial_total_num_events
+            #         initial_total_num_events = initial_total_num_events + evt['initial_total_num_events'][0]
+            #         self.data.setdefault(key, []).append(evt)
+            # else:
+            log.info(f"Loading data from file: {file}")
+            try:
+                f = ur.open(file)
+                tree = f[self.tree_name]
+                # load all events as awkward array 
+                events = tree.arrays(branches_to_load, library="ak")
 
-                    # adjust event index to be unique across files
-                    # the original Event_evtNumber starts from 1 for each file
-                    if len(events) == 0:
-                        continue
-                    events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
-                    events['initial_total_num_events'] = len(events)
-
-                    # select Part_xxx via isGood flag
-                    events['Part_isGood'] = events['Part_isGood']==1
-                    for part_branch in part_branches:
-                        events[part_branch] = events[part_branch][events['Part_isGood']] 
-
-                    # filter events
-                    self.filter_results['initial_total_num_events'] += len(events)
-                    events_pass_filter, self.filter_results = filter_event(events, self.filter_results)
-
-                    # save filtered events
-                    log.info(f"Saving filtered data to {path_filtered_single_file_prefix}.")
-                    for key, evt in events_pass_filter.items():
-                        path_filtered_single_file = path_filtered_single_file_prefix + f"___{key}.parquet"
-                        ak.to_parquet(evt, path_filtered_single_file)
-
-                    # record filtered events into self.data
-                    for key, evt in events_pass_filter.items():
-                        self.data.setdefault(key, []).append(evt)
-
-                except Exception as e:
-                    log.error(f"Error reading file {file} or tree {self.tree_name}: {e}")
+                # adjust event index to be unique across files
+                # the original Event_evtNumber starts from 1 for each file
+                if len(events) == 0:
                     continue
+                events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
+                events['initial_total_num_events'] = len(events)
+
+                # select Part_xxx via isGood flag
+                part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ'])**2 / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
+                flag_not_0pdgid = (events['Part_pdgId'] != 0)
+                events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) & flag_not_0pdgid
+                for part_branch in part_branches:
+                    events[part_branch] = events[part_branch][events['Part_isGood']] 
+
+                # filter events
+                self.filter_results['initial_total_num_events'] += len(events)
+                events_pass_filter, self.filter_results = filter_event(events, self.filter_results)
+
+                # # save filtered events
+                # log.info(f"Saving filtered data to {path_filtered_single_file_prefix}.")
+                # for key, evt in events_pass_filter.items():
+                #     path_filtered_single_file = path_filtered_single_file_prefix + f"___{key}.parquet"
+                #     ak.to_parquet(evt, path_filtered_single_file)
+
+                # record filtered events into self.data
+                for key, evt in events_pass_filter.items():
+                    self.data.setdefault(key, []).append(evt)
+
+            except Exception as e:
+                log.error(f"Error reading file {file} or tree {self.tree_name}: {e}")
+                continue
 
         # Concatenate data from all files
         for key in self.data:

@@ -15,8 +15,7 @@ pd.set_option('display.max_columns', None)
 def create_parser():
     import argparse
     parser = argparse.ArgumentParser(description="Run LEP analysis") 
-    parser.add_argument("--config-yaml", "-c", help = "YAML file for configuration", default=os.environ.get("TREE_ANA_DIR") + "/config/signal.yaml")
-    # parser.add_argument("--config-yaml", "-c", help = "YAML file for configuration", default=os.environ.get("TREE_ANA_DIR") + "/config/data94.yaml")
+    parser.add_argument("--config-yaml", "-c", help = "YAML file for configuration", default=os.environ.get("TREE_ANA_DIR") + "/config/config.yaml")
     parser.add_argument("--log-level", "-l", type = str, default = "INFO" )
     parser.add_argument("--output-dir", "-o", type = str, default = None )
     return parser
@@ -44,18 +43,20 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok = True)
 
 
-    data_loader = DataLoader.DataLoader(analysis_config["DataLoader"], output_dir=output_dir)
-    processors = {}
+    data_loaders = {
+        key: DataLoader.DataLoader(dl_config, output_dir=f"{output_dir}/{key}/")
+        for key, dl_config in analysis_config["DataLoaders"].items()
+    }
+
+
 
     for processor_name, processor_config in analysis_config['Processors'].items():
-        if processor_name == "DataLoader":
-            continue
-        processor_class = getattr(import_module(f"processor.{processor_name}"), processor_name)
-        processors[processor_name] = processor_class(processor_config, output_dir=output_dir)
-        processors[processor_name].run(data_loader)
-
-    for processor in processors.values():
-        processor.finalize()
+        for dl_name, data_loader in data_loaders.items():
+            output_dir_dl = f"{output_dir}/{dl_name}/"
+            processor_class = getattr(import_module(f"processor.{processor_name}"), processor_name)
+            processor = processor_class(processor_config, output_dir=output_dir_dl)
+            processor.run(data_loader)
+            processor.finalize()
 
     log.info("Done")
     os._exit(0)

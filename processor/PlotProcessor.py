@@ -36,6 +36,7 @@ class PlotProcessor(BaseProcessor):
         events_dict = dl.data
         events_dict.pop('raw')
         RegionNameOfInterest = dl.region_of_interest
+        events_sr = events_dict.get(RegionNameOfInterest)
         
 
         #######################################################
@@ -399,6 +400,23 @@ class PlotProcessor(BaseProcessor):
         # fig.tight_layout()
         # fig.savefig(os.path.join(self.output_dir, 'invariant_mass_distribution.png'))
 
+        #######################################################
+        # plot number of particles
+        #######################################################
+        fig, ax = plt.subplots(dpi=300)
+        bins = np.arange(0, 11, 1)
+        color_iter = get_color_iterator(len(events_dict))
+        num_particles = ak.num(events_sr['Part_pdgId'], axis=1)
+        ax.hist(ak.to_numpy(num_particles), bins=bins, histtype='step', density=False, label=RegionNameOfInterest, color=next(color_iter), linewidth=1.5)
+        ax.set_xlabel('Number of Reconstructed Particles')
+        ax.set_ylabel('Entries')
+        ax.set_title('Number of Reconstructed Particles per Event in SR')
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.output_dir, 'num_reco_particles_sr.png'))
+        
+            
+
 
         #######################################################
         # plot thrust magnitude and theta
@@ -407,7 +425,7 @@ class PlotProcessor(BaseProcessor):
         color_iter = get_color_iterator(len(events_dict))
         for label, events in events_dict.items():
             color = next(color_iter)
-            thrust_magnitude = events['thrust_Mag'] + 1e-12 # avoid division by zero
+            thrust_magnitude = events['thrust_Mag'] # avoid division by zero
             thrust_x = events['thrust_x']
             thrust_y = events['thrust_y']
             thrust_z = events['thrust_z']
@@ -416,7 +434,7 @@ class PlotProcessor(BaseProcessor):
             # plot thrust magnitude
             ax[0,0].hist(ak.to_numpy(thrust_magnitude), bins=np.linspace(0, 1, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
             # log(1-Thrust)
-            ax[0,1].hist(ak.to_numpy(-np.log10(1 - thrust_magnitude + 1e-6)), bins=np.linspace(0, 12, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
+            ax[0,1].hist(ak.to_numpy(-np.log10(1 - thrust_magnitude + 1e-12)), bins=np.linspace(0, 12, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
             # plot thrust theta
             ax[1,0].hist(ak.to_numpy(thrust_theta * 180/np.pi), bins=np.linspace(0, 180, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
             # plot thrust cosine
