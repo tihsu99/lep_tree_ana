@@ -101,14 +101,22 @@ class DataLoader:
                 log.info("Re-loading and filtering data from input files.")
             else:
                 log.info("Loading existing filtered data.")
-                for file in glob.glob(self.output_dir + "/filtered___*.parquet"):
-                    key = os.path.basename(file).split("___")[-1].replace('.parquet', '')
-                    self.data[key] = ak.from_parquet(file)
-                _data_loaded = True
+                # for file in glob.glob(self.output_dir + "/filtered___*.parquet"):
+                #     key = os.path.basename(file).split("___")[-1].replace('.parquet', '')
+                #     self.data[key] = ak.from_parquet(file)
+                file = self.output_dir + "/filtered___" + self.region_of_interest + ".parquet"
+                if os.path.exists(file):
+                    self.data[self.region_of_interest] = ak.from_parquet(file)
+                    _data_loaded = True
+                else:
+                    log.warning(f"Filtered data file for region {self.region_of_interest} does not exist. Re-loading and filtering data from input files.")
 
         if not _data_loaded:
             self.load_data()
             self.save_data()
+            for key in self.data:
+                if !(key == self.region_of_interest):
+                    del self.data[key]
             _data_loaded = True
 
         log.info(f"DataLoader initialization complete. Loaded {len(all_files)} files.")

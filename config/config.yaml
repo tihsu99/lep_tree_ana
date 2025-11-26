@@ -7,7 +7,7 @@ DataLoaders:
     region_of_interest: "pipi"
     is_data: true
     input_files:
-      - "/eos/user/c/cmo/project/ZtautauLep/simulation/run/collision_data/v94c/91.25/nanoaod_*.al_ttree.root"
+      - "/eos/home-y/yulei/Ztautau/ntuple/collision_data/v94c/91.25/nanoaod_*.al_ttree.root"
   
   Ztautau_pipm:
     name: "Ztautau_pipm"
@@ -15,7 +15,15 @@ DataLoaders:
     region_of_interest: "pipi"
     is_data: false
     input_files:
-      - "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root"
+      - "/eos/home-y/yulei/Ztautau/ntuple/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root"
+      
+  Zqq:
+    name: "Zqq"
+    tree_name: "t"
+    region_of_interest: "pipi"
+    is_data: false
+    input_files:
+      - "/eos/home-y/yulei/Ztautau/ntuple/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_*_ttree.root"
 
 Processors:
   PlotProcessor: None

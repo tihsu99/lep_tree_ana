@@ -34,7 +34,7 @@ class PlotProcessor(BaseProcessor):
 
     def run(self, dl: DataLoader.DataLoader):
         events_dict = dl.data
-        events_dict.pop('raw')
+        # events_dict.pop('raw')
         RegionNameOfInterest = dl.region_of_interest
         events_sr = events_dict.get(RegionNameOfInterest)
         
@@ -464,31 +464,34 @@ class PlotProcessor(BaseProcessor):
         ###################################
         # study pion p4. Both reco and gen
         ###################################
+        events_of_interest = events_dict.get(RegionNameOfInterest)
+        # store pion p4
+        flag_pi_plus = (events_of_interest['Part_charge'] == 1) & (abs(events_of_interest['Part_pdgId']) == 41)
+        flag_pi_minus = (events_of_interest['Part_charge'] == -1) & (abs(events_of_interest['Part_pdgId']) == 41)
+        reco_pi_plus_p4 = get_p4(events_of_interest, flag_pi_plus, prefix='Part_fourMomentum')
+        reco_pi_minus_p4 = get_p4(events_of_interest, flag_pi_minus, prefix='Part_fourMomentum')
         if not dl.is_data:
-            events_of_interest = events_dict.get(RegionNameOfInterest)
-            # store pion p4
-            flag_pi_plus = (events_of_interest['Part_charge'] == 1) & (abs(events_of_interest['Part_pdgId']) == 41)
-            flag_pi_minus = (events_of_interest['Part_charge'] == -1) & (abs(events_of_interest['Part_pdgId']) == 41)
             flag_truth_pi_plus = (events_of_interest['GenPart_pdgId'] == 211)
             flag_truth_pi_minus = (events_of_interest['GenPart_pdgId'] == -211)
-            reco_pi_plus_p4 = get_p4(events_of_interest, flag_pi_plus, prefix='Part_fourMomentum')
-            reco_pi_minus_p4 = get_p4(events_of_interest, flag_pi_minus, prefix='Part_fourMomentum')
             truth_pi_plus_p4 = get_p4(events_of_interest, flag_truth_pi_plus, prefix='GenPart_vector')
             truth_pi_minus_p4 = get_p4(events_of_interest, flag_truth_pi_minus, prefix='GenPart_vector')
 
-            # angle between pion pairs
-            reco_angle = reco_pi_plus_p4.deltaangle(reco_pi_minus_p4)
+        # angle between pion pairs
+        reco_angle = reco_pi_plus_p4.deltaangle(reco_pi_minus_p4)
+        fig, ax = plt.subplots(dpi=300)
+        bins = np.linspace(4./5*np.pi, np.pi, 51)
+        ax.hist(reco_angle, bins=bins, histtype='step', density=False, label='Reconstructed Pions', linestyle='solid', color='orange', linewidth=1.5)
+        if not dl.is_data:
             truth_angle = truth_pi_plus_p4.deltaangle(truth_pi_minus_p4)
-            fig, ax = plt.subplots(dpi=300)
-            bins = np.linspace(4./5*np.pi, np.pi, 51)
             ax.hist(truth_angle, bins=bins, histtype='step', density=False, label='Generated Pions', linestyle='dashed', color='blue', linewidth=1.5)
-            ax.hist(reco_angle, bins=bins, histtype='step', density=False, label='Reconstructed Pions', linestyle='solid', color='orange', linewidth=1.5)
-            ax.set_xlabel('Angle between $\pi^{+}$ and $\pi^{-}$ [rad]')
-            ax.set_ylabel('Entries')
-            ax.set_title('Angle between Pion Pairs')
-            ax.legend()
-            fig.tight_layout()
-            fig.savefig(os.path.join(self.output_dir, 'pion_pair_angle.png'))
+        ax.set_xlabel('Angle between $\pi^{+}$ and $\pi^{-}$ [rad]')
+        ax.set_ylabel('Entries')
+        ax.set_title('Angle between Pion Pairs')
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.output_dir, 'pion_pair_angle.png'))
+        if not dl.is_data:
+
 
             # angle between truth and reco pions
             angle_pi_plus_deg = truth_pi_plus_p4.deltaangle(reco_pi_plus_p4) * 180/np.pi
