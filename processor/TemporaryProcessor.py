@@ -6,37 +6,26 @@ import matplotlib.pyplot as plt
 import os
 import vector
 import awkward as ak
-
-cme = 91.25 # GeV
-def get_color_iterator(n):
-    return iter(plt.cm.tab10.colors * (n // 10 + 1))
-
-def get_p4(events, flag, prefix='Part_fourMomentum'):
-    px = ak.firsts(events[f'{prefix}_fCoordinates_fX'][flag][...,::-1]).to_numpy()
-    py = ak.firsts(events[f'{prefix}_fCoordinates_fY'][flag][...,::-1]).to_numpy()
-    pz = ak.firsts(events[f'{prefix}_fCoordinates_fZ'][flag][...,::-1]).to_numpy()
-    E =  ak.firsts(events[f'{prefix}_fCoordinates_fT'][flag][...,::-1]).to_numpy()
-    p4 = vector.zip({
-        "px": px,
-        "py": py,
-        "pz": pz,
-        "E": E,
-    })
-    return p4
+from utils.common_functions import get_p4_from_ak_events, get_color_iterator
 
 class TemporaryProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
         super().__init__(config)
         self.config = config
-        self.output_dir = output_dir + "/plots/"
+        self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
+    def run(self, dl_dict):
+        for dl_name, dl in dl_dict.items():
+            self.process_dataloader(dl, dl_name=dl_name)
 
-    def run(self, dl: DataLoader.DataLoader):
+    def process_dataloader(self, dl: DataLoader.DataLoader, dl_name: str = ""):
         #######################################################
         # Pair reco pions to truth neutrinos
         #######################################################
         events = dl.data.get(dl.region_of_interest)
+        cur_output_dir = f"{self.output_dir}/{dl_name}/plots/"
+        os.makedirs(cur_output_dir, exist_ok=True)
         if not dl.is_data:
             reco_pdgId = events['Part_pdgId']
             reco_abs_pdgId = np.abs(reco_pdgId)
@@ -48,10 +37,10 @@ class TemporaryProcessor(BaseProcessor):
             flag_nu = (gen_pdgId == 16)
             flag_anti_nu = (gen_pdgId == -16)
 
-            p4_pi_plus = get_p4(events, flag_pi_plus)
-            p4_pi_minus = get_p4(events, flag_pi_minus)
-            p4_nu = get_p4(events, flag_nu, prefix='GenPart_vector')
-            p4_anti_nu = get_p4(events, flag_anti_nu, prefix='GenPart_vector')
+            p4_pi_plus = get_p4_from_ak_events(events, flag_pi_plus)
+            p4_pi_minus = get_p4_from_ak_events(events, flag_pi_minus)
+            p4_nu = get_p4_from_ak_events(events, flag_nu, prefix='GenPart_vector')
+            p4_anti_nu = get_p4_from_ak_events(events, flag_anti_nu, prefix='GenPart_vector')
 
             fig, ax = plt.subplots(figsize=(8,6))
             ax.set_xlabel(r'Invariant Mass [GeV]')
@@ -98,7 +87,7 @@ class TemporaryProcessor(BaseProcessor):
             ax.legend()
             ax.set_yscale('log')
             fig.tight_layout()
-            fig.savefig(self.output_dir + '/match_recopion_to_truthnu.png')
+            fig.savefig(cur_output_dir + '/match_recopion_to_truthnu.png')
             plt.close(fig)
 
 

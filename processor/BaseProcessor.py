@@ -10,11 +10,15 @@ log = logging.getLogger(__name__)
 class BaseProcessor(ABC):
     @abstractmethod
     def __init__(self, config, output_dir=None):
-        self.m_config = config
-        self.m_output_dir = output_dir
+        self.config = config
+        self.output_dir = output_dir
+        # load all config into member variables
+        if not (config is None):
+            for key, value in config.items():
+                setattr(self, key, value)
 
     @abstractmethod
-    def run(self, dl: DataLoader.DataLoader):
+    def run(self, dl_dict):
         pass
 
 

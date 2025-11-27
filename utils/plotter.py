@@ -44,7 +44,7 @@ def do_ratio_plot(
     - ax: matplotlib Axes object with the plot.
     """
     if ax is None or ax_ratio is None:
-        fig, (ax, ax_ratio) = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+        fig, (ax, ax_ratio) = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [4, 1]}, figsize=(8, 8), dpi=300)
 
     # Plot the two datasets
     ax.step(x, y1, where='mid', label=label1, alpha=0.7, color=color1, linestyle=linestyle1)
@@ -54,7 +54,6 @@ def do_ratio_plot(
     if err2 is not None:
         ax.errorbar(x, y2, yerr=err2, fmt='o', color=color2)
     ax.set_title(title)
-    ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.legend(loc=legend_loc)
 
@@ -76,6 +75,7 @@ def do_ratio_plot(
     if any(ratio_err):
         ax_ratio.errorbar(x, ratio, yerr=ratio_err, fmt='o', color=ratio_color, label=ratio_label)
 
+    ax_ratio.set_xlabel(xlabel)
     ax_ratio.set_ylabel(ratio_ylabel)
     ax_ratio.axhline(1, color='gray', linestyle=':')
     if ratio_label is not None:

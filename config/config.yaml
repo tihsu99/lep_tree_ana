@@ -6,6 +6,7 @@ DataLoaders:
     tree_name: "t"
     region_of_interest: "pipi"
     is_data: true
+    is_signal: false
     input_files:
       - "/eos/home-y/yulei/Ztautau/ntuple/collision_data/v94c/91.25/nanoaod_*.al_ttree.root"
   
@@ -14,6 +15,8 @@ DataLoaders:
     tree_name: "t"
     region_of_interest: "pipi"
     is_data: false
+    is_signal: true
+    norm_factor: 0.0003908 # branch ratio of Z->tautau * branch ratio of tau+->pi+nu_tau * branch ratio of tau--->pi-nu_tau
     input_files:
       - "/eos/home-y/yulei/Ztautau/ntuple/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root"
       
@@ -22,9 +25,11 @@ DataLoaders:
     tree_name: "t"
     region_of_interest: "pipi"
     is_data: false
+    is_signal: false
+    norm_factor: 0.699 # branch ratio of Z->qq
     input_files:
       - "/eos/home-y/yulei/Ztautau/ntuple/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_*_ttree.root"
 
 Processors:
-  PlotProcessor: None
-  TemporaryProcessor: None
+  PlotProcessor: 
+  TemporaryProcessor: 

@@ -68,6 +68,9 @@ def filter_event(events: ak.Array, filter_log_dict: dict):
 class DataLoader:
     def __init__(self, config, output_dir):
         self.config = config
+        # load all config into member variables
+        for key, value in config.items():
+            setattr(self, key, value)
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         self.tree_name = self.config.get("tree_name", "t")
@@ -114,7 +117,8 @@ class DataLoader:
         if not _data_loaded:
             self.load_data()
             self.save_data()
-            for key in self.data.keys():
+            keys = list(self.data.keys())
+            for key in keys:
                 if not (key == self.region_of_interest):
                     del self.data[key]
             _data_loaded = True

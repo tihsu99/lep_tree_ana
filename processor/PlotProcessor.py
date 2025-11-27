@@ -6,37 +6,26 @@ import matplotlib.pyplot as plt
 import os
 import vector
 import awkward as ak
-
-cme = 91.25 # GeV
-def get_color_iterator(n):
-    return iter(plt.cm.tab10.colors * (n // 10 + 1))
-
-def get_p4(events, flag, prefix='Part_fourMomentum'):
-    px = ak.firsts(events[f'{prefix}_fCoordinates_fX'][flag][...,::-1]).to_numpy()
-    py = ak.firsts(events[f'{prefix}_fCoordinates_fY'][flag][...,::-1]).to_numpy()
-    pz = ak.firsts(events[f'{prefix}_fCoordinates_fZ'][flag][...,::-1]).to_numpy()
-    E =  ak.firsts(events[f'{prefix}_fCoordinates_fT'][flag][...,::-1]).to_numpy()
-    p4 = vector.zip({
-        "px": px,
-        "py": py,
-        "pz": pz,
-        "E": E,
-    })
-    return p4
+from utils.common_functions import get_p4_from_ak_events, get_color_iterator
 
 class PlotProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
         super().__init__(config)
         self.config = config
-        self.output_dir = output_dir + "/plots/"
+        self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
+    def run(self, dl_dict):
+        for dl_name, dl in dl_dict.items():
+            self.process_dataloader(dl, dl_name=dl_name)
 
-    def run(self, dl: DataLoader.DataLoader):
+    def process_dataloader(self, dl: DataLoader.DataLoader, dl_name: str = ""):
         events_dict = dl.data
         # events_dict.pop('raw')
         RegionNameOfInterest = dl.region_of_interest
         events_sr = events_dict.get(RegionNameOfInterest)
+        cur_output_dir = f"{self.output_dir}/{dl_name}/plots/"
+        os.makedirs(cur_output_dir, exist_ok=True)
         
 
         #######################################################
@@ -55,7 +44,7 @@ class PlotProcessor(BaseProcessor):
         ax.set_title('Number of Reconstructed Pions per Event')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'num_reco_pions.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'num_reco_pions.png'))
 
 
         #######################################################
@@ -90,7 +79,7 @@ class PlotProcessor(BaseProcessor):
         ax[2].set_title('Reconstructed Pion Energy Distribution')
         ax[2].legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'reco_pion_properties.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'reco_pion_properties.png'))
 
 
 
@@ -98,7 +87,7 @@ class PlotProcessor(BaseProcessor):
         # plot p of reco and truth pions
         #######################################################
         if not dl.is_data:
-            fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(6, 8), gridspec_kw={'height_ratios': [3, 1]})
+            fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 8), gridspec_kw={'height_ratios': [4, 1]})
             bins = np.linspace(0, 50, 51)
             bin_centers = 0.5 * (bins[1:] + bins[:-1])
             color_iter = get_color_iterator(len(events_dict))
@@ -135,7 +124,7 @@ class PlotProcessor(BaseProcessor):
 
             ax.set_yscale('log')
             fig.tight_layout()
-            fig.savefig(os.path.join(self.output_dir, 'p_distribution.png'))
+            fig.savefig(os.path.join(cur_output_dir, 'p_distribution.png'))
 
         # bar plot pdgId of reco particles
         pdgid_parser = {
@@ -181,7 +170,7 @@ class PlotProcessor(BaseProcessor):
         ax.set_title('Reconstructed Particle PDG ID Distribution')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'pdgId_distribution.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'pdgId_distribution.png'))
 
         ax_p.set_xlabel('Reconstructed Particle $p$ [GeV]')
         ax_p.set_ylabel('Entries')
@@ -189,7 +178,7 @@ class PlotProcessor(BaseProcessor):
         ax_p.set_title('Reconstructed Particle $p$ Distribution in SR')
         ax_p.legend()
         fig_p.tight_layout()
-        fig_p.savefig(os.path.join(self.output_dir, 'pdgId_p_distribution_sr.png'))
+        fig_p.savefig(os.path.join(cur_output_dir, 'pdgId_p_distribution_sr.png'))
 
         #######################################################
         # plot sum pT
@@ -208,7 +197,7 @@ class PlotProcessor(BaseProcessor):
         ax.set_title('Sum Reconstructed Transverse Momentum per Event')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'sum_reco_pt.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'sum_reco_pt.png'))
 
         #######################################################
         # plot total E
@@ -225,7 +214,7 @@ class PlotProcessor(BaseProcessor):
         ax.set_title('Total Reconstructed Particle Energy per Event')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'total_reco_energy.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'total_reco_energy.png'))
         # fig, ax = plt.subplots(2, 2, dpi=300, figsize=(12, 10))
         # bins = np.linspace(0, 200, 51)
         # color_iter = get_color_iterator(len(events_dict))
@@ -257,7 +246,7 @@ class PlotProcessor(BaseProcessor):
         # ax[1,1].set_title('Total Hadronic Energy per Event')
         # ax[1,1].legend()
         # fig.tight_layout()
-        # fig.savefig(os.path.join(self.output_dir, 'total_energy_components.png'))
+        # fig.savefig(os.path.join(cur_output_dir, 'total_energy_components.png'))
 
         #######################################################
         # plot missing pT, pz and energy
@@ -306,7 +295,7 @@ class PlotProcessor(BaseProcessor):
         ax[2].set_ylabel('Entries')
         ax[2].legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'missing_momentum_energy.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'missing_momentum_energy.png'))
 
         #######################################################
         # plot m_{pi+ pi-}
@@ -320,8 +309,8 @@ class PlotProcessor(BaseProcessor):
         # pion p4
         flag_pi_plus = (events['Part_charge'] == 1) & (abs(events['Part_pdgId']) == 41)
         flag_pi_minus = (events['Part_charge'] == -1) & (abs(events['Part_pdgId']) == 41)
-        reco_pi_plus_p4 = get_p4(events, flag_pi_plus, prefix='Part_fourMomentum')
-        reco_pi_minus_p4 = get_p4(events, flag_pi_minus, prefix='Part_fourMomentum')
+        reco_pi_plus_p4 = get_p4_from_ak_events(events, flag_pi_plus, prefix='Part_fourMomentum')
+        reco_pi_minus_p4 = get_p4_from_ak_events(events, flag_pi_minus, prefix='Part_fourMomentum')
         di_pion_p4 = reco_pi_plus_p4 + reco_pi_minus_p4
         ax.hist(ak.to_numpy(di_pion_p4.mass), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
         ax.set_xlabel('Invariant Mass [GeV]')
@@ -329,7 +318,7 @@ class PlotProcessor(BaseProcessor):
         ax.set_title('Di-Pion Invariant Mass Distribution')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'di_pion_invariant_mass_distribution.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'di_pion_invariant_mass_distribution.png'))
         
 
 
@@ -362,8 +351,8 @@ class PlotProcessor(BaseProcessor):
         # flag_pi_plus = (events['Part_charge'] == 1) & (abs(events['Part_pdgId']) == 41)
         # flag_pi_minus = (events['Part_charge'] == -1) & (abs(events['Part_pdgId']) == 41)
         # flag_radiation = (events['Part_pdgId'] == 21)
-        # reco_pi_plus_p4 = get_p4(events, flag_pi_plus, prefix='Part_fourMomentum')
-        # reco_pi_minus_p4 = get_p4(events, flag_pi_minus, prefix='Part_fourMomentum')
+        # reco_pi_plus_p4 = get_p4_from_ak_events(events, flag_pi_plus, prefix='Part_fourMomentum')
+        # reco_pi_minus_p4 = get_p4_from_ak_events(events, flag_pi_minus, prefix='Part_fourMomentum')
         # reco_radiation_p4 = vector.zip({
         #     "px": ak.sum(events['Part_fourMomentum_fCoordinates_fX'][flag_radiation], axis=1),
         #     "py": ak.sum(events['Part_fourMomentum_fCoordinates_fY'][flag_radiation], axis=1),
@@ -398,7 +387,7 @@ class PlotProcessor(BaseProcessor):
         # ax.set_title('Invariant Mass Distribution')
         # ax.legend(loc='upper left', fontsize='small')
         # fig.tight_layout()
-        # fig.savefig(os.path.join(self.output_dir, 'invariant_mass_distribution.png'))
+        # fig.savefig(os.path.join(cur_output_dir, 'invariant_mass_distribution.png'))
 
         #######################################################
         # plot number of particles
@@ -413,7 +402,7 @@ class PlotProcessor(BaseProcessor):
         ax.set_title('Number of Reconstructed Particles per Event in SR')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'num_reco_particles_sr.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'num_reco_particles_sr.png'))
         
             
 
@@ -457,7 +446,7 @@ class PlotProcessor(BaseProcessor):
         ax[1,1].set_title('Thrust Cosine Distribution')
         ax[1,1].legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'thrust_properties.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'thrust_properties.png'))
 
 
 
@@ -468,13 +457,13 @@ class PlotProcessor(BaseProcessor):
         # store pion p4
         flag_pi_plus = (events_of_interest['Part_charge'] == 1) & (abs(events_of_interest['Part_pdgId']) == 41)
         flag_pi_minus = (events_of_interest['Part_charge'] == -1) & (abs(events_of_interest['Part_pdgId']) == 41)
-        reco_pi_plus_p4 = get_p4(events_of_interest, flag_pi_plus, prefix='Part_fourMomentum')
-        reco_pi_minus_p4 = get_p4(events_of_interest, flag_pi_minus, prefix='Part_fourMomentum')
+        reco_pi_plus_p4 = get_p4_from_ak_events(events_of_interest, flag_pi_plus, prefix='Part_fourMomentum')
+        reco_pi_minus_p4 = get_p4_from_ak_events(events_of_interest, flag_pi_minus, prefix='Part_fourMomentum')
         if not dl.is_data:
             flag_truth_pi_plus = (events_of_interest['GenPart_pdgId'] == 211)
             flag_truth_pi_minus = (events_of_interest['GenPart_pdgId'] == -211)
-            truth_pi_plus_p4 = get_p4(events_of_interest, flag_truth_pi_plus, prefix='GenPart_vector')
-            truth_pi_minus_p4 = get_p4(events_of_interest, flag_truth_pi_minus, prefix='GenPart_vector')
+            truth_pi_plus_p4 = get_p4_from_ak_events(events_of_interest, flag_truth_pi_plus, prefix='GenPart_vector')
+            truth_pi_minus_p4 = get_p4_from_ak_events(events_of_interest, flag_truth_pi_minus, prefix='GenPart_vector')
 
         # angle between pion pairs
         reco_angle = reco_pi_plus_p4.deltaangle(reco_pi_minus_p4)
@@ -489,7 +478,7 @@ class PlotProcessor(BaseProcessor):
         ax.set_title('Angle between Pion Pairs')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, 'pion_pair_angle.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'pion_pair_angle.png'))
         if not dl.is_data:
 
 
@@ -505,7 +494,7 @@ class PlotProcessor(BaseProcessor):
             ax.set_title('Angle between Generated and Reconstructed Pions')
             ax.legend()
             fig.tight_layout()
-            fig.savefig(os.path.join(self.output_dir, 'pion_reco_vs_truth_angle.png'))
+            fig.savefig(os.path.join(cur_output_dir, 'pion_reco_vs_truth_angle.png'))
 
             # energy difference between truth and reco pions
             energy_diff_pi_plus = reco_pi_plus_p4.E - truth_pi_plus_p4.E
@@ -519,7 +508,7 @@ class PlotProcessor(BaseProcessor):
             ax.set_title('Energy Difference between Generated and Reconstructed Pions')
             ax.legend()
             fig.tight_layout()
-            fig.savefig(os.path.join(self.output_dir, 'pion_reco_vs_truth_energy_diff.png'))
+            fig.savefig(os.path.join(cur_output_dir, 'pion_reco_vs_truth_energy_diff.png'))
 
         
 

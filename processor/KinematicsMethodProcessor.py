@@ -157,15 +157,22 @@ class Kinematic:
 
 
 class KinematicsMethodProcessor(BaseProcessor):
-    def __init__(self, config):
+    def __init__(self, config, output_dir):
         super().__init__(config)
         self.config = config
-        self.output_dir = self.config.get("output_dir", "./")
+        self.output_dir = output_dir + "/"
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.kinematic_method = Kinematic()
 
-    def run(self, dl: DataLoader.DataLoader):
+    def run(self, dl_dict):
+        for dl_name, dl in dl_dict.items():
+            self.process_dataloader(dl, dl_name=dl_name)
+
+    def process_dataloader(self, dl: DataLoader.DataLoader, dl_name: str = ""):
+        cur_output_dir = f"{self.output_dir}/{dl_name}/plots/"
+        os.makedirs(cur_output_dir, exist_ok=True)
+
         inv_mass_tautau = (dl.vectored_data['TRUTH/tau1'] + dl.vectored_data['TRUTH/tau2']).mass
         theta_tautau = dl.vectored_data['TRUTH/tau1'].theta
         results = [self.kinematic_method.calculate(mass, theta) for mass, theta in zip(inv_mass_tautau, theta_tautau)]
@@ -187,8 +194,8 @@ class KinematicsMethodProcessor(BaseProcessor):
         # dl.derived_data['KinematicsMethod/B'] = [res[0] for res in results]
 
         # store results into pandas DataFrame
-        pd.DataFrame(df_B).to_csv(os.path.join(self.output_dir, 'KinematicsMethod_B.csv'), index=False)
-        pd.DataFrame(df_C).to_csv(os.path.join(self.output_dir, 'KinematicsMethod_C.csv'), index=False)
+        pd.DataFrame(df_B).to_csv(os.path.join(cur_output_dir, 'KinematicsMethod_B.csv'), index=False)
+        pd.DataFrame(df_C).to_csv(os.path.join(cur_output_dir, 'KinematicsMethod_C.csv'), index=False)
 
 
     def finalize(self):

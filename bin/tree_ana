@@ -51,12 +51,12 @@ if __name__ == "__main__":
 
 
     for processor_name, processor_config in analysis_config['Processors'].items():
-        for dl_name, data_loader in data_loaders.items():
-            output_dir_dl = f"{output_dir}/{dl_name}/"
-            processor_class = getattr(import_module(f"processor.{processor_name}"), processor_name)
-            processor = processor_class(processor_config, output_dir=output_dir_dl)
-            processor.run(data_loader)
-            processor.finalize()
+        processor_class = getattr(import_module(f"processor.{processor_name}"), processor_name)
+        processor = processor_class(processor_config, output_dir=output_dir)
+        processor.run(data_loaders)
+        processor.finalize()
+        # for dl_name, data_loader in data_loaders.items():
+            # output_dir_dl = f"{output_dir}/{dl_name}/"
 
     log.info("Done")
     os._exit(0)
