@@ -177,7 +177,7 @@ class DataLoader:
                 initial_total_num_events += len(events)
 
                 # select Part_xxx via isGood flag
-                part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ'])**2 / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
+                part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
                 flag_not_0pdgid = (events['Part_pdgId'] != 0)
                 events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) & flag_not_0pdgid
                 for part_branch in part_branches:
@@ -204,6 +204,7 @@ class DataLoader:
         # Concatenate data from all files
         for key in self.data:
             self.data[key] = ak.concatenate(self.data[key], axis=0)
+            self.initial_total_num_events = initial_total_num_events
             self.data[key]['initial_total_num_events'] = initial_total_num_events
 
         # Log filter results
