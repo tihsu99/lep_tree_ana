@@ -114,7 +114,7 @@ class DataLoader:
         if not _data_loaded:
             self.load_data()
             self.save_data()
-            for key in self.data:
+            for key in self.data.keys():
                 if not (key == self.region_of_interest):
                     del self.data[key]
             _data_loaded = True
