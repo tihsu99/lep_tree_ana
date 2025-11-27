@@ -71,6 +71,7 @@ class DataLoader:
         # load all config into member variables
         for key, value in config.items():
             setattr(self, key, value)
+        self.norm_factor = config.get("norm_factor", 1.0)
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         self.tree_name = self.config.get("tree_name", "t")
@@ -98,21 +99,22 @@ class DataLoader:
         _data_loaded = False
         # if os.path.exists(self.output_dir + "/filtered_data.parquet"):
         if len(glob.glob(self.output_dir + "/filtered___*.parquet")) > 0:
-            # ask user if they want to load existing data
-            load_existing = input(f"Filtered data file already exists. Do you want to reload and filter data from input files? (y/n): ")
-            if load_existing.lower() == 'y':
-                log.info("Re-loading and filtering data from input files.")
+            # # ask user if they want to load existing data
+            # load_existing = input(f"Filtered data file already exists. Do you want to reload and filter data from input files? (y/n): ")
+            # if load_existing.lower() == 'y':
+            #     log.info("Re-loading and filtering data from input files.")
+            # else:
+            log.info("Loading existing filtered data.")
+            # for file in glob.glob(self.output_dir + "/filtered___*.parquet"):
+            #     key = os.path.basename(file).split("___")[-1].replace('.parquet', '')
+            #     self.data[key] = ak.from_parquet(file)
+            file = self.output_dir + "/filtered___" + self.region_of_interest + ".parquet"
+            if os.path.exists(file):
+                self.data[self.region_of_interest] = ak.from_parquet(file)
+                self.initial_total_num_events = self.data[self.region_of_interest]['initial_total_num_events'][0]
+                _data_loaded = True
             else:
-                log.info("Loading existing filtered data.")
-                # for file in glob.glob(self.output_dir + "/filtered___*.parquet"):
-                #     key = os.path.basename(file).split("___")[-1].replace('.parquet', '')
-                #     self.data[key] = ak.from_parquet(file)
-                file = self.output_dir + "/filtered___" + self.region_of_interest + ".parquet"
-                if os.path.exists(file):
-                    self.data[self.region_of_interest] = ak.from_parquet(file)
-                    _data_loaded = True
-                else:
-                    log.warning(f"Filtered data file for region {self.region_of_interest} does not exist. Re-loading and filtering data from input files.")
+                log.warning(f"Filtered data file for region {self.region_of_interest} does not exist. Re-loading and filtering data from input files.")
 
         if not _data_loaded:
             self.load_data()

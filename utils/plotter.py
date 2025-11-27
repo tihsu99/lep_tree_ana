@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt
+import numpy as np
+from utils.common_functions import get_color_iterator
 
 
 
@@ -81,5 +83,88 @@ def do_ratio_plot(
     if ratio_label is not None:
         ax_ratio.legend(loc='upper right')
     return (ax, ax_ratio)
+
+
+def do_control_plot(
+    dl_dict,
+    func_get_variable,
+    bin_edges,
+    x_label="X-axis",
+    title="Control Plot",
+):
+    """
+    Create a control plot comparing data and MC.
+    Parameters:
+    - dl_dict: dict of DataLoader objects.
+    - func_get_variable: function to extract the variable of interest from a DataLoader.
+    - bin_edges: array-like, edges of the histogram bins.
+    - x_label: str, label for the x-axis.
+    - title: str, title of the plot.
+    Returns:
+    - fig: matplotlib Figure object.
+    - ax: matplotlib Axes object with the plot.
+    - ax_ratio: matplotlib Axes object with the ratio plot.
+    """
+    fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 8), gridspec_kw={'height_ratios': [4, 1]})
+
+    signal_keys = [key for key, val in dl_dict.items() if val.is_signal]
+    background_keys = [key for key, val in dl_dict.items() if (not val.is_signal and not val.is_data)]
+    data_keys = [key for key, val in dl_dict.items() if val.is_data]
+    num_MC_samples = len(signal_keys) + len(background_keys) 
+
+    hists_MC = {}
+    hist_MC_err2 = {}
+    sum_MC_yields = 0
+    hist_data = np.zeros(len(bin_edges)-1)
+    for dl_name, dl in dl_dict.items():
+        variable_values = func_get_variable(dl)
+        hist, _ = np.histogram(variable_values, bins=bin_edges)
+        hist_err2 = hist
+        if not dl.is_data:
+            scale = dl.norm_factor / dl.initial_total_num_events
+            hist =   hist * scale
+            hist_err2 = hist_err2 * scale**2
+            sum_MC_yields += np.sum(hist)
+            hists_MC[dl_name] = hist
+            hist_MC_err2[dl_name] = hist_err2
+        else:
+            hist_data += hist
+
+    # Plot MC stacked
+    norm_cumulative_MC = np.zeros(len(bin_edges)-1)
+    norm_cumulative_MC_err2 = np.zeros(len(bin_edges)-1)
+    color_iterator = get_color_iterator(num_MC_samples)
+    for dl_name in background_keys + signal_keys:
+        hist = hists_MC.get(dl_name, np.zeros(len(bin_edges)-1))
+        normhist = hist / sum_MC_yields # normalize total MC to 1
+        color = next(color_iterator)
+        ax.bar(bin_edges[:-1], normhist, bottom=norm_cumulative_MC, width=np.diff(bin_edges), align='edge', color=color, label=dl_name, alpha=0.7, edgecolor='black')
+        norm_cumulative_MC += normhist
+        norm_cumulative_MC_err2 += hist_MC_err2.get(dl_name, np.zeros(len(bin_edges)-1)) / (sum_MC_yields**2)
+
+    # Plot data
+    normhist_data = hist_data / np.sum(hist_data)
+    ax.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, normhist_data, yerr=np.sqrt(hist_data) / np.sum(hist_data), fmt='o', color='black', label='Data')
+    ax.set_yscale('log')
+    ax.set_ylabel('Normalized Events')
+    ax.set_title(title)
+    ax.legend(loc='best')
+
+    # Create ratio plot
+    normhist_data_err = np.sqrt(hist_data) / np.sum(hist_data)
+    norm_cumulative_MC_err = np.sqrt(norm_cumulative_MC_err2)
+    ratio = normhist_data / norm_cumulative_MC
+    ratio_err = ratio * np.sqrt( (normhist_data_err / normhist_data)**2 + (norm_cumulative_MC_err / norm_cumulative_MC)**2 )
+    ax_ratio.step((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, where='mid', color='black')
+    ax_ratio.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, yerr=ratio_err, fmt='o', color='black')
+    ax_ratio.set_xlabel(x_label)
+    ax_ratio.set_ylabel('Data / MC')
+    ax_ratio.set_ylim(0, 2)
+    ax_ratio.axhline(1, color='gray', linestyle=':')
+
+    return fig, ax, ax_ratio
+
+
+
 
 

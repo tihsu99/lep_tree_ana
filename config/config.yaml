@@ -31,5 +31,6 @@ DataLoaders:
       - "/eos/home-y/yulei/Ztautau/ntuple/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_*_ttree.root"
 
 Processors:
-  PlotProcessor: 
-  TemporaryProcessor: 
+  # PlotProcessor: 
+  # TemporaryProcessor: 
+  ControlPlotProcessor:
