@@ -115,7 +115,7 @@ class DataLoader:
             self.load_data()
             self.save_data()
             for key in self.data:
-                if !(key == self.region_of_interest):
+                if not (key == self.region_of_interest):
                     del self.data[key]
             _data_loaded = True
 
@@ -168,6 +168,7 @@ class DataLoader:
                     continue
                 events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
                 events['initial_total_num_events'] = len(events)
+                initial_total_num_events += len(events)
 
                 # select Part_xxx via isGood flag
                 part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ'])**2 / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
