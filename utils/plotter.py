@@ -145,7 +145,7 @@ def do_control_plot(
     # Plot data
     normhist_data = hist_data / np.sum(hist_data)
     ax.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, normhist_data, yerr=np.sqrt(hist_data) / np.sum(hist_data), fmt='o', color='black', label='Data')
-    ax.set_yscale('log')
+    # ax.set_yscale('log')
     ax.set_ylabel('Normalized Events')
     ax.set_title(title)
     ax.legend(loc='best')

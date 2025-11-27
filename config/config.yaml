@@ -18,7 +18,8 @@ DataLoaders:
     is_signal: true
     norm_factor: 0.0003908 # branch ratio of Z->tautau * branch ratio of tau+->pi+nu_tau * branch ratio of tau--->pi-nu_tau
     input_files:
-      - "/eos/home-y/yulei/Ztautau/ntuple/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root"
+      # - "/eos/home-y/yulei/Ztautau/ntuple/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root"
+      - /eos/home-y/yulei/Ztautau/ntuple/251108_Ztautau_pipm/simana_job_17903058_9_ttree_pipi.root
       
   Zqq:
     name: "Zqq"
@@ -31,6 +32,6 @@ DataLoaders:
       - "/eos/home-y/yulei/Ztautau/ntuple/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_*_ttree.root"
 
 Processors:
-  # PlotProcessor: 
-  # TemporaryProcessor: 
+  PlotProcessor: 
+  TemporaryProcessor: 
   ControlPlotProcessor:
