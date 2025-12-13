@@ -19,6 +19,19 @@ def get_p4_from_ak_events(events, flag, prefix='Part_fourMomentum'):
     })
     return p4
 
+def get_all_p4_from_ak_events(events, flag, prefix='Part_fourMomentum'):
+    px = events[f'{prefix}_fCoordinates_fX'][flag].to_numpy()
+    py = events[f'{prefix}_fCoordinates_fY'][flag].to_numpy()
+    pz = events[f'{prefix}_fCoordinates_fZ'][flag].to_numpy()
+    E =  events[f'{prefix}_fCoordinates_fT'][flag].to_numpy()
+    p4 = vector.zip({
+        "px": px,
+        "py": py,
+        "pz": pz,
+        "E": E,
+    })
+    return p4
+
 def get_sum_p4_from_ak_events(events, flag, prefix='Part_fourMomentum'):
     px = ak.sum(events[f'{prefix}_fCoordinates_fX'][flag], axis=-1).to_numpy()
     py = ak.sum(events[f'{prefix}_fCoordinates_fY'][flag], axis=-1).to_numpy()

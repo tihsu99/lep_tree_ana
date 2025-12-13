@@ -468,7 +468,7 @@ class PlotProcessor(BaseProcessor):
         # angle between pion pairs
         reco_angle = reco_pi_plus_p4.deltaangle(reco_pi_minus_p4)
         fig, ax = plt.subplots(dpi=300)
-        bins = np.linspace(4./5*np.pi, np.pi, 51)
+        bins = np.linspace(2.64, np.pi, 51)
         ax.hist(reco_angle, bins=bins, histtype='step', density=False, label='Reconstructed Pions', linestyle='solid', color='orange', linewidth=1.5)
         if not dl.is_data:
             truth_angle = truth_pi_plus_p4.deltaangle(truth_pi_minus_p4)

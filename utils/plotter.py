@@ -91,6 +91,8 @@ def do_control_plot(
     bin_edges,
     x_label="X-axis",
     title="Control Plot",
+    luminosity=None,
+    normalize=True,
 ):
     """
     Create a control plot comparing data and MC.
@@ -105,7 +107,7 @@ def do_control_plot(
     - ax: matplotlib Axes object with the plot.
     - ax_ratio: matplotlib Axes object with the ratio plot.
     """
-    fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 8), gridspec_kw={'height_ratios': [4, 1]})
+    fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 8), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
 
     signal_keys = [key for key, val in dl_dict.items() if val.is_signal]
     background_keys = [key for key, val in dl_dict.items() if (not val.is_signal and not val.is_data)]
@@ -121,7 +123,8 @@ def do_control_plot(
         hist, _ = np.histogram(variable_values, bins=bin_edges)
         hist_err2 = hist
         if not dl.is_data:
-            scale = dl.norm_factor / dl.initial_total_num_events
+            luminosity = luminosity if luminosity is not None else 1.0
+            scale = dl.norm_factor / dl.initial_total_num_events * luminosity
             hist =   hist * scale
             hist_err2 = hist_err2 * scale**2
             sum_MC_yields += np.sum(hist)
@@ -131,36 +134,62 @@ def do_control_plot(
             hist_data += hist
 
     # Plot MC stacked
-    norm_cumulative_MC = np.zeros(len(bin_edges)-1)
-    norm_cumulative_MC_err2 = np.zeros(len(bin_edges)-1)
+    cumulative_MC = np.zeros(len(bin_edges)-1)
+    cumulative_MC_err2 = np.zeros(len(bin_edges)-1)
     color_iterator = get_color_iterator(num_MC_samples)
-    for dl_name in background_keys + signal_keys:
+    for dl_name in signal_keys + background_keys:
         hist = hists_MC.get(dl_name, np.zeros(len(bin_edges)-1))
-        normhist = hist / sum_MC_yields # normalize total MC to 1
+        normhist = hist / sum_MC_yields if normalize else hist
         color = next(color_iterator)
-        ax.bar(bin_edges[:-1], normhist, bottom=norm_cumulative_MC, width=np.diff(bin_edges), align='edge', color=color, label=dl_name, alpha=0.7, edgecolor='black')
-        norm_cumulative_MC += normhist
-        norm_cumulative_MC_err2 += hist_MC_err2.get(dl_name, np.zeros(len(bin_edges)-1)) / (sum_MC_yields**2)
+        ax.bar(bin_edges[:-1], normhist, bottom=cumulative_MC, width=np.diff(bin_edges), align='edge', color=color, label=dl_name, alpha=0.7, edgecolor='black')
+        cumulative_MC += normhist
+        cumulative_MC_err2 += hist_MC_err2.get(dl_name, np.zeros(len(bin_edges)-1)) / (sum_MC_yields**2 if normalize else 1)
+
+    # plot uncertainty band for MC
+    cumulative_MC_err = np.sqrt(cumulative_MC_err2)
+    ax.fill_between((bin_edges[:-1] + bin_edges[1:]) / 2,
+                    cumulative_MC - cumulative_MC_err,
+                    cumulative_MC + cumulative_MC_err,
+                    step='mid',
+                    color='gray',
+                    alpha=0.5,
+                    label='MC Uncertainty')
 
     # Plot data
-    normhist_data = hist_data / np.sum(hist_data)
-    ax.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, normhist_data, yerr=np.sqrt(hist_data) / np.sum(hist_data), fmt='o', color='black', label='Data')
+    if normalize:
+        hist_data = hist_data / np.sum(hist_data)
+        data_err = np.sqrt(hist_data) / np.sum(hist_data)
+    else:
+        hist_data = hist_data
+        data_err = np.sqrt(hist_data)
+    ax.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, hist_data, yerr=data_err, fmt='o', color='black', label='Data')
     # ax.set_yscale('log')
-    ax.set_ylabel('Normalized Events')
+    if normalize:
+        ax.set_ylabel('Normalized Events')
+    else:
+        ax.set_ylabel('Events')
     ax.set_title(title)
     ax.legend(loc='best')
 
     # Create ratio plot
-    normhist_data_err = np.sqrt(hist_data) / np.sum(hist_data)
-    norm_cumulative_MC_err = np.sqrt(norm_cumulative_MC_err2)
-    ratio = normhist_data / norm_cumulative_MC
-    ratio_err = ratio * np.sqrt( (normhist_data_err / normhist_data)**2 + (norm_cumulative_MC_err / norm_cumulative_MC)**2 )
+    ratio = hist_data / cumulative_MC
+    ratio_err = ratio * np.sqrt( (data_err / hist_data)**2 + (cumulative_MC_err / cumulative_MC)**2 )
     ax_ratio.step((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, where='mid', color='black')
     ax_ratio.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, yerr=ratio_err, fmt='o', color='black')
     ax_ratio.set_xlabel(x_label)
     ax_ratio.set_ylabel('Data / MC')
-    ax_ratio.set_ylim(0, 2)
+    ax_ratio.set_ylim(0.5, 1.5)
+    # ax_ratio.set_xlim(bin_edges[0], bin_edges[-1])
     ax_ratio.axhline(1, color='gray', linestyle=':')
+    sum_MC_yields = 0
+    for dl_name in signal_keys + background_keys:
+        hist = hists_MC.get(dl_name, np.zeros(len(bin_edges)-1))
+        sum_MC_yields += np.sum(hist)
+        print(f"{dl_name} yield: {np.sum(hist)}")
+    print(f"Sum MC yield: {sum_MC_yields}")
+    print(f"Total Data yield: {np.sum(hist_data)}")
+    print(f"Data/MC yield ratio: {np.sum(hist_data)/sum_MC_yields if sum_MC_yields>0 else 'N/A'}")
+    print()
 
     return fig, ax, ax_ratio
 
