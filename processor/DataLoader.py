@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 def filter_event(events: ak.Array, filter_log_dict: dict):
     original_events = copy.deepcopy(events)
     filtered_events = {
-        # 'raw': original_events,
+        'raw': original_events,
     }
 
     recpart_pdgid = events['Part_pdgId']
@@ -195,33 +195,26 @@ class DataLoader:
         f = ur.open(self.input_files[0])
         tree = f[self.tree_name]
 
-        common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart"]
+        common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart", "event_category"]
         gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
         gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
         
         part_branches = ["charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood"]
         part_branches = [f'Part_{b}' for b in part_branches]
 
-        branches_to_load = common_evt_branches + part_branches
+        particleID_branches = [
+            "Elid_partIdx", "Elid_tag", "Elid_gammaConversion",
+            "Muid_partIdx", "Muid_tag",
+            "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
+        ]
+
+        branches_to_load = common_evt_branches + part_branches + particleID_branches
         if not self.is_data:
             branches_to_load += gen_part_branches
 
-        # os.makedirs(self.output_dir + "/filtered_data_files/", exist_ok=True)
         # Load data from all files
         initial_total_num_events = 0
         for file in self.input_files:
-            # # path_filtered_single_file = self.output_dir + "/filtered_data_files/" + os.path.basename(file).replace('.root', '_filtered.parquet')
-            # path_filtered_single_file_prefix = self.output_dir + "/filtered_data_files/" + os.path.basename(file).replace('.root', '')
-            # if len(glob.glob(path_filtered_single_file_prefix + "*_filtered.parquet")) > 0:
-            #     log.info(f"Filtered data file for {file} already exists at {path_filtered_single_file_prefix}. Loading filtered data.")
-            #     log.warning(f"These files are not included in the filter cutflow statistics!")
-            #     for filtered_file in glob.glob(path_filtered_single_file_prefix + "*.parquet"):
-            #         key = os.path.basename(filtered_file).split("___")[-1].replace('.parquet', '')
-            #         evt = ak.from_parquet(filtered_file)
-            #         evt['evtNumber'] = evt['Event_evtNumber'] + initial_total_num_events
-            #         initial_total_num_events = initial_total_num_events + evt['initial_total_num_events'][0]
-            #         self.data.setdefault(key, []).append(evt)
-            # else:
             log.info(f"Loading data from file: {file}")
             try:
                 f = ur.open(file)
@@ -241,8 +234,25 @@ class DataLoader:
                 part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
                 flag_not_0pdgid = (events['Part_pdgId'] != 0)
                 events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) # & flag_not_0pdgid
-                for part_branch in part_branches:
-                    events[part_branch] = events[part_branch][events['Part_isGood']] 
+                for part_branch in part_branches + particleID_branches:
+                    if part_branch != 'Part_isGood':
+                        events[part_branch] = events[part_branch][events['Part_isGood']] 
+
+                if not self.is_data:
+                    # get truth info of tau pair and tau neutrinos
+                    dict_part_pdg = {
+                        'tau': 15,
+                        'anti_tau': -15,
+                        'nu_tau': 16,
+                        'anti_nu_tau': -16,
+                    }
+                    for key, pdgid in dict_part_pdg.items():
+                        flag = (events['GenPart_pdgId'] == pdgid)
+                        events[f'truth_{key}_px'] = ak.firsts(events['GenPart_vector_fCoordinates_fX'][flag][...,::-1])
+                        events[f'truth_{key}_py'] = ak.firsts(events['GenPart_vector_fCoordinates_fY'][flag][...,::-1])
+                        events[f'truth_{key}_pz'] = ak.firsts(events['GenPart_vector_fCoordinates_fZ'][flag][...,::-1])
+                        events[f'truth_{key}_E'] = ak.firsts(events['GenPart_vector_fCoordinates_fT'][flag][...,::-1])
+
 
                 # filter events
                 self.filter_results['initial_total_num_events'] += len(events)
