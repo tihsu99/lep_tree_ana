@@ -510,6 +510,85 @@ class PlotProcessor(BaseProcessor):
             fig.tight_layout()
             fig.savefig(os.path.join(cur_output_dir, 'pion_reco_vs_truth_energy_diff.png'))
 
+        # ###############################################
+        # # study truth composition 
+        # ################################################
+        # if not dl.is_data:
+        #     final_state_part = events_of_interest['GenPart_status'] == 1
+        #     pdgIds = events_of_interest['GenPart_pdgId']
+            
+        #     num_pi_plus = ak.sum(pdgIds[final_state_part] == 211, axis=1)
+        #     num_pi_minus = ak.sum(pdgIds[final_state_part] == -211, axis=1)
+        #     num_pi0 = ak.sum(pdgIds == 111, axis=1)
+        #     num_muons = ak.sum(abs(pdgIds[final_state_part]) == 13, axis=1)
+        #     num_electrons = ak.sum(abs(pdgIds[final_state_part]) == 11, axis=1)
+        #     num_kaons = ak.sum( (abs(pdgIds[final_state_part]) == 321), axis=1)
+
+        #     categories = {
+        #         'singlePi_singlePi': ak.sum((num_pi_plus == 1) & (num_pi_minus == 1) & (num_pi0 == 0) & (num_muons == 0) & (num_electrons == 0)),
+        #         'singlePi_Pi1Pi0': ak.sum(( (num_pi_plus == 1) & (num_pi_minus == 1) ) & (num_pi0 == 1) & (num_muons == 0) & (num_electrons == 0)),
+        #         'singlePi_PiXPi0': ak.sum(( (num_pi_plus == 1) & (num_pi_minus == 1) ) & (num_pi0 >= 2) & (num_muons == 0) & (num_electrons == 0)),
+        #         'singlePi_leptonic': ak.sum(( (num_pi_plus + num_pi_minus) == 1 ) & ( (num_muons + num_electrons) == 1 ) & (num_pi0 == 0)),
+        #         'Pi1Pi0_Pi1Pi0': ak.sum(( (num_pi_plus == 1) & (num_pi_minus == 1) ) & (num_pi0 == 2) & (num_muons == 0) & (num_electrons == 0)),
+        #         'Pi1Pi0_leptonic': ak.sum(( (num_pi_plus + num_pi_minus) == 1 ) & ( (num_muons + num_electrons) == 1 ) & (num_pi0 == 1)),
+        #         'leptonic_leptonic': ak.sum(( (num_muons + num_electrons) >= 2 )),
+        #     }
+        #     categories['others'] = len(events_of_interest) - sum(categories.values())
+        #     print(categories['others'])
+
+        #     fig, ax = plt.subplots(dpi=300)
+        #     x_axis = list(categories.keys())
+        #     ax.bar(x_axis, categories.values(), alpha=0.7,  linewidth=1, fill=False, edgecolor='blue')
+        #     ax.set_xticklabels(x_axis, rotation=45, ha='right', fontsize='small')
+        #     ax.set_xlabel('Truth Final State Categories')
+        #     ax.set_ylabel('Counts')
+        #     # ax.set_yscale('log')
+        #     ax.set_title('Generated Final State Particle Categories in SR')
+        #     fig.tight_layout()
+        #     fig.savefig(os.path.join(cur_output_dir, 'gen_final_state_categories_sr.png'))
+        #     # unique, counts = np.unique(ak.to_numpy(ak.flatten(pdgIds)), return_counts=True)
+        #     # composition = dict(zip(unique, counts))
+
+        #     # fig, ax = plt.subplots(dpi=300)
+        #     # x_axis = [pdgid_parser.get(pdgId, str(pdgId)) for
+        #     #             pdgId in composition.keys()]
+        #     # ax.bar(x_axis, composition.values(), alpha=0.7,  linewidth=1.5, fill=False, edgecolor='blue')
+        #     # ax.set_xlabel('Particle Type (PDG ID)')
+        #     # ax.set_ylabel('Counts')
+        #     # ax.set_yscale('log')
+        #     # ax.set_title('Generated Final State Particle Composition in SR')
+        #     # fig.tight_layout()
+        #     # fig.savefig(os.path.join(cur_output_dir, 'gen_final_state_composition_sr.png'))
+
+        #     # # number of truth particles
+        #     # pdgIds = events_of_interest['GenPart_pdgId']
+        #     # final_state_pdgIds = events_of_interest['GenPart_pdgId'][final_state_part]
+        #     # num_pi_plus = ak.sum(final_state_pdgIds == 211, axis=1)
+        #     # num_pi_minus = ak.sum(final_state_pdgIds == -211, axis=1)
+        #     # num_pi_pm = ak.sum(abs(final_state_pdgIds) == 211, axis=1)
+        #     # num_el = ak.sum(abs(final_state_pdgIds) == 11, axis=1)
+        #     # num_mu = ak.sum(abs(final_state_pdgIds) == 13, axis=1)
+        #     # num_pi0 = ak.sum(events_of_interest['GenPart_pdgId'] == 111, axis=1)
+        #     # num_other_hadrons = ak.sum(
+        #     #     (abs(pdgIds) == 221) | (abs(pdgIds) == 321) | (abs(pdgIds) == 223) | (abs(pdgIds) == 2112) | (abs(pdgIds) == 2212), axis=1)
+
+
+        #     # fig, ax = plt.subplots(dpi=300)
+        #     # bins = np.arange(0, 11, 1)
+        #     # # ax.hist(ak.to_numpy(num_pi_plus), bins=bins, histtype='step', density=False, label=r'$\pi^{+}$', color='blue', linewidth=1.5)
+        #     # # ax.hist(ak.to_numpy(num_pi_minus), bins=bins, histtype='step', density=False, label=r'$\pi^{-}$', color='orange', linewidth=1.5)
+        #     # ax.hist(ak.to_numpy(num_pi_pm), bins=bins, histtype='step', density=False, label=r'$\pi^{\pm}$', color='blue', linewidth=1.5)
+        #     # ax.hist(ak.to_numpy(num_el), bins=bins, histtype='step', density=False, label='Electrons', color='green', linewidth=1.5)
+        #     # ax.hist(ak.to_numpy(num_mu), bins=bins, histtype='step', density=False, label='Muons', color='red', linewidth=1.5)
+        #     # ax.hist(ak.to_numpy(num_pi0), bins=bins, histtype='step', density=False, label=r'$\pi^{0}$', color='purple', linewidth=1.5)
+        #     # ax.hist(ak.to_numpy(num_other_hadrons), bins=bins, histtype='step', density=False, label='Other Hadrons', color='brown', linewidth=1.5)
+        #     # ax.set_xlabel('Number of Generated Particles')
+        #     # ax.set_ylabel('Entries')
+        #     # ax.set_title('Number of Generated Particles per Event in SR')
+        #     # ax.legend()
+        #     # fig.tight_layout()
+        #     # fig.savefig(os.path.join(cur_output_dir, 'num_gen_particles_sr.png'))
+
         
 
     def finalize(self):

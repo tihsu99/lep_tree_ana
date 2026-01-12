@@ -196,4 +196,252 @@ def do_control_plot(
 
 
 
+def _weighted_quantile(values, quantiles, sample_weight=None):
+    """
+    Compute weighted quantiles of 1D `values`.
+    quantiles in [0, 1]. Returns array with same shape as quantiles.
+    """
+    values = np.asarray(values, dtype=float)
+    quantiles = np.asarray(quantiles, dtype=float)
+
+    if sample_weight is None:
+        return np.quantile(values, quantiles)
+
+    w = np.asarray(sample_weight, dtype=float)
+    if values.size == 0:
+        return np.full_like(quantiles, np.nan, dtype=float)
+
+    # sort by values
+    sorter = np.argsort(values)
+    v = values[sorter]
+    w = w[sorter]
+
+    w = np.clip(w, 0.0, np.inf)
+    ws = np.sum(w)
+    if ws <= 0:
+        return np.full_like(quantiles, np.nan, dtype=float)
+
+    cdf = np.cumsum(w) / ws
+    return np.interp(quantiles, cdf, v)
+
+
+def plot_y_vs_x(
+    x,
+    y,
+    weight=None,
+    *,
+    bins=30,
+    x_range=None,
+    # stat="median",                 # "mean" or "median" (median uses weighted quantile 0.5 if weight provided)
+    stat="mean",                 # "mean" or "median" (median uses weighted quantile 0.5 if weight provided)
+    band=("68", "95"),           # any subset of {"68", "95"}; or () / None for no band
+    band_method="quantile",      # "quantile" (central intervals) or "stderr" (mean ± z*stderr)
+    min_count=20,                # minimum entries per bin to draw stat/bands
+    ax=None,
+    fig=None,
+    label=None,
+    color=None,
+    linestyle="-",
+    linewidth=2.0,
+    draw_points=False,
+    points_kwargs=None,
+    band_alpha=0.20,
+    band_edge=False,
+    band_label=False,
+    step="mid",                  # "mid" uses bin centers; "stairs" uses bin edges (matplotlib stairs)
+):
+    """
+    Plot y as a function of x with optional weights and uncertainty bands.
+
+    Parameters
+    ----------
+    x, y : array-like (same length)
+    weight : array-like or None
+        Event weights (same length as x/y).
+    bins : int or array-like
+        Number of x-bins or explicit bin edges.
+    x_range : (xmin, xmax) or None
+        Range for binning when bins is an int.
+    stat : {"mean", "median"}
+        Central curve per bin.
+    band : tuple/list like ("68","95") or ()
+        Draw central intervals per x-bin.
+    band_method : {"quantile", "stderr"}
+        - "quantile": bands are central credible intervals of y within each x-bin
+          (16–84 for 68%, 2.5–97.5 for 95%), computed with weights if provided.
+        - "stderr": bands are mean ± z * stderr(mean), with effective N from weights.
+    min_count : int
+        Minimum number of events in a bin to compute stats/bands.
+    ax, fig : matplotlib Axes/Figure or None
+        If ax is provided, draw on it (good for overlays). If not, create new.
+    step : {"mid","stairs"}
+        Draw central curve at bin centers or as a step function.
+
+    Returns
+    -------
+    fig, ax
+    """
+    x = np.asarray(x)
+    y = np.asarray(y)
+    if x.shape[0] != y.shape[0]:
+        raise ValueError(f"x and y must have the same length, got {x.shape[0]} vs {y.shape[0]}")
+
+    if weight is not None:
+        w = np.asarray(weight)
+        if w.shape[0] != x.shape[0]:
+            raise ValueError(f"weight must have the same length as x/y, got {w.shape[0]} vs {x.shape[0]}")
+    else:
+        w = None
+
+    # drop non-finite rows
+    mask = np.isfinite(x) & np.isfinite(y)
+    if w is not None:
+        mask &= np.isfinite(w)
+    x = x[mask]
+    y = y[mask]
+    w = w[mask] if w is not None else None
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(7, 5), dpi=200)
+    else:
+        fig = ax.figure if fig is None else fig
+
+    # optional scatter of points
+    if draw_points:
+        pk = dict(s=8, alpha=0.25)
+        if points_kwargs:
+            pk.update(points_kwargs)
+        ax.scatter(x, y, c=color, label=None, **pk)
+
+    # define bins
+    if np.isscalar(bins):
+        if x_range is None:
+            xmin, xmax = np.nanmin(x), np.nanmax(x)
+        else:
+            xmin, xmax = x_range
+        edges = np.linspace(xmin, xmax, int(bins) + 1)
+    else:
+        edges = np.asarray(bins, dtype=float)
+        if edges.ndim != 1 or edges.size < 2:
+            raise ValueError("bins must be an int or a 1D array of bin edges")
+
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    nb = edges.size - 1
+
+    y_stat = np.full(nb, np.nan, dtype=float)
+    y_lo68 = np.full(nb, np.nan, dtype=float)
+    y_hi68 = np.full(nb, np.nan, dtype=float)
+    y_lo95 = np.full(nb, np.nan, dtype=float)
+    y_hi95 = np.full(nb, np.nan, dtype=float)
+
+    # assign bins
+    bin_idx = np.digitize(x, edges) - 1
+    in_range = (bin_idx >= 0) & (bin_idx < nb)
+    x, y = x[in_range], y[in_range]
+    w = w[in_range] if w is not None else None
+    bin_idx = bin_idx[in_range]
+
+    # per-bin computations
+    for b in range(nb):
+        sel = bin_idx == b
+        if not np.any(sel):
+            continue
+        yy = y[sel]
+        if yy.size < min_count:
+            continue
+
+        if w is None:
+            ww = None
+            if stat == "mean":
+                y_stat[b] = float(np.mean(yy))
+            elif stat == "median":
+                y_stat[b] = float(np.median(yy))
+            else:
+                raise ValueError("stat must be 'mean' or 'median'")
+        else:
+            ww = w[sel].astype(float)
+            ww = np.clip(ww, 0.0, np.inf)
+            if np.sum(ww) <= 0:
+                continue
+            if stat == "mean":
+                y_stat[b] = float(np.average(yy, weights=ww))
+            elif stat == "median":
+                y_stat[b] = float(_weighted_quantile(yy, 0.5, sample_weight=ww))
+            else:
+                raise ValueError("stat must be 'mean' or 'median'")
+
+        if not band:
+            continue
+
+        if band_method == "quantile":
+            if "68" in band:
+                q16, q84 = _weighted_quantile(yy, [0.16, 0.84], sample_weight=ww)
+                y_lo68[b], y_hi68[b] = float(q16), float(q84)
+            if "95" in band:
+                q025, q975 = _weighted_quantile(yy, [0.025, 0.975], sample_weight=ww)
+                y_lo95[b], y_hi95[b] = float(q025), float(q975)
+
+        elif band_method == "stderr":
+            # Only meaningful with mean; if median requested, still use mean for stderr band.
+            if w is None:
+                mu = float(np.mean(yy))
+                # standard error of mean
+                se = float(np.std(yy, ddof=1) / np.sqrt(yy.size)) if yy.size > 1 else np.nan
+            else:
+                mu = float(np.average(yy, weights=ww))
+                # weighted variance and effective N
+                wsum = float(np.sum(ww))
+                w2sum = float(np.sum(ww * ww))
+                neff = (wsum * wsum / w2sum) if w2sum > 0 else np.nan
+                var = float(np.average((yy - mu) ** 2, weights=ww))
+                se = float(np.sqrt(var / neff)) if np.isfinite(neff) and neff > 1 else np.nan
+
+            if "68" in band:
+                z = 1.0
+                y_lo68[b], y_hi68[b] = mu - z * se, mu + z * se
+            if "95" in band:
+                z = 1.959963984540054  # ~N(0,1) 97.5% quantile
+                y_lo95[b], y_hi95[b] = mu - z * se, mu + z * se
+        else:
+            raise ValueError("band_method must be 'quantile' or 'stderr'")
+
+    # draw bands first (so curve is on top)
+    def _fill(lo, hi, tag):
+        ok = np.isfinite(lo) & np.isfinite(hi) & np.isfinite(centers)
+        if not np.any(ok):
+            return
+        fill_label = None
+        if band_label and label is not None:
+            fill_label = f"{label} ({tag} band)"
+        ax.fill_between(
+            centers[ok], lo[ok], hi[ok],
+            alpha=band_alpha,
+            color=color,
+            label=fill_label,
+            linewidth=1.0 if band_edge else 0.0,
+            edgecolor=color if band_edge else None,
+        )
+
+    if band:
+        if "95" in band:
+            _fill(y_lo95, y_hi95, "95%")
+        if "68" in band:
+            _fill(y_lo68, y_hi68, "68%")
+
+    # draw central curve
+    okc = np.isfinite(y_stat) & np.isfinite(centers)
+    if np.any(okc):
+        if step == "stairs":
+            # matplotlib stairs expects edges and values length nb
+            ax.stairs(y_stat, edges, label=label, color=color, linestyle=linestyle, linewidth=linewidth)
+        else:
+            ax.plot(centers[okc], y_stat[okc], label=label, color=color, linestyle=linestyle, linewidth=linewidth)
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.grid(True, alpha=0.3)
+
+    return fig, ax
+
+
 
