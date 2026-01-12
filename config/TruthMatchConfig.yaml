@@ -1,0 +1,23 @@
+default_output_dir: "./TruthMatchStudy/"
+region_of_interest: &RegionName "raw"
+
+DataLoaders:
+  Ztautau:
+    name: "Ztautau"
+    tree_name: "t"
+    region_of_interest: *RegionName
+    is_data: false
+    is_signal: false
+    norm_factor: 1458.9 # pb
+    input_files:
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_tautaunew/simana_*_ttree.root"
+
+Processors:
+  TruthMatchProcessor:
+  # PlotProcessor: 
+  # TemporaryProcessor: 
+  # ControlPlotProcessor:
+  #   output_dir_name: "control_plots"
+  #   # output_dir_name: "wo_cut"
+  #   luminosity: 46.3 # pb^-1
+  # NeutrinoReconstructionProcessor:
