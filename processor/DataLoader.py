@@ -12,12 +12,35 @@ from utils.common_functions import get_p4_from_ak_events, get_color_iterator, ge
 
 log = logging.getLogger(__name__)
 
-def filter_event(events: ak.Array, filter_log_dict: dict):
-    original_events = copy.deepcopy(events)
-    filtered_events = {
-        'raw': original_events,
-    }
+def filter_leplep_channel(events: ak.Array, filter_log_dict: dict):
+    filter_log_dict['leplep channel initial'] = filter_log_dict.get('leplep channel initial', 0) + len(events)
+    recpart_pdgid = events['Part_pdgId']
+    recpart_abspdgid = abs(recpart_pdgid)
+    recpart_charge = events['Part_charge']
 
+    pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+
+    flag_is_mu = (recpart_abspdgid == 6)
+    flag_is_el = (recpart_abspdgid == 2)
+    flag_is_lepton = flag_is_mu | flag_is_el
+
+    # only contains two leptons in opposite charge
+    pass_filter = (ak.sum(flag_is_lepton, axis=1) == 2) & pass_filter
+    filter_log_dict['2 leptons'] = filter_log_dict.get('2 leptons', 0) + ak.sum(pass_filter)
+
+    charge_ary_of_leptons = recpart_charge[flag_is_lepton]
+    flag_opposite_charge = (ak.sum(charge_ary_of_leptons, axis=1) == 0)
+    pass_filter = flag_opposite_charge & pass_filter
+    filter_log_dict['opposite charge'] = filter_log_dict.get('opposite charge', 0) + ak.sum(pass_filter)
+
+    events_leplep = events[pass_filter & flag_opposite_charge]
+
+    return events_leplep, filter_log_dict
+    
+
+
+def filter_pipi_channel(events: ak.Array, filter_log_dict: dict):
+    filter_log_dict['pipi channel initial'] = filter_log_dict.get('pipi channel initial', 0) + len(events)
     recpart_pdgid = events['Part_pdgId']
     recpart_abspdgid = abs(recpart_pdgid)
     recpart_charge = events['Part_charge']
@@ -121,9 +144,23 @@ def filter_event(events: ak.Array, filter_log_dict: dict):
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
 
     events_sr = events_pipi[pass_filter_sr]
-    filtered_events['sr'] = events_sr
 
-    return filtered_events, filter_log_dict
+    return events_sr, filter_log_dict
+
+
+def filter_event(events: ak.Array, filter_log_dict: dict):
+    filtered_events_dict = {
+        'raw': events,
+    }
+    events_copy = copy.deepcopy(events)
+    filtered_events, filter_log_dict = filter_pipi_channel(events_copy, filter_log_dict)
+    filtered_events_dict['pipi'] = filtered_events
+
+    filtered_events, filter_log_dict = filter_leplep_channel(events_copy, filter_log_dict)
+    filtered_events_dict['leplep'] = filtered_events
+
+
+    return filtered_events_dict, filter_log_dict
 
 
 class DataLoader:
@@ -158,17 +195,8 @@ class DataLoader:
         }
 
         _data_loaded = False
-        # if os.path.exists(self.output_dir + "/filtered_data.parquet"):
         if len(glob.glob(self.output_dir + "/filtered___*.parquet")) > 0:
-            # # ask user if they want to load existing data
-            # load_existing = input(f"Filtered data file already exists. Do you want to reload and filter data from input files? (y/n): ")
-            # if load_existing.lower() == 'y':
-            #     log.info("Re-loading and filtering data from input files.")
-            # else:
             log.info("Loading existing filtered data.")
-            # for file in glob.glob(self.output_dir + "/filtered___*.parquet"):
-            #     key = os.path.basename(file).split("___")[-1].replace('.parquet', '')
-            #     self.data[key] = ak.from_parquet(file)
             file = self.output_dir + "/filtered___" + self.region_of_interest + ".parquet"
             if os.path.exists(file):
                 self.data[self.region_of_interest] = ak.from_parquet(file)
@@ -195,7 +223,9 @@ class DataLoader:
         f = ur.open(self.input_files[0])
         tree = f[self.tree_name]
 
-        common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart", "event_category"]
+        common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart", 
+        # "event_category"
+        ]
         gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
         gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
         
@@ -203,9 +233,9 @@ class DataLoader:
         part_branches = [f'Part_{b}' for b in part_branches]
 
         particleID_branches = [
-            "Elid_partIdx", "Elid_tag", "Elid_gammaConversion",
-            "Muid_partIdx", "Muid_tag",
-            "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
+            # "Elid_partIdx", "Elid_tag", "Elid_gammaConversion",
+            # "Muid_partIdx", "Muid_tag",
+            # "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
         ]
 
         branches_to_load = common_evt_branches + part_branches + particleID_branches
@@ -314,9 +344,21 @@ class DataLoader:
             fig.tight_layout()
             fig.savefig(self.output_dir + "/cutflow_efficiency.pdf")
 
-            cutflow_relative = [cutflow_values[i] / cutflow_values[i-1] if i > 0 else 1.0 for i in range(len(cutflow_values))]
+            # cutflow_relative = [cutflow_values[i] / cutflow_values[i-1] if i > 0 else 1.0 for i in range(len(cutflow_values))]
+            cutflow_relative = [1.0]
+            tmp_cutflow_label = ['initial_totoal_num_events']
+            for i in range(1, len(cutflow_values)):
+                rel = cutflow_values[i] / cutflow_values[i-1] 
+                label = cutflow_labels[i]
+                if rel>1:
+                    # if eff>1 then calculate ratio relative to initial num
+                    rel = cutflow_values[i] / cutflow_values[0]
+                    label = f"{label}/initialNoE"
+                cutflow_relative.append(rel)
+                tmp_cutflow_label.append(label)
+
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
-            p = ax.bar(cutflow_labels, cutflow_relative)
+            p = ax.bar(tmp_cutflow_label, cutflow_relative)
             ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_relative], padding=3)
             ax.set_ylabel('Relative Efficiency')
             ax.set_title('Event Cutflow Relative Efficiency')

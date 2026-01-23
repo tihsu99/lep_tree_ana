@@ -1,5 +1,5 @@
 default_output_dir: "./output/"
-region_of_interest: &RegionName "sr"
+region_of_interest: &RegionName "pipi"
 
 DataLoaders:
   data94:
@@ -58,9 +58,10 @@ DataLoaders:
       - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq/simana_*_ttree.root"
 
 Processors:
-  # PlotProcessor: 
+  PlotProcessor: 
   # TemporaryProcessor: 
   ControlPlotProcessor:
     output_dir_name: "control_plots"
     # output_dir_name: "wo_cut"
     luminosity: 46.3 # pb^-1
+  # NeutrinoReconstructionProcessor:
