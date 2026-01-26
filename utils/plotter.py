@@ -107,6 +107,7 @@ def do_control_plot(
     - ax: matplotlib Axes object with the plot.
     - ax_ratio: matplotlib Axes object with the ratio plot.
     """
+    print("Control Plot:", title)
     fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 8), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
 
     signal_keys = [key for key, val in dl_dict.items() if val.is_signal]

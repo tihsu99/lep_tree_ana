@@ -1,5 +1,5 @@
-default_output_dir: "./output/"
-region_of_interest: &RegionName "pipi"
+default_output_dir: "./output-leplep/"
+region_of_interest: &RegionName "leplep"
 
 DataLoaders:
   data94:
@@ -64,4 +64,7 @@ Processors:
     output_dir_name: "control_plots"
     # output_dir_name: "wo_cut"
     luminosity: 46.3 # pb^-1
+    channels:
+      # - "pipi"
+      - "leplep"
   # NeutrinoReconstructionProcessor:
