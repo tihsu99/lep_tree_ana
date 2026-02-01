@@ -36,15 +36,15 @@ class PlotProcessor(BaseProcessor):
         color_iter = get_color_iterator(len(events_dict))
         for label, events in events_dict.items():
             color = next(color_iter)
-            flag_reco_pi = (abs(events['Part_pdgId']) == 41)
-            num_reco_pions = ak.sum(flag_reco_pi, axis=1)
-            ax.hist(ak.to_numpy(num_reco_pions), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
-        ax.set_xlabel('Number of Reconstructed Pions')
+            flag_reco_pi = (abs(events['GenPart_pdgId']) == 211)
+            num_truth_pions = ak.sum(flag_reco_pi, axis=1)
+            ax.hist(ak.to_numpy(num_truth_pions), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+        ax.set_xlabel('Number of Truth Pions')
         ax.set_ylabel('Entries')
-        ax.set_title('Number of Reconstructed Pions per Event')
+        ax.set_title('Number of Truth Pions per Event')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(cur_output_dir, 'num_reco_pions.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'num_truth_pions.png'))
 
 
         #######################################################
@@ -57,30 +57,70 @@ class PlotProcessor(BaseProcessor):
         color_iter = get_color_iterator(len(events_dict))
         for label, events in events_dict.items():
             color = next(color_iter)
-            flag_reco_pi = (abs(events['Part_pdgId']) == 41)
+            #flag_reco_pi = (abs(events['Part_pdgId']) == 41)
+            flag_truth_pi = (abs(events['GenPart_pdgId']) == 211)
 
-            p_reco_pions = (events['Part_fourMomentum_fCoordinates_fX'][flag_reco_pi]**2 + events['Part_fourMomentum_fCoordinates_fY'][flag_reco_pi]**2 + events['Part_fourMomentum_fCoordinates_fZ'][flag_reco_pi]**2)**0.5
-            E_reco_pions = events['Part_fourMomentum_fCoordinates_fT'][flag_reco_pi]
-            costh_reco_pions = events['Part_fourMomentum_fCoordinates_fZ'][flag_reco_pi] / p_reco_pions
+            p_truth_pions = (events['GenPart_fourMomentum_fCoordinates_fX'][flag_truth_pi]**2 + events['GenPart_fourMomentum_fCoordinates_fY'][flag_truth_pi]**2 + events['GenPart_fourMomentum_fCoordinates_fZ'][flag_truth_pi]**2)**0.5
+            E_truth_pions = events['GenPart_fourMomentum_fCoordinates_fT'][flag_truth_pi]
+            costh_truth_pions = events['GenPart_fourMomentum_fCoordinates_fZ'][flag_truth_pi] / p_truth_pions
 
-            ax[0].hist(ak.to_numpy(ak.flatten(p_reco_pions)), bins=bins_p, histtype='step', density=False, label=label, color=color, linewidth=1.5)
-            ax[1].hist(ak.to_numpy(ak.flatten(costh_reco_pions)), bins=bins_costh, histtype='step', density=False, label=label, color=color, linewidth=1.5)
-            ax[2].hist(ak.to_numpy(ak.flatten(E_reco_pions)), bins=bins_E, histtype='step', density=False, label=label, color=color, linewidth=1.5)
-        ax[0].set_xlabel('Reconstructed Pion $p$ [GeV]')
+            ax[0].hist(ak.to_numpy(ak.flatten(p_truth_pions)), bins=bins_p, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+            ax[1].hist(ak.to_numpy(ak.flatten(costh_truth_pions)), bins=bins_costh, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+            ax[2].hist(ak.to_numpy(ak.flatten(E_truth_pions)), bins=bins_E, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+        ax[0].set_xlabel('Truth Pion $p$ [GeV]')
         ax[0].set_ylabel('Entries')
-        ax[0].set_title('Reconstructed Pion $p$ Distribution')
+        ax[0].set_title('Truth Pion $p$ Distribution')
         ax[0].legend()
-        ax[1].set_xlabel('Reconstructed Pion $cos\theta$')
+        ax[1].set_xlabel('Truth Pion $cos\theta$')
         ax[1].set_ylabel('Entries')
-        ax[1].set_title('Reconstructed Pion $cos\theta$ Distribution')
+        ax[1].set_title('Truth Pion $cos\theta$ Distribution')
         ax[1].legend()
-        ax[2].set_xlabel('Reconstructed Pion Energy [GeV]')
+        ax[2].set_xlabel('Truth Pion Energy [GeV]')
         ax[2].set_ylabel('Entries')
-        ax[2].set_title('Reconstructed Pion Energy Distribution')
+        ax[2].set_title('Truth Pion Energy Distribution')
         ax[2].legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(cur_output_dir, 'reco_pion_properties.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'truth_pion_properties.png'))
 
+
+        ###############################################################
+        #Plot Rho p, costh, energy
+        ###############################################################
+        fig, ax = plt.subplots(3, 1, dpi=300, figsize=(6, 12))
+        bins_p = np.linspace(0, 50, 51)
+        bins_costh = np.linspace(-1, 1, 51)
+        bins_E = np.linspace(0, 100, 51)
+        color_iter = get_color_iterator(len(events_dict))
+        for label, events in events_dict.items():
+            color = next(color_iter)
+            #flag_reco_pi = (abs(events['Part_pdgId']) == 41)
+            flag_truth_pi = (abs(events['GenPart_pdgId']) == 211)
+            flag_truth_pi0 = (events['GenPart_pdgId'] == 111)
+            flag_truth_rho = flag_truth_pi | flag_truth_pi0
+
+            p_truth_pions = (events['GenPart_fourMomentum_fCoordinates_fX'][flag_truth_pi]**2 + events['GenPart_fourMomentum_fCoordinates_fY'][flag_truth_pi]**2 + events['GenPart_fourMomentum_fCoordinates_fZ'][flag_truth_pi]**2)**0.5
+            p_truth_pi0 = (events['GenPart_fourMomentum_fCoordinates_fX'][flag_truth_pi0]**2 + events['GenPart_fourMomentum_fCoordinates_fY'][flag_truth_pi0]**2 + events['GenPart_fourMomentum_fCoordinates_fZ'][flag_truth_pi0]**2)**0.5
+            p_truth_rho = p_truth_pions + p_truth_pi0
+            E_truth_rho = events['GenPart_fourMomentum_fCoordinates_fT'][flag_truth_rho]
+            costh_truth_rho = events['GenPart_fourMomentum_fCoordinates_fZ'][flag_truth_rho] / p_truth_rho
+
+            ax[0].hist(ak.to_numpy(ak.flatten(p_truth_rho)), bins=bins_p, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+            ax[1].hist(ak.to_numpy(ak.flatten(costh_truth_pions)), bins=bins_costh, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+            ax[2].hist(ak.to_numpy(ak.flatten(E_truth_rho)), bins=bins_E, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+        ax[0].set_xlabel('Truth Rho $p$ [GeV]')
+        ax[0].set_ylabel('Entries')
+        ax[0].set_title('Truth Rho $p$ Distribution')
+        ax[0].legend()
+        ax[1].set_xlabel('Truth Rho $cos\theta$')
+        ax[1].set_ylabel('Entries')
+        ax[1].set_title('Truth Rho $cos\theta$ Distribution')
+        ax[1].legend()
+        ax[2].set_xlabel('Truth Rho Energy [GeV]')
+        ax[2].set_ylabel('Entries')
+        ax[2].set_title('Truth Rho Energy Distribution')
+        ax[2].legend()
+        fig.tight_layout()
+        fig.savefig(os.path.join(cur_output_dir, 'truth_rho_properties.png'))
 
 
         #######################################################
@@ -93,20 +133,17 @@ class PlotProcessor(BaseProcessor):
             color_iter = get_color_iterator(len(events_dict))
             for label, events in events_dict.items():
                 color = next(color_iter)
-                flag_reco_pi = (abs(events['Part_pdgId']) == 41)
+                flag_truth_pi = (abs(events['GenPart_pdgId']) == 211)
+                flag_truth_pi0 = (events['GenPart_pdgId'] == 111)
 
-                p_reco_pions = (events['Part_fourMomentum_fCoordinates_fX'][flag_reco_pi]**2 + events['Part_fourMomentum_fCoordinates_fY'][flag_reco_pi]**2 + events['Part_fourMomentum_fCoordinates_fZ'][flag_reco_pi]**2)**0.5
-
-                flag_gen_pi = (abs(events['GenPart_pdgId']) == 211)
-                p_gen_pions = (events['GenPart_vector_fCoordinates_fX'][flag_gen_pi]**2 + events['GenPart_vector_fCoordinates_fY'][flag_gen_pi]**2 + events['GenPart_vector_fCoordinates_fZ'][flag_gen_pi]**2)**0.5
+                p_truth_pi0 = (events['GenPart_vector_fCoordinates_fX'][flag_truth_pi0]**2 + events['GenPart_vector_fCoordinates_fY'][flag_truth_pi0]**2 + events['GenPart_vector_fCoordinates_fZ'][flag_truth_pi0]**2)**0.5
+                p_truth_pions = (events['GenPart_vector_fCoordinates_fX'][flag_truth_pi]**2 + events['GenPart_vector_fCoordinates_fY'][flag_truth_pi]**2 + events['GenPart_vector_fCoordinates_fZ'][flag_truth_pi]**2)**0.5
 
                 # ratio plot
-                hist_reco, bin_edges = np.histogram(ak.to_numpy(ak.flatten(p_reco_pions)), bins=bins)
-                hist_gen, _ = np.histogram(ak.to_numpy(ak.flatten(p_gen_pions)), bins=bins)
+                hist_truth, bin_edges = np.histogram(ak.to_numpy(ak.flatten(p_truth_pions)), bins=bins)
                 plotter.do_ratio_plot(
                     bin_centers,
-                    hist_reco,
-                    hist_gen,
+                    hist_truth,
                     ax=ax,
                     ax_ratio=ax_ratio,
                     color1=color,
@@ -114,7 +151,25 @@ class PlotProcessor(BaseProcessor):
                     linestyle1='solid',
                     linestyle2='dashed',
                     label1=f'Reconstructed Pions - {label}',
-                    label2=f'Generated Pions - {label}',
+                    label2=f'Generated Charged Pions - {label}',
+                    xlabel='Pion $p$ [GeV]',
+                    ylabel='Entries',
+                    title='Pion $p$ Distribution',
+                    ratio_color=color,
+                    ratio_ylabel='Reco / Gen',
+                )
+                hist_truth, bin_edges = np.histogram(ak.to_numpy(ak.flatten(p_truth_pi0)), bins=bins)
+                plotter.do_ratio_plot(
+                    bin_centers,
+                    hist_truth,
+                    ax=ax,
+                    ax_ratio=ax_ratio,
+                    color1=color,
+                    color2=color,
+                    linestyle1='solid',
+                    linestyle2='dashed',
+                    label1=f'Reconstructed Pions - {label}',
+                    label2=f'Generated Pi0 - {label}',
                     xlabel='Pion $p$ [GeV]',
                     ylabel='Entries',
                     title='Pion $p$ Distribution',
@@ -154,12 +209,12 @@ class PlotProcessor(BaseProcessor):
         for label, events in events_dict.items():
             pdgId_coutnts = {}
             for pdgId in unique_pdgIds:
-                flag = (events['Part_pdgId'] == pdgId)
+                flag = (events['GenPart_pdgId'] == pdgId)
                 count = ak.sum(ak.sum(flag, axis=1))
                 pdgId_coutnts[pdgid_parser.get(pdgId, str(pdgId))] = count
                 if label==RegionNameOfInterest:
                     # p distribution for each pdgId
-                    p_values = (events['Part_fourMomentum_fCoordinates_fX'][flag]**2 + events['Part_fourMomentum_fCoordinates_fY'][flag]**2 + events['Part_fourMomentum_fCoordinates_fZ'][flag]**2)**0.5
+                    p_values = (events['GenPart_vector_fCoordinates_fX'][flag]**2 + events['GenPart_vector_fCoordinates_fY'][flag]**2 + events['GenPart_vector_fCoordinates_fZ'][flag]**2)**0.5
                     ax_p.hist(ak.to_numpy(ak.flatten(p_values)), bins=bins_p, histtype='step', density=False, label=f'{pdgid_parser.get(pdgId, str(pdgId))}', linewidth=1.5)
 
             ax.bar(x_axis, [pdgId_coutnts[x] for x in x_axis], label=label, alpha=0.7,  linewidth=1.5, fill=False, edgecolor=next(color_iter))
@@ -167,15 +222,15 @@ class PlotProcessor(BaseProcessor):
         ax.set_xlabel('Particle Type (PDG ID)')
         ax.set_ylabel('Entries')
         ax.set_yscale('log')
-        ax.set_title('Reconstructed Particle PDG ID Distribution')
+        ax.set_title('Truth Particle PDG ID Distribution')
         ax.legend()
         fig.tight_layout()
         fig.savefig(os.path.join(cur_output_dir, 'pdgId_distribution.png'))
 
-        ax_p.set_xlabel('Reconstructed Particle $p$ [GeV]')
+        ax_p.set_xlabel('Truth Particle $p$ [GeV]')
         ax_p.set_ylabel('Entries')
         ax_p.set_yscale('log')
-        ax_p.set_title('Reconstructed Particle $p$ Distribution in SR')
+        ax_p.set_title('Truth Particle $p$ Distribution in SR')
         ax_p.legend()
         fig_p.tight_layout()
         fig_p.savefig(os.path.join(cur_output_dir, 'pdgId_p_distribution_sr.png'))
@@ -188,16 +243,16 @@ class PlotProcessor(BaseProcessor):
         color_iter = get_color_iterator(len(events_dict))
         for label, events in events_dict.items():
             color = next(color_iter)
-            sum_px = ak.sum(events['Part_fourMomentum_fCoordinates_fX'], axis=1)
-            sum_py = ak.sum(events['Part_fourMomentum_fCoordinates_fY'], axis=1)
+            sum_px = ak.sum(events['GenPart_vector_fCoordinates_fX'], axis=1)
+            sum_py = ak.sum(events['GenPart_vector_fCoordinates_fY'], axis=1)
             sum_pT = (sum_px**2 + sum_py**2)**0.5
             ax.hist(ak.to_numpy(sum_pT), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
-        ax.set_xlabel('Sum Reconstructed $p_{T}$ [GeV]')
+        ax.set_xlabel('Sum Truth $p_{T}$ [GeV]')
         ax.set_ylabel('Entries')
-        ax.set_title('Sum Reconstructed Transverse Momentum per Event')
+        ax.set_title('Sum Truth Transverse Momentum per Event')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(cur_output_dir, 'sum_reco_pt.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'sum_truth_pt.png'))
 
         #######################################################
         # plot total E
@@ -207,14 +262,14 @@ class PlotProcessor(BaseProcessor):
         color_iter = get_color_iterator(len(events_dict))
         for label, events in events_dict.items():
             color = next(color_iter)
-            total_reco_E = ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=1)
-            ax.hist(ak.to_numpy(total_reco_E), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
-        ax.set_xlabel('Total Reconstructed Particle Energy [GeV]')
+            total_truth_E = ak.sum(events['GenPart_vector_fCoordinates_fT'], axis=1)
+            ax.hist(ak.to_numpy(total_truth_E), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+        ax.set_xlabel('Total Truth Particle Energy [GeV]')
         ax.set_ylabel('Entries')
-        ax.set_title('Total Reconstructed Particle Energy per Event')
+        ax.set_title('Total Truth Particle Energy per Event')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(cur_output_dir, 'total_reco_energy.png'))
+        fig.savefig(os.path.join(cur_output_dir, 'total_truth_energy.png'))
         # fig, ax = plt.subplots(2, 2, dpi=300, figsize=(12, 10))
         # bins = np.linspace(0, 200, 51)
         # color_iter = get_color_iterator(len(events_dict))
@@ -256,10 +311,10 @@ class PlotProcessor(BaseProcessor):
         color_iter = get_color_iterator(len(events_dict))
         for label, events in events_dict.items():
             color = next(color_iter)
-            sum_px = ak.sum(events['Part_fourMomentum_fCoordinates_fX'], axis=1)
-            sum_py = ak.sum(events['Part_fourMomentum_fCoordinates_fY'], axis=1)
-            sum_pz = ak.sum(events['Part_fourMomentum_fCoordinates_fZ'], axis=1)
-            sum_E = ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=1)
+            sum_px = ak.sum(events['GenPart_vector_fCoordinates_fX'], axis=1)
+            sum_py = ak.sum(events['GenPart_vector_fCoordinates_fY'], axis=1)
+            sum_pz = ak.sum(events['GenPart_vector_fCoordinates_fZ'], axis=1)
+            sum_E = ak.sum(events['GenPart_vector_fCoordinates_fT'], axis=1)
 
             missing_pT = (sum_px**2 + sum_py**2)**0.5
             missing_pz = abs(sum_pz)
@@ -307,20 +362,32 @@ class PlotProcessor(BaseProcessor):
         label = RegionNameOfInterest
         events = events_dict.get(RegionNameOfInterest)
         # pion p4
-        flag_pi_plus = (events['Part_charge'] == 1) & (abs(events['Part_pdgId']) == 41)
-        flag_pi_minus = (events['Part_charge'] == -1) & (abs(events['Part_pdgId']) == 41)
-        reco_pi_plus_p4 = get_p4_from_ak_events(events, flag_pi_plus, prefix='Part_fourMomentum')
-        reco_pi_minus_p4 = get_p4_from_ak_events(events, flag_pi_minus, prefix='Part_fourMomentum')
-        di_pion_p4 = reco_pi_plus_p4 + reco_pi_minus_p4
-        ax.hist(ak.to_numpy(di_pion_p4.mass), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
-        ax.set_xlabel('Invariant Mass [GeV]')
+        flag_pi_plus = (events['GenPart_pdgId'] == 211)
+        flag_pi_minus = (events['GenPart_pdgId'] == -211)
+        flag_pi0 = (events['GenPart_pdgId'] == 111)
+        truth_pi_plus_p4 = get_all_p4_from_ak_events(events, flag_pi_plus, prefix='GenPart_vector')
+        truth_pi_minus_p4 = get_all_p4_from_ak_events(events, flag_pi_minus, prefix='GenPart_vector')
+        truth_pi0_p4 = get_all_p4_from_ak_events(events, flag_pi0, prefix='GenPart_vector')
+        rho_p4 = truth_pi_plus_p4 + truth_pi0_p4
+        pirho_p4 = truth_pi_plus_p4 + truth_pi_minus_p4 + truth_pi0_p4
+
+        #rho Invariant Mass Histogram
+        ax.hist(ak.to_numpy(rho_p4.mass), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+        ax.set_xlabel('Invariant Rho Mass [GeV]')
         ax.set_ylabel('Entries')
-        ax.set_title('Di-Pion Invariant Mass Distribution')
+        ax.set_title('Rho Invariant Mass Distribution')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(cur_output_dir, 'di_pion_invariant_mass_distribution.png'))
-        
+        fig.savefig(os.path.join(cur_output_dir, 'rho_invariant_mass_distribution.png'))
 
+        #pirho Invariant Mass Histogram
+        ax.hist(ak.to_numpy(pirho_p4.mass), bins=bins, histtype='step', density=False, label=label, color=color, linewidth=1.5)
+        ax.set_xlabel('Invariant pirho Mass [GeV]')
+        ax.set_ylabel('Entries')
+        ax.set_title('pirho Invariant Mass Distribution')
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(os.path.join(cur_output_dir, 'pirho_invariant_mass_distribution.png'))
 
         # #######################################################
         # # plot m_{pi+ pi- + missing}
@@ -395,120 +462,118 @@ class PlotProcessor(BaseProcessor):
         fig, ax = plt.subplots(dpi=300)
         bins = np.arange(0, 11, 1)
         color_iter = get_color_iterator(len(events_dict))
-        num_particles = ak.num(events_sr['Part_pdgId'], axis=1)
+        num_particles = ak.num(events_sr['GenPart_pdgId'], axis=1)
         ax.hist(ak.to_numpy(num_particles), bins=bins, histtype='step', density=False, label=RegionNameOfInterest, color=next(color_iter), linewidth=1.5)
-        ax.set_xlabel('Number of Reconstructed Particles')
+        ax.set_xlabel('Number of Truth Particles')
         ax.set_ylabel('Entries')
-        ax.set_title('Number of Reconstructed Particles per Event in SR')
+        ax.set_title('Number of Truth Particles per Event in SR')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(cur_output_dir, 'num_reco_particles_sr.png'))
-        
-            
+        fig.savefig(os.path.join(cur_output_dir, 'num_truth_particles_sr.png'))
 
+        # #######################################################
+        # # plot thrust magnitude and theta
+        # #######################################################
+        # fig, ax = plt.subplots(2, 2, dpi=300, figsize=(12, 10))
+        # color_iter = get_color_iterator(len(events_dict))
+        # for label, events in events_dict.items():
+        #     color = next(color_iter)
+        #     thrust_magnitude = events['thrust_Mag'] # avoid division by zero
+        #     thrust_x = events['thrust_x']
+        #     thrust_y = events['thrust_y']
+        #     thrust_z = events['thrust_z']
+        #     thrust_cosine = (thrust_z / thrust_magnitude)
+        #     thrust_theta = np.arccos(thrust_cosine)  # in radians
+        #     # plot thrust magnitude
+        #     ax[0,0].hist(ak.to_numpy(thrust_magnitude), bins=np.linspace(0, 1, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
+        #     # log(1-Thrust)
+        #     ax[0,1].hist(ak.to_numpy(-np.log10(1 - thrust_magnitude + 1e-12)), bins=np.linspace(0, 12, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
+        #     # plot thrust theta
+        #     ax[1,0].hist(ak.to_numpy(thrust_theta * 180/np.pi), bins=np.linspace(0, 180, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
+        #     # plot thrust cosine
+        #     ax[1,1].hist(ak.to_numpy(thrust_cosine), bins=np.linspace(-1, 1, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
 
-        #######################################################
-        # plot thrust magnitude and theta
-        #######################################################
-        fig, ax = plt.subplots(2, 2, dpi=300, figsize=(12, 10))
-        color_iter = get_color_iterator(len(events_dict))
-        for label, events in events_dict.items():
-            color = next(color_iter)
-            thrust_magnitude = events['thrust_Mag'] # avoid division by zero
-            thrust_x = events['thrust_x']
-            thrust_y = events['thrust_y']
-            thrust_z = events['thrust_z']
-            thrust_cosine = (thrust_z / thrust_magnitude)
-            thrust_theta = np.arccos(thrust_cosine)  # in radians
-            # plot thrust magnitude
-            ax[0,0].hist(ak.to_numpy(thrust_magnitude), bins=np.linspace(0, 1, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
-            # log(1-Thrust)
-            ax[0,1].hist(ak.to_numpy(-np.log10(1 - thrust_magnitude + 1e-12)), bins=np.linspace(0, 12, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
-            # plot thrust theta
-            ax[1,0].hist(ak.to_numpy(thrust_theta * 180/np.pi), bins=np.linspace(0, 180, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
-            # plot thrust cosine
-            ax[1,1].hist(ak.to_numpy(thrust_cosine), bins=np.linspace(-1, 1, 51), histtype='step', density=False, label=label, color=color, linewidth=1.5)
-
-        ax[0,0].set_xlabel('Thrust Magnitude')
-        ax[0,0].set_ylabel('Entries')
-        ax[0,0].set_title('Thrust Magnitude Distribution')
-        ax[0,0].legend()
-        ax[0,1].set_xlabel('-log10(1 - Thrust)')
-        ax[0,1].set_ylabel('Entries')
-        ax[0,1].set_title('-log10(1 - Thrust) Distribution')
-        ax[0,1].legend()
-        ax[1,0].set_xlabel('Thrust Angle [deg]')
-        ax[1,0].set_ylabel('Entries')
-        ax[1,0].set_title('Thrust Angle Distribution')
-        ax[1,0].legend()
-        ax[1,1].set_xlabel('Thrust Cosine')
-        ax[1,1].set_ylabel('Entries')
-        ax[1,1].set_title('Thrust Cosine Distribution')
-        ax[1,1].legend()
-        fig.tight_layout()
-        fig.savefig(os.path.join(cur_output_dir, 'thrust_properties.png'))
-
-
+        # ax[0,0].set_xlabel('Thrust Magnitude')
+        # ax[0,0].set_ylabel('Entries')
+        # ax[0,0].set_title('Thrust Magnitude Distribution')
+        # ax[0,0].legend()
+        # ax[0,1].set_xlabel('-log10(1 - Thrust)')
+        # ax[0,1].set_ylabel('Entries')
+        # ax[0,1].set_title('-log10(1 - Thrust) Distribution')
+        # ax[0,1].legend()
+        # ax[1,0].set_xlabel('Thrust Angle [deg]')
+        # ax[1,0].set_ylabel('Entries')
+        # ax[1,0].set_title('Thrust Angle Distribution')
+        # ax[1,0].legend()
+        # ax[1,1].set_xlabel('Thrust Cosine')
+        # ax[1,1].set_ylabel('Entries')
+        # ax[1,1].set_title('Thrust Cosine Distribution')
+        # ax[1,1].legend()
+        # fig.tight_layout()
+        # fig.savefig(os.path.join(cur_output_dir, 'thrust_properties.png'))
 
         ###################################
         # study pion p4. Both reco and gen
         ###################################
         events_of_interest = events_dict.get(RegionNameOfInterest)
         # store pion p4
-        flag_pi_plus = (events_of_interest['Part_charge'] == 1) & (abs(events_of_interest['Part_pdgId']) == 41)
-        flag_pi_minus = (events_of_interest['Part_charge'] == -1) & (abs(events_of_interest['Part_pdgId']) == 41)
-        reco_pi_plus_p4 = get_p4_from_ak_events(events_of_interest, flag_pi_plus, prefix='Part_fourMomentum')
-        reco_pi_minus_p4 = get_p4_from_ak_events(events_of_interest, flag_pi_minus, prefix='Part_fourMomentum')
-        if not dl.is_data:
-            flag_truth_pi_plus = (events_of_interest['GenPart_pdgId'] == 211)
-            flag_truth_pi_minus = (events_of_interest['GenPart_pdgId'] == -211)
-            truth_pi_plus_p4 = get_p4_from_ak_events(events_of_interest, flag_truth_pi_plus, prefix='GenPart_vector')
-            truth_pi_minus_p4 = get_p4_from_ak_events(events_of_interest, flag_truth_pi_minus, prefix='GenPart_vector')
+        flag_pi_plus = (events_of_interest['GenPart_pdgId'] == 211)
+        flag_pi_minus = (events_of_interest['GenPart_pdgId'] == -211)
+        flag_pi0 = (events_of_interest['GenPart_pdgId'] == 111)
+        truth_pi_plus_p4 = get_all_p4_from_ak_events(events_of_interest, flag_pi_plus, prefix='GenPart_vector')
+        truth_pi_minus_p4 = get_all_p4_from_ak_events(events_of_interest, flag_pi_minus, prefix='GenPart_vector')
+        truth_pi0_p4 = get_all_p4_from_ak_events(events_of_interest, flag_pi0, prefix='GenPart_vector')
+        rho_p4 = truth_pi_plus_p4 + truth_pi0_p4
+        # if not dl.is_data:
+        #     flag_truth_pi_plus = (events_of_interest['GenPart_pdgId'] == 211)
+        #     flag_truth_pi_minus = (events_of_interest['GenPart_pdgId'] == -211)
+        #     truth_pi_plus_p4 = get_p4_from_ak_events(events_of_interest, flag_truth_pi_plus, prefix='GenPart_vector')
+        #     truth_pi_minus_p4 = get_p4_from_ak_events(events_of_interest, flag_truth_pi_minus, prefix='GenPart_vector')
 
-        # angle between pion pairs
-        reco_angle = reco_pi_plus_p4.deltaangle(reco_pi_minus_p4)
+        # angle between Rho Pion pairs
+        truth_angle = truth_pi_minus_p4.deltaangle(rho_p4)
         fig, ax = plt.subplots(dpi=300)
         bins = np.linspace(2.64, np.pi, 51)
-        ax.hist(reco_angle, bins=bins, histtype='step', density=False, label='Reconstructed Pions', linestyle='solid', color='orange', linewidth=1.5)
-        if not dl.is_data:
-            truth_angle = truth_pi_plus_p4.deltaangle(truth_pi_minus_p4)
-            ax.hist(truth_angle, bins=bins, histtype='step', density=False, label='Generated Pions', linestyle='dashed', color='blue', linewidth=1.5)
-        ax.set_xlabel('Angle between $\pi^{+}$ and $\pi^{-}$ [rad]')
+        ax.hist(truth_angle, bins=bins, histtype='step', density=False, label='Generated Rho/Pions', linestyle='solid', color='orange', linewidth=1.5)
+        # if not dl.is_data:
+        #     truth_angle = truth_pi_plus_p4.deltaangle(truth_pi_minus_p4)
+        #     ax.hist(truth_angle, bins=bins, histtype='step', density=False, label='Generated Pions', linestyle='dashed', color='blue', linewidth=1.5)
+        ax.set_xlabel('Angle between $\\rho^{+}$ and $\pi^{-}$ [rad]')
         ax.set_ylabel('Entries')
-        ax.set_title('Angle between Pion Pairs')
+        ax.set_title('Angle between Rho Pion Pairs')
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(cur_output_dir, 'pion_pair_angle.png'))
-        if not dl.is_data:
+        fig.savefig(os.path.join(cur_output_dir, 'rho_pion_pair_angle.png'))
+        # if not dl.is_data:
 
 
-            # angle between truth and reco pions
-            angle_pi_plus_deg = truth_pi_plus_p4.deltaangle(reco_pi_plus_p4) * 180/np.pi
-            angle_pi_minus_deg = truth_pi_minus_p4.deltaangle(reco_pi_minus_p4) * 180/np.pi
-            fig, ax = plt.subplots(dpi=300)
-            bins = np.linspace(0, 1, 51)
-            ax.hist(angle_pi_plus_deg, bins=bins, histtype='step', density=False, label=r'$\pi^{+}$', color='blue', linewidth=1.5)
-            ax.hist(angle_pi_minus_deg, bins=bins, histtype='step', density=False, label=r'$\pi^{-}$', color='orange', linewidth=1.5)
-            ax.set_xlabel('Angle between Generated and Reconstructed Pions [deg]')
-            ax.set_ylabel('Entries')
-            ax.set_title('Angle between Generated and Reconstructed Pions')
-            ax.legend()
-            fig.tight_layout()
-            fig.savefig(os.path.join(cur_output_dir, 'pion_reco_vs_truth_angle.png'))
+        #     # angle between truth and reco pions
+        #     angle_pi_plus_deg = truth_pi_plus_p4.deltaangle(reco_pi_plus_p4) * 180/np.pi
+        #     angle_pi_minus_deg = truth_pi_minus_p4.deltaangle(reco_pi_minus_p4) * 180/np.pi
+        #     fig, ax = plt.subplots(dpi=300)
+        #     bins = np.linspace(0, 1, 51)
+        #     ax.hist(angle_pi_plus_deg, bins=bins, histtype='step', density=False, label=r'$\pi^{+}$', color='blue', linewidth=1.5)
+        #     ax.hist(angle_pi_minus_deg, bins=bins, histtype='step', density=False, label=r'$\pi^{-}$', color='orange', linewidth=1.5)
+        #     ax.set_xlabel('Angle between Generated and Reconstructed Pions [deg]')
+        #     ax.set_ylabel('Entries')
+        #     ax.set_title('Angle between Generated and Reconstructed Pions')
+        #     ax.legend()
+        #     fig.tight_layout()
+        #     fig.savefig(os.path.join(cur_output_dir, 'pion_reco_vs_truth_angle.png'))
 
-            # energy difference between truth and reco pions
-            energy_diff_pi_plus = reco_pi_plus_p4.E - truth_pi_plus_p4.E
-            energy_diff_pi_minus = reco_pi_minus_p4.E - truth_pi_minus_p4.E
-            fig, ax = plt.subplots(dpi=300)
-            bins = np.linspace(-5, 5, 51)
-            ax.hist(energy_diff_pi_plus, bins=bins, histtype='step', density=False, label=r'$\pi^{+}$', color='blue', linewidth=1.5)
-            ax.hist(energy_diff_pi_minus, bins=bins, histtype='step', density=False, label=r'$\pi^{-}$', color='orange', linewidth=1.5)
-            ax.set_xlabel('Reconstructed Energy - Generated Energy [GeV]')
-            ax.set_ylabel('Entries')
-            ax.set_title('Energy Difference between Generated and Reconstructed Pions')
-            ax.legend()
-            fig.tight_layout()
-            fig.savefig(os.path.join(cur_output_dir, 'pion_reco_vs_truth_energy_diff.png'))
+        #     # energy difference between truth and reco pions
+        #     energy_diff_pi_plus = reco_pi_plus_p4.E - truth_pi_plus_p4.E
+        #     energy_diff_pi_minus = reco_pi_minus_p4.E - truth_pi_minus_p4.E
+        #     fig, ax = plt.subplots(dpi=300)
+        #     bins = np.linspace(-5, 5, 51)
+        #     ax.hist(energy_diff_pi_plus, bins=bins, histtype='step', density=False, label=r'$\pi^{+}$', color='blue', linewidth=1.5)
+        #     ax.hist(energy_diff_pi_minus, bins=bins, histtype='step', density=False, label=r'$\pi^{-}$', color='orange', linewidth=1.5)
+        #     ax.set_xlabel('Reconstructed Energy - Generated Energy [GeV]')
+        #     ax.set_ylabel('Entries')
+        #     ax.set_title('Energy Difference between Generated and Reconstructed Pions')
+        #     ax.legend()
+        #     fig.tight_layout()
+        #     fig.savefig(os.path.join(cur_output_dir, 'pion_reco_vs_truth_energy_diff.png'))
 
         # ###############################################
         # # study truth composition 

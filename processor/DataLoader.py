@@ -12,156 +12,310 @@ from utils.common_functions import get_p4_from_ak_events, get_color_iterator, ge
 
 log = logging.getLogger(__name__)
 
-def filter_leplep_channel(events: ak.Array, filter_log_dict: dict):
-    filter_log_dict['leplep channel initial'] = filter_log_dict.get('leplep channel initial', 0) + len(events)
-    recpart_pdgid = events['Part_pdgId']
-    recpart_abspdgid = abs(recpart_pdgid)
-    recpart_charge = events['Part_charge']
+# def filter_leplep_channel(events: ak.Array, filter_log_dict: dict):
+#     filter_log_dict['leplep channel initial'] = filter_log_dict.get('leplep channel initial', 0) + len(events)
+#     recpart_pdgid = events['Part_pdgId']
+#     recpart_abspdgid = abs(recpart_pdgid)
+#     # recpart_charge = events['Part_charge']
 
-    pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+#     pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
 
-    flag_is_mu = (recpart_abspdgid == 6)
-    flag_is_el = (recpart_abspdgid == 2)
-    flag_is_lepton = flag_is_mu | flag_is_el
+#     flag_is_mu = (recpart_abspdgid == 6)
+#     flag_is_el = (recpart_abspdgid == 2)
+#     flag_is_lepton = flag_is_mu | flag_is_el
 
-    # only contains two leptons in opposite charge
-    pass_filter = (ak.sum(flag_is_lepton, axis=1) == 2) & pass_filter
-    filter_log_dict['2 leptons'] = filter_log_dict.get('2 leptons', 0) + ak.sum(pass_filter)
+#     # only contains two leptons in opposite charge
+#     pass_filter = (ak.sum(flag_is_lepton, axis=1) == 2) & pass_filter
+#     filter_log_dict['2 leptons'] = filter_log_dict.get('2 leptons', 0) + ak.sum(pass_filter)
 
-    charge_ary_of_leptons = recpart_charge[flag_is_lepton]
-    flag_opposite_charge = (ak.sum(charge_ary_of_leptons, axis=1) == 0)
-    pass_filter = flag_opposite_charge & pass_filter
-    filter_log_dict['opposite charge'] = filter_log_dict.get('opposite charge', 0) + ak.sum(pass_filter)
+#     # charge_ary_of_leptons = recpart_charge[flag_is_lepton]
+#     # flag_opposite_charge = (ak.sum(charge_ary_of_leptons, axis=1) == 0)
+#     pass_filter = flag_opposite_charge & pass_filter
+#     filter_log_dict['opposite charge'] = filter_log_dict.get('opposite charge', 0) + ak.sum(pass_filter)
 
-    events_leplep = events[pass_filter & flag_opposite_charge]
+#     events_leplep = events[pass_filter & flag_opposite_charge]
 
-    return events_leplep, filter_log_dict
+#     return events_leplep, filter_log_dict
     
 
 
-def filter_pipi_channel(events: ak.Array, filter_log_dict: dict):
-    filter_log_dict['pipi channel initial'] = filter_log_dict.get('pipi channel initial', 0) + len(events)
-    recpart_pdgid = events['Part_pdgId']
-    recpart_abspdgid = abs(recpart_pdgid)
-    recpart_charge = events['Part_charge']
+# def filter_pipi_channel(events: ak.Array, filter_log_dict: dict):
+#     filter_log_dict['pipi channel initial'] = filter_log_dict.get('pipi channel initial', 0) + len(events)
+#     recpart_pdgid = events['Part_pdgId']
+#     recpart_abspdgid = abs(recpart_pdgid)
+#     # recpart_charge = events['Part_charge']
+
+#     pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+
+#     # no other hadronic particles in reco particles
+#     pass_filter = (ak.sum(
+#         (recpart_abspdgid == 47) |  # pi0
+#         (recpart_abspdgid == 42) |  # kaon+
+#         (recpart_abspdgid == 61) |  # KS
+#         (recpart_abspdgid == 62) |  # KL
+#         (recpart_abspdgid == 65) |  # proton
+#         (recpart_abspdgid == 66) |  # neutron
+#         (recpart_abspdgid == 81) |  # lambda
+#         (recpart_abspdgid == 0),   # undefined
+#       axis=1) == 0) & pass_filter
+#     filter_key = 'no other hadrons'
+#     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+
+#     # no electrons or muons in reco particles
+#     pass_filter = (ak.sum(
+#         (recpart_abspdgid == 2) |  # electron
+#         (recpart_abspdgid == 6),  # muon
+#       axis=1) == 0) & pass_filter
+#     filter_key = 'no e/mu'    
+#     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+
+#     # no less than two pions (regardless of charge for now) in reco particles
+#     pass_filter = (ak.sum((recpart_abspdgid == 41), axis=1) >= 2) & pass_filter
+#     # exactly one pi+ and one pi-
+#     # charge_ary_of_pions = recpart_charge[recpart_abspdgid == 41]
+#     flag_pi_plus_and_pi_minus = (ak.sum(charge_ary_of_pions == 1, axis=1) == 1 ) & (ak.sum(charge_ary_of_pions == -1, axis=1) == 1)
+#     pass_filter = flag_pi_plus_and_pi_minus & pass_filter
+#     filter_key = '1 pi+ and 1 pi-'
+#     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+
+#     events_pipi = events[pass_filter & flag_pi_plus_and_pi_minus]
+#     # define some new variables for pipi events
+#     # p4_piplus = get_p4_from_ak_events(events_pipi, (abs(events_pipi['Part_pdgId']) == 41) & (events_pipi['Part_charge'] == 1))
+#     # p4_piminus = get_p4_from_ak_events(events_pipi, (abs(events_pipi['Part_pdgId']) == 41) & (events_pipi['Part_charge'] == -1))
+#     P_rad = ((p4_piplus.px**2 + p4_piplus.py**2 + p4_piplus.pz**2) + (p4_piminus.px**2 + p4_piminus.py**2 + p4_piminus.pz**2))**0.5
+#     events_pipi['P_rad'] = P_rad
+#     # filtered_events['pipi'] = events_pipi
+
+
+#     ##########################
+#     # define SR
+#     ##########################
+#     reco_abs_pdgId = np.abs(events_pipi['Part_pdgId'])
+#     # reco_charge = events_pipi['Part_charge']
+#     flag_pion = (reco_abs_pdgId == 41)
+#     flag_piplus = flag_pion & (reco_charge == 1)
+#     flag_piminus = flag_pion & (reco_charge == -1)
+#     p4_piplus = get_p4_from_ak_events(events_pipi, flag_piplus)
+#     p4_piminus = get_p4_from_ak_events(events_pipi, flag_piminus)
+#     p4_dipion = p4_piplus + p4_piminus
+
+#     pass_filter_sr = ak.ones_like(events_pipi['evtNumber'], dtype=bool)
+#     # only two reconstructed particles
+#     pass_filter_sr = (ak.num(events_pipi['Part_pdgId']) == 2) & pass_filter_sr
+#     filter_key = 'nParticles == 2'
+#     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+
+#     # angle between dipions
+#     angle_between_pions = p4_piplus.deltaangle(p4_piminus)
+#     pass_filter_sr = (angle_between_pions > 2.99) & (angle_between_pions < 3.1) & pass_filter_sr
+#     filter_key = 'Pions angle between 2.99 and 3.1'
+#     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+
+#     # dipion invariant mass
+#     dipion_mass = p4_dipion.mass
+#     pass_filter_sr = (dipion_mass > 10) & (dipion_mass < 85) & pass_filter_sr
+#     filter_key = 'Dipion mass between 10 and 85 GeV'
+#     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+
+#     # total energy
+#     total_energy = ak.sum(events_pipi['Part_fourMomentum_fCoordinates_fT'], axis=-1)
+#     pass_filter_sr = (total_energy < 80) & (total_energy > 20) & pass_filter_sr
+#     filter_key = 'Total energy between 20 and 80 GeV'
+#     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+
+#     # missing momentum 
+#     missing_px = -ak.sum(events_pipi['Part_fourMomentum_fCoordinates_fX'], axis=-1)
+#     missing_py = -ak.sum(events_pipi['Part_fourMomentum_fCoordinates_fY'], axis=-1)
+#     missing_pz = - ak.sum(events_pipi['Part_fourMomentum_fCoordinates_fZ'], axis=-1)
+#     missing_p = np.sqrt(missing_px**2 + missing_py**2 + missing_pz**2)
+#     pass_filter_sr = (missing_p < 40) & pass_filter_sr
+#     filter_key = 'Missing p < 40 GeV'
+#     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+
+#     # P_rad
+#     pass_filter_sr = (events_pipi['P_rad'] < cme/2) & pass_filter_sr
+#     filter_key = 'P_rad < cme/2'
+#     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+
+#     # log10_1mthrust
+#     log10_1mthrust = np.log10(1 - events_pipi['thrust_Mag'])
+#     pass_filter_sr = (log10_1mthrust < -2.5) & pass_filter_sr
+#     filter_key = 'log10(1 - thrust) < -2.5'
+#     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+
+#     events_sr = events_pipi[pass_filter_sr]
+
+#     return events_sr, filter_log_dict
+
+def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
+    filter_log_dict['pirho channel initial'] = filter_log_dict.get('pirho channel initial', 0) + len(events)
+    genpart_pdgid = events['GenPart_pdgId']
+    genpart_abspdgid = abs(genpart_pdgid)
+    # recpart_charge = events['Part_charge']
 
     pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+    # print("evtNumber: ", ak.sum(pass_filter))
 
-    # no other hadronic particles in reco particles
+    #All commented print statements are for debugging purposes only and can be ignored or used if needed.
+
+    # no other hadronic particles in truth particles
     pass_filter = (ak.sum(
-        (recpart_abspdgid == 47) |  # pi0
-        (recpart_abspdgid == 42) |  # kaon+
-        (recpart_abspdgid == 61) |  # KS
-        (recpart_abspdgid == 62) |  # KL
-        (recpart_abspdgid == 65) |  # proton
-        (recpart_abspdgid == 66) |  # neutron
-        (recpart_abspdgid == 81) |  # lambda
-        (recpart_abspdgid == 0),   # undefined
+        (genpart_abspdgid == 47) |  # pi0
+        (genpart_abspdgid == 42) |  # kaon+
+        (genpart_abspdgid == 61) |  # KS
+        (genpart_abspdgid == 62) |  # KL
+        (genpart_abspdgid == 65) |  # proton
+        (genpart_abspdgid == 66) |  # neutron
+        (genpart_abspdgid == 81) |  # lambda
+        (genpart_abspdgid == 0),    # undefined
       axis=1) == 0) & pass_filter
     filter_key = 'no other hadrons'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+    # print("Hadron Filter: ", ak.sum(pass_filter))
+    
+    
+    # # no electrons or muons in truth particles
+    # pass_filter = (ak.sum(
+    #     (genpart_abspdgid == 11) |  # electron
+    #     (genpart_abspdgid == 13),  # muon
+    #   axis=1) == 0) & pass_filter
+    # filter_key = 'no e/mu'    
+    # filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+    # print("e/mu Filter: ", ak.sum(pass_filter))
 
-    # no electrons or muons in reco particles
-    pass_filter = (ak.sum(
-        (recpart_abspdgid == 2) |  # electron
-        (recpart_abspdgid == 6),  # muon
-      axis=1) == 0) & pass_filter
-    filter_key = 'no e/mu'    
+
+    # at least one pi+/-, one pi0
+    flag_pi_and_pi0 = (ak.sum(genpart_pdgid == 211, axis=1) == 1 ) & (ak.sum(genpart_pdgid == -211, axis=1) == 1 ) & (ak.sum(genpart_pdgid == 111, axis=1) == 1)
+    pass_filter = flag_pi_and_pi0 & pass_filter
+    filter_key = 'Rho, 1 of each pi+/- and 1 pi0'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+    # print("Rho Filter: ", ak.sum(pass_filter))
 
-    # no less than two pions (regardless of charge for now) in reco particles
-    pass_filter = (ak.sum((recpart_abspdgid == 41), axis=1) >= 2) & pass_filter
-    # exactly one pi+ and one pi-
-    charge_ary_of_pions = recpart_charge[recpart_abspdgid == 41]
-    flag_pi_plus_and_pi_minus = (ak.sum(charge_ary_of_pions == 1, axis=1) == 1 ) & (ak.sum(charge_ary_of_pions == -1, axis=1) == 1)
-    pass_filter = flag_pi_plus_and_pi_minus & pass_filter
-    filter_key = '1 pi+ and 1 pi-'
-    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+    events_pirho = events[pass_filter & flag_pi_and_pi0]
 
-    events_pipi = events[pass_filter & flag_pi_plus_and_pi_minus]
-    # define some new variables for pipi events
-    p4_piplus = get_p4_from_ak_events(events_pipi, (abs(events_pipi['Part_pdgId']) == 41) & (events_pipi['Part_charge'] == 1))
-    p4_piminus = get_p4_from_ak_events(events_pipi, (abs(events_pipi['Part_pdgId']) == 41) & (events_pipi['Part_charge'] == -1))
-    P_rad = ((p4_piplus.px**2 + p4_piplus.py**2 + p4_piplus.pz**2) + (p4_piminus.px**2 + p4_piminus.py**2 + p4_piminus.pz**2))**0.5
-    events_pipi['P_rad'] = P_rad
-    # filtered_events['pipi'] = events_pipi
+    # define some new variables for pirho events
+    p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
+    # print("p4_piplus: ", p4_piplus)
+    p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211))
+    # print("p4_piminus: ", p4_piminus)
+    p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111))
+    # print("p4_pi0: ", p4_pi0) 
 
+    px = ak.sum(p4_piplus.px) + ak.sum(p4_pi0.px) + ak.sum(p4_piminus.px)
+    py = ak.sum(p4_piplus.py) + ak.sum(p4_pi0.py) + ak.sum(p4_piminus.py)
+    pz = ak.sum(p4_piplus.pz) + ak.sum(p4_pi0.pz) + ak.sum(p4_piminus.pz)
+    P_rad = (px**2 + py**2 + pz**2)**0.5
+    events_pirho['P_rad'] = P_rad
+    # print("P_rad: ", P_rad)
 
     ##########################
     # define SR
-    ##########################
-    reco_abs_pdgId = np.abs(events_pipi['Part_pdgId'])
-    reco_charge = events_pipi['Part_charge']
-    flag_pion = (reco_abs_pdgId == 41)
-    flag_piplus = flag_pion & (reco_charge == 1)
-    flag_piminus = flag_pion & (reco_charge == -1)
-    p4_piplus = get_p4_from_ak_events(events_pipi, flag_piplus)
-    p4_piminus = get_p4_from_ak_events(events_pipi, flag_piminus)
-    p4_dipion = p4_piplus + p4_piminus
+    ########################## 
+    genpart_abs_pdgId = np.abs(events_pirho['GenPart_pdgId'])
+    p4_rho = p4_piminus + p4_pi0
+    p4_pirho = p4_piplus + p4_rho
+    # print("p4_rho: ", p4_rho)
+    # print("p4_pirho: ", p4_pirho)
+    pass_filter_sr = ak.ones_like(events_pirho['evtNumber'], dtype=bool)
 
-    pass_filter_sr = ak.ones_like(events_pipi['evtNumber'], dtype=bool)
-    # only two reconstructed particles
-    pass_filter_sr = (ak.num(events_pipi['Part_pdgId']) == 2) & pass_filter_sr
-    filter_key = 'nParticles == 2'
+
+    # angle between rho/pion
+    angle_between_pirho = p4_piplus.deltaangle(p4_rho)
+    # print("angle_between_pirho: ", angle_between_pirho)
+    mask1 = (angle_between_pirho > 2.90) & (angle_between_pirho < 3.10)
+    mask_event1 = ak.any(mask1, axis=-1)
+    pass_filter_sr = mask_event1 & pass_filter_sr
+    filter_key = 'Pions angle between 2.90 and 3.10'
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+    
+
+    # Rho invariant mass
+    rho_mass = p4_rho.mass
+    # print("rho_mass: ", rho_mass)
+    mask2 = (rho_mass > 0.70) & (rho_mass < 0.84)
+    mask_event2 = ak.any(mask2, axis=-1)
+    pass_filter_sr = mask_event2 & pass_filter_sr
+    filter_key = 'Rho mass between 0.70 and 0.84 GeV'
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+   
+
+    # charged pion mass
+    pion_mass = p4_piplus.mass
+    # print("pion_mass: ", pion_mass)
+    mask2 = (pion_mass > 0.08) & (pion_mass < 0.2)
+    mask_event2 = ak.any(mask2, axis=-1)
+    pass_filter_sr = mask_event2 & pass_filter_sr
+    filter_key = 'Pion mass between 0.08 and 0.2 GeV'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
 
-    # angle between dipions
-    angle_between_pions = p4_piplus.deltaangle(p4_piminus)
-    pass_filter_sr = (angle_between_pions > 2.99) & (angle_between_pions < 3.1) & pass_filter_sr
-    filter_key = 'Pions angle between 2.99 and 3.1'
-    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
 
-    # dipion invariant mass
-    dipion_mass = p4_dipion.mass
-    pass_filter_sr = (dipion_mass > 10) & (dipion_mass < 85) & pass_filter_sr
-    filter_key = 'Dipion mass between 10 and 85 GeV'
+    # neutral pion mass
+    pi0_mass = p4_pi0.mass
+    # print("pi0_mass: ", pi0_mass)
+    mask2 = (pi0_mass > 0.08) & (pi0_mass < 0.14)
+    mask_event2 = ak.any(mask2, axis=-1)
+    pass_filter_sr = mask_event2 & pass_filter_sr
+    filter_key = 'Pi0 mass between 0.08 and 0.14 GeV'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+    
+
+    # pirho invariant mass
+    pirho_mass = p4_pirho.mass
+    # print("pirho_mass: ", pirho_mass)
+    mask3 = (pirho_mass > 10) & (pirho_mass < 85)
+    mask_event3 = ak.any(mask3, axis=-1)
+    pass_filter_sr = mask_event3 & pass_filter_sr
+    filter_key = 'PiRho mass between 10 and 85 GeV'
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+    
 
     # total energy
-    total_energy = ak.sum(events_pipi['Part_fourMomentum_fCoordinates_fT'], axis=-1)
-    pass_filter_sr = (total_energy < 80) & (total_energy > 20) & pass_filter_sr
-    filter_key = 'Total energy between 20 and 80 GeV'
+    total_energy = ak.sum(events_pirho['GenPart_vector_fCoordinates_fT'], axis=-1)
+    # print("total_energy: ", total_energy)
+    pass_filter_sr = (total_energy < 600) & (total_energy > 400) & pass_filter_sr
+    filter_key = 'Total energy between 400 and 600 GeV'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+   
 
-    # missing momentum 
-    missing_px = -ak.sum(events_pipi['Part_fourMomentum_fCoordinates_fX'], axis=-1)
-    missing_py = -ak.sum(events_pipi['Part_fourMomentum_fCoordinates_fY'], axis=-1)
-    missing_pz = - ak.sum(events_pipi['Part_fourMomentum_fCoordinates_fZ'], axis=-1)
+    # missing momentum
+    missing_px = -ak.sum(events_pirho['GenPart_vector_fCoordinates_fX'], axis=-1)
+    missing_py = -ak.sum(events_pirho['GenPart_vector_fCoordinates_fY'], axis=-1)
+    missing_pz = -ak.sum(events_pirho['GenPart_vector_fCoordinates_fZ'], axis=-1)
     missing_p = np.sqrt(missing_px**2 + missing_py**2 + missing_pz**2)
-    pass_filter_sr = (missing_p < 40) & pass_filter_sr
-    filter_key = 'Missing p < 40 GeV'
+    # print("missing_p: ", missing_p)
+    pass_filter_sr = (missing_p < 80) & pass_filter_sr
+    filter_key = 'Missing p < 80 GeV'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+    
 
     # P_rad
-    pass_filter_sr = (events_pipi['P_rad'] < cme/2) & pass_filter_sr
+    mask4 = (events_pirho['P_rad'] < cme/2)
+    mask_event4 = ak.any(mask4, axis=-1)
+    pass_filter_sr = mask_event4 & pass_filter_sr
     filter_key = 'P_rad < cme/2'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
 
-    # log10_1mthrust
-    log10_1mthrust = np.log10(1 - events_pipi['thrust_Mag'])
-    pass_filter_sr = (log10_1mthrust < -2.5) & pass_filter_sr
-    filter_key = 'log10(1 - thrust) < -2.5'
-    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
 
-    events_sr = events_pipi[pass_filter_sr]
-
+    events_sr = events_pirho[pass_filter_sr]
+    # print('Check for debugging 7')
     return events_sr, filter_log_dict
-
 
 def filter_event(events: ak.Array, filter_log_dict: dict):
     filtered_events_dict = {
         'raw': events,
     }
     events_copy = copy.deepcopy(events)
-    filtered_events, filter_log_dict = filter_pipi_channel(events_copy, filter_log_dict)
-    filtered_events_dict['pipi'] = filtered_events
+    # filtered_events, filter_log_dict = filter_pipi_channel(events_copy, filter_log_dict)
+    # filtered_events_dict['pipi'] = filtered_events
 
-    filtered_events, filter_log_dict = filter_leplep_channel(events_copy, filter_log_dict)
-    filtered_events_dict['leplep'] = filtered_events
+    # filtered_events, filter_log_dict = filter_leplep_channel(events_copy, filter_log_dict)
+    # filtered_events_dict['leplep'] = filtered_events
+
+    filtered_events, filter_log_dict = filter_pirho_channel(events_copy, filter_log_dict)
+    filtered_events_dict['pirho'] = filtered_events
 
 
     return filtered_events_dict, filter_log_dict
-
 
 class DataLoader:
     def __init__(self, config, output_dir):
@@ -174,7 +328,7 @@ class DataLoader:
         os.makedirs(self.output_dir, exist_ok=True)
         self.tree_name = self.config.get("tree_name", "t")
         self.input_files = self.config.get("input_files", [])
-        self.region_of_interest = self.config.get("region_of_interest", "pipi")
+        self.region_of_interest = self.config.get("region_of_interest", "pirho")
         self.is_data = self.config.get("is_data", False)
 
         if not self.input_files:
@@ -223,13 +377,13 @@ class DataLoader:
         f = ur.open(self.input_files[0])
         tree = f[self.tree_name]
 
-        common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart", 
+        common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy"] 
         # "event_category"
-        ]
         gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
         gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
         
-        part_branches = ["charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood"]
+        #removed "charge" branch
+        part_branches = ["pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT"]
         part_branches = [f'Part_{b}' for b in part_branches]
 
         particleID_branches = [
@@ -238,7 +392,7 @@ class DataLoader:
             # "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
         ]
 
-        branches_to_load = common_evt_branches + part_branches + particleID_branches
+        branches_to_load = common_evt_branches + gen_part_branches + part_branches
         if not self.is_data:
             branches_to_load += gen_part_branches
 
@@ -260,13 +414,13 @@ class DataLoader:
                 events['initial_total_num_events'] = len(events)
                 initial_total_num_events += len(events)
 
-                # select Part_xxx via isGood flag
-                part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
-                flag_not_0pdgid = (events['Part_pdgId'] != 0)
-                events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) # & flag_not_0pdgid
-                for part_branch in part_branches + particleID_branches:
-                    if part_branch != 'Part_isGood':
-                        events[part_branch] = events[part_branch][events['Part_isGood']] 
+                # # select Part_xxx via isGood flag
+                # part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
+                # flag_not_0pdgid = (events['Part_pdgId'] != 0)
+                # events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) # & flag_not_0pdgid
+                # for part_branch in part_branches + particleID_branches:
+                #     if part_branch != 'Part_isGood':
+                #         events[part_branch] = events[part_branch][events['Part_isGood']] 
 
                 if not self.is_data:
                     # get truth info of tau pair and tau neutrinos
@@ -382,6 +536,7 @@ class DataLoader:
         # np.save(structured_output_file, self.structured_data)
         # # To load the structured data, use: np.load(structured_output_file, allow_pickle=True).item()
         # log.info(f"Structured data saved to {structured_output_file}.")
+        # np.load(structured_output_file, allow_pickle=True).item()
 
 
     def run(self, dl):
@@ -396,7 +551,7 @@ if __name__ == "__main__":
     logging.basicConfig(level = logging.DEBUG, format = ">>> [%(levelname)s]: %(message)s")
     config = {
         "tree_name": "t",
-        "input_files": "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251029_Ztautau_singlePionDecay/simana_job_17827112_*_ttree.root",
+        "input_files": "/eos/user/c/clamore/DELPHI/delphi-nanoaod/parton_3pion_root_out/simulation/v94c/91.25/pythia8/nanoaod_simana_job_*_ttree.root",
         # "input_files": "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251031_Ztautau_singlePi/simana_job_*_ttree.root",
         # "input_files": "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251031_Ztautau_singlePi/simana_job_17841601_*_ttree.root",
 
@@ -404,11 +559,3 @@ if __name__ == "__main__":
     }
 
     loader = DataLoader(config)
-
-    # import numpy as np
-    # import pandas as pd
-    # # test reading output file
-    # df = pd.read_hdf("filtered_data.h5")
-    # print(df)
-    # ary = np.load("filtered_data_structured.npy", allow_pickle=True).item()
-    # print(ary)

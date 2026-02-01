@@ -1,15 +1,16 @@
-default_output_dir: "./output-leplep/"
-region_of_interest: &RegionName "leplep"
+default_output_dir: "./output-pirho/"
+region_of_interest: &RegionName "pirho"
 
 DataLoaders:
-  data94:
-    name: "data94"
-    tree_name: "t"
-    region_of_interest: *RegionName
-    is_data: true
-    is_signal: false
-    input_files:
-      - "/eos/home-y/yulei/Ztautau/ntuple/collision_data/v94c/91.25/nanoaod_*.al_ttree.root"
+  # data94:
+  #   name: "data94"
+  #   tree_name: "t"
+  #   region_of_interest: *RegionName
+  #   norm_factor: 1458.9 # pb
+  #   is_data: true
+  #   is_signal: false
+  #   input_files:
+  #     - "/eos/user/c/clamore/DELPHI/delphi-nanoaod/parton_3pion_root_out/simulation/v94c/91.25/pythia8/nanoaod_simana_job_*_ttree.root"
   
   # Ztautau_pipm:
   #   name: "Ztautau_pipm"
@@ -31,31 +32,31 @@ DataLoaders:
     is_signal: false
     norm_factor: 1458.9 # pb
     input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_tautau/simana_*_ttree.root"
+      - "/eos/user/c/clamore/DELPHI/delphi-nanoaod/parton_3pion_root_out/simulation/v94c/91.25/pythia8/nanoaod_simana_job_*_ttree.root"
       
-  Zll:
-    name: "Zll"
-    tree_name: "t"
-    region_of_interest: *RegionName
-    is_data: false
-    is_signal: false
-    norm_factor:  2844.4 # pb
-    input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_ll/simana_*_ttree.root"
+  # Zll:
+  #   name: "Zll"
+  #   tree_name: "t"
+  #   region_of_interest: *RegionName
+  #   is_data: false
+  #   is_signal: false
+  #   norm_factor:  2844.4 # pb
+  #   input_files:
+  #     - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_ll/simana_*_ttree.root"
 
-  Zqq:
-    name: "Zqq"
-    tree_name: "t"
-    region_of_interest: *RegionName
-    is_data: false
-    is_signal: false
-    # norm_factor: 0.699 # branch ratio of Z->qq
-    # norm_factor: 29.7476 # nb
-    norm_factor: 30511.2 # pb
-    input_files:
-      # - "/eos/home-y/yulei/Ztautau/ntuple/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_*_ttree.root"
-      # - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq/simana_3*_ttree.root"
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq/simana_*_ttree.root"
+  # Zqq:
+  #   name: "Zqq"
+  #   tree_name: "t"
+  #   region_of_interest: *RegionName
+  #   is_data: false
+  #   is_signal: false
+  #   # norm_factor: 0.699 # branch ratio of Z->qq
+  #   # norm_factor: 29.7476 # nb
+  #   norm_factor: 30511.2 # pb
+  #   input_files:
+  #     # - "/eos/home-y/yulei/Ztautau/ntuple/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_*_ttree.root"
+  #     # - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq/simana_3*_ttree.root"
+  #     - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq/simana_*_ttree.root"
 
 Processors:
   PlotProcessor: 
@@ -66,5 +67,6 @@ Processors:
     luminosity: 46.3 # pb^-1
     channels:
       # - "pipi"
-      - "leplep"
+      #- "leplep"
+      - "pirho"
   # NeutrinoReconstructionProcessor:
