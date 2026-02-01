@@ -15,7 +15,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
     def get_p_rad(dl):
         events = dl.data.get(region_name)
         return events['P_rad']
-    bin_edges = np.linspace(0, 40, 21)
+    bin_edges = np.linspace(0, 90, 51)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
         func_get_variable=get_p_rad,
@@ -27,21 +27,6 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
     # ax.vlines(x=cme/2, ymin=0, ymax=ax.get_ylim()[1], colors='b', linestyles='dashed', label='cme/2')
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_p_rad.png")
-    # def get_e_rad(dl):
-    #     events = dl.data.get(region_name)
-    #     return events['E_rad']
-    # bin_edges = np.linspace(0, 100, 21)
-    # fig, ax, ax_ratio = do_control_plot(
-    #     dl_dict,
-    #     func_get_variable=get_e_rad,
-    #     bin_edges=bin_edges,
-    #     x_label='E_rad [GeV]',
-    #     title='Control Plot: E_rad',
-    #     luminosity=luminosity, normalize=normalize,
-    # )
-    # ax.vlines(x=cme/2, ymin=0, ymax=ax.get_ylim()[1], colors='b', linestyles='dashed', label='cme/2')
-    # plt.tight_layout()
-    # plt.savefig(f"{output_dir}/control_plot_e_rad.png")
 
     ########################################################
     # total energy
@@ -50,7 +35,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
         events = dl.data.get(region_name)
         total_energy = ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=-1)
         return total_energy
-    bin_edges = np.linspace(20, 80, 21)
+    bin_edges = np.linspace(0, 90, 51)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
         func_get_variable=get_total_energy,
@@ -67,11 +52,11 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
     ########################################################
     def get_pion_theta(dl):
         events = dl.data.get(region_name)
-        reco_pdgId = events['Part_pdgId']
-        reco_abs_pdgId = np.abs(reco_pdgId)
-        flag_pion = (reco_abs_pdgId == 41)
-        p4_pion = get_sum_p4_from_ak_events(events, flag_pion)
-        theta = p4_pion.theta * 180 / np.pi  # convert to degrees
+        p4_piplus = events['Part_p4'][events['flag_is_lead_piplus']]
+        p4_piminus = events['Part_p4'][events['flag_is_lead_piminus']]
+        # p4_pions = add_arrays_of_p4([p4_piplus, p4_piminus])
+        p4_pions = p4_piplus + p4_piminus
+        theta = p4_pions.theta * 180 / np.pi  # convert to degrees
         return theta
 
     bin_edges = np.linspace(0, 180, 21)
@@ -88,12 +73,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
 
     def get_piplus_theta(dl):
         events = dl.data.get(region_name)
-        reco_pdgId = events['Part_pdgId']
-        reco_charge = events['Part_charge']
-        reco_abs_pdgId = np.abs(reco_pdgId)
-        flag_pion = (reco_abs_pdgId == 41)
-        flag_piplus = flag_pion & (reco_charge == 1)
-        p4_piplus = get_p4_from_ak_events(events, flag_piplus)
+        p4_piplus = events['Part_p4'][events['flag_is_lead_piplus']]
         theta = p4_piplus.theta * 180 / np.pi  # convert to degrees
         return theta
     bin_edges = np.linspace(0, 180, 21)
@@ -129,189 +109,45 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_pion_minus_theta.png")
 
-    def get_piplus_phi(dl):
-        events = dl.data.get(region_name)
-        reco_pdgId = events['Part_pdgId']
-        reco_charge = events['Part_charge']
-        reco_abs_pdgId = np.abs(reco_pdgId)
-        flag_pion = (reco_abs_pdgId == 41)
-        flag_piplus = flag_pion & (reco_charge == 1)
-        p4_piplus = get_p4_from_ak_events(events, flag_piplus)
-        phi = p4_piplus.phi * 180 / np.pi  # convert to degrees
-        return phi
-    bin_edges = np.linspace(-180, 180, 21)
-    fig, ax, ax_ratio = do_control_plot(
-        dl_dict,
-        func_get_variable=get_piplus_phi,
-        bin_edges=bin_edges,
-        x_label='Pion+ Phi [degrees]',
-        title='Control Plot: Pion+ Phi',
-        luminosity=luminosity, normalize=normalize,
-    )
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/control_plot_pion_plus_phi.png")
-    def get_piminus_phi(dl):
-        events = dl.data.get(region_name)
-        reco_pdgId = events['Part_pdgId']
-        reco_charge = events['Part_charge']
-        reco_abs_pdgId = np.abs(reco_pdgId)
-        flag_pion = (reco_abs_pdgId == 41)
-        flag_piminus = flag_pion & (reco_charge == -1)
-        p4_piminus = get_p4_from_ak_events(events, flag_piminus)
-        phi = p4_piminus.phi * 180 / np.pi  # convert to degrees
-        return phi
-    bin_edges = np.linspace(-180, 180, 21)
-    fig, ax, ax_ratio = do_control_plot(
-        dl_dict,
-        func_get_variable=get_piminus_phi,
-        bin_edges=bin_edges,
-        x_label='Pion- Phi [degrees]',
-        title='Control Plot: Pion- Phi',
-        luminosity=luminosity, normalize=normalize,
-    )
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/control_plot_pion_minus_phi.png")
-
-
-    ########################################################
-    # pion pm pt
-    #########################################################
-    # def get_pion_plus_pt(dl):
-    #     events = dl.data.get(region_name)
-    #     reco_pdgId = events['Part_pdgId']
-    #     reco_charge = events['Part_charge']
-    #     reco_abs_pdgId = np.abs(reco_pdgId)
-    #     flag_pion = (reco_abs_pdgId == 41)
-    #     flag_piplus = flag_pion & (reco_charge == 1)
-    #     p4_piplus = get_p4_from_ak_events(events, flag_piplus)
-    #     return p4_piplus.pt
-    # bin_edges = np.linspace(0, 70, 21)
-    # fig, ax, ax_ratio = do_control_plot(
-    #     dl_dict,
-    #     func_get_variable=get_pion_plus_pt,
-    #     bin_edges=bin_edges,
-    #     x_label='Transverse Momentum of Pion+ [GeV]',
-    #     title='Control Plot: Pion+ Transverse Momentum',
-    #     luminosity=luminosity, normalize=normalize,
-    # )
-    # plt.tight_layout()
-    # plt.savefig(f"{output_dir}/control_plot_pion_plus_pt.png")
-    # def get_pion_minus_pt(dl):
-    #     events = dl.data.get(region_name)
-    #     reco_pdgId = events['Part_pdgId']
-    #     reco_charge = events['Part_charge']
-    #     reco_abs_pdgId = np.abs(reco_pdgId)
-    #     flag_pion = (reco_abs_pdgId == 41)
-    #     flag_piminus = flag_pion & (reco_charge == -1)
-    #     p4_piminus = get_p4_from_ak_events(events, flag_piminus)
-    #     return p4_piminus.pt
-    # bin_edges = np.linspace(0, 70, 21)
-    # fig, ax, ax_ratio = do_control_plot(
-    #     dl_dict,
-    #     func_get_variable=get_pion_minus_pt,
-    #     bin_edges=bin_edges,
-    #     x_label='Transverse Momentum of Pion- [GeV]',
-    #     title='Control Plot: Pion- Transverse Momentum',
-    #     luminosity=luminosity, normalize=normalize,
-    # )
-    # plt.tight_layout()
-    # plt.savefig(f"{output_dir}/control_plot_pion_minus_pt.png")
     for charge in ['plus', 'minus']:
-        def get_pion_pt(dl, charge=charge):
-            events = dl.data.get(region_name)
-            reco_pdgId = events['Part_pdgId']
-            reco_charge = events['Part_charge']
-            reco_abs_pdgId = np.abs(reco_pdgId)
-            flag_pion = (reco_abs_pdgId == 41)
-            if charge == 'plus':
-                flag = flag_pion & (reco_charge == 1)
-            else:
-                flag = flag_pion & (reco_charge == -1)
-            p4_pion = get_p4_from_ak_events(events, flag)
-            return p4_pion.pt
-        bin_edges = np.linspace(0, 70, 21)
-        fig, ax, ax_ratio = do_control_plot(
-            dl_dict,
-            func_get_variable=lambda dl, charge=charge: get_pion_pt(dl, charge),
-            bin_edges=bin_edges,
-            x_label=f'Transverse Momentum of Pion{charge} [GeV]',
-            title=f'Control Plot: Pion{charge} Transverse Momentum',
-            luminosity=luminosity, normalize=normalize,
-        )
-        plt.tight_layout()
-        plt.savefig(f"{output_dir}/control_plot_pion_{charge}_pt.png") 
+        for var in ['phi', 'theta', 'pt', 'px', 'py', 'pz', 'pt']:
+            if var == 'phi':
+                bin_edges = np.linspace(-np.pi, np.pi, 21)
+                x_label = f'Pion{charge} Phi [rad]'
+            elif var == 'theta':
+                bin_edges = np.linspace(0, 180, 21)
+                x_label = f'Pion{charge} Theta [degrees]'
+            elif var == 'pt':
+                bin_edges = np.linspace(0, 70, 21)
+                x_label = f'Pion{charge} Pt [GeV]'
+            elif var == 'px':
+                bin_edges = np.linspace(-70, 70, 21)
+                x_label = f'Pion{charge} Px [GeV]'
+            elif var == 'py':
+                bin_edges = np.linspace(-70, 70, 21)
+                x_label = f'Pion{charge} Py [GeV]'
+            elif var == 'pz':
+                bin_edges = np.linspace(-50, 50, 21)
+                x_label = f'Pion{charge} Pz [GeV]'
+            def get_pion_var(dl, charge=charge, var=var):
+                events = dl.data.get(region_name)
+                pi_p4 = events['Part_p4'][events[f'flag_is_lead_pi{charge}']]
+                var_ary = getattr(pi_p4, var)
+                if var in ['theta']:
+                    var_ary = var_ary * 180 / np.pi  # convert to degrees
+                return var_ary
 
-        def get_pion_px(dl, charge=charge):
-            events = dl.data.get(region_name)
-            reco_pdgId = events['Part_pdgId']
-            reco_charge = events['Part_charge']
-            reco_abs_pdgId = np.abs(reco_pdgId)
-            flag_pion = (reco_abs_pdgId == 41)
-            if charge == 'plus':
-                flag = flag_pion & (reco_charge == 1)
-            else:
-                flag = flag_pion & (reco_charge == -1)
-            p4_pion = get_p4_from_ak_events(events, flag)
-            return p4_pion.px
-        bin_edges = np.linspace(-70, 70, 21)
-        fig, ax, ax_ratio = do_control_plot(
-            dl_dict,
-            func_get_variable=lambda dl, charge=charge: get_pion_px(dl, charge),
-            bin_edges=bin_edges,
-            x_label=f'Px of Pion{charge} [GeV]',
-            title=f'Control Plot: Pion{charge} Px',
-            luminosity=luminosity, normalize=normalize,
-        )
-        plt.tight_layout()
-        plt.savefig(f"{output_dir}/control_plot_pion_{charge}_px.png")
-        def get_pion_py(dl, charge=charge):
-            events = dl.data.get(region_name)
-            reco_pdgId = events['Part_pdgId']
-            reco_charge = events['Part_charge']
-            reco_abs_pdgId = np.abs(reco_pdgId)
-            flag_pion = (reco_abs_pdgId == 41)
-            if charge == 'plus':
-                flag = flag_pion & (reco_charge == 1)
-            else:
-                flag = flag_pion & (reco_charge == -1)
-            p4_pion = get_p4_from_ak_events(events, flag)
-            return p4_pion.py
-        bin_edges = np.linspace(-70, 70, 21)
-        fig, ax, ax_ratio = do_control_plot(
-            dl_dict,
-            func_get_variable=lambda dl, charge=charge: get_pion_py(dl, charge),
-            bin_edges=bin_edges,
-            x_label=f'Py of Pion{charge} [GeV]',
-            title=f'Control Plot: Pion{charge} Py',
-            luminosity=luminosity, normalize=normalize,
-        )
-        plt.tight_layout()
-        plt.savefig(f"{output_dir}/control_plot_pion_{charge}_py.png")
-        def get_pion_pz(dl, charge=charge):
-            events = dl.data.get(region_name)
-            reco_pdgId = events['Part_pdgId']
-            reco_charge = events['Part_charge']
-            reco_abs_pdgId = np.abs(reco_pdgId)
-            flag_pion = (reco_abs_pdgId == 41)
-            if charge == 'plus':
-                flag = flag_pion & (reco_charge == 1)
-            else:
-                flag = flag_pion & (reco_charge == -1)
-            p4_pion = get_p4_from_ak_events(events, flag)
-            return p4_pion.pz
-        bin_edges = np.linspace(-100, 100, 21)
-        fig, ax, ax_ratio = do_control_plot(
-            dl_dict,
-            func_get_variable=lambda dl, charge=charge: get_pion_pz(dl, charge),
-            bin_edges=bin_edges,
-            x_label=f'Pz of Pion{charge} [GeV]',
-            title=f'Control Plot: Pion{charge} Pz',
-            luminosity=luminosity, normalize=normalize,
-        )
-        plt.tight_layout()
-        plt.savefig(f"{output_dir}/control_plot_pion_{charge}_pz.png")
+            fig, ax, ax_ratio = do_control_plot(
+                dl_dict,
+                func_get_variable=lambda dl, charge=charge, var=var: get_pion_var(dl, charge, var),
+                bin_edges=bin_edges,
+                x_label=x_label,
+                title=f'Control Plot: Pion{charge} {var.upper()}',
+                luminosity=luminosity, normalize=normalize,
+            )
+            plt.tight_layout()
+            plt.savefig(f"{output_dir}/control_plot_pion_{charge}_{var}.png") 
 
-        
 
     ########################################################
     # num recon particles
@@ -320,7 +156,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
         events = dl.data.get(region_name)
         num_particles = ak.num(events['Part_pdgId'])
         return num_particles
-    bin_edges = np.linspace(0, 5, 6)
+    bin_edges = np.linspace(0, 10, 11)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
         func_get_variable=get_num_reco_particles,
@@ -337,10 +173,9 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
     ########################################################
     def get_dipion_mass(dl):
         events = dl.data.get(region_name)
-        reco_pdgId = events['Part_pdgId']
-        reco_abs_pdgId = np.abs(reco_pdgId)
-        flag_pion = (reco_abs_pdgId == 41)
-        p4_pipi = get_sum_p4_from_ak_events(events, flag_pion)
+        p4_piplus = events['Part_p4'][events['flag_is_lead_piplus']]
+        p4_piminus = events['Part_p4'][events['flag_is_lead_piminus']]
+        p4_pipi = p4_piplus + p4_piminus
         return p4_pipi.mass
 
     bin_edges = np.linspace(0, 100, 31)
@@ -352,7 +187,6 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
         title='Control Plot: Invariant Mass of Di-Pion',
         luminosity=luminosity, normalize=normalize,
     )
-    # ax.set_yscale('log')
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_dipion_mass.png")
 
@@ -361,17 +195,12 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
     ################################################
     def get_angle_between_pions(dl):
         events = dl.data.get(region_name)
-        reco_pdgId = events['Part_pdgId']
-        reco_charge = events['Part_charge']
-        reco_abs_pdgId = np.abs(reco_pdgId)
-        flag_pion = (reco_abs_pdgId == 41)
-        flag_piplus = flag_pion & (reco_charge == 1)
-        flag_piminus = flag_pion & (reco_charge == -1)
-        p4_piplus = get_p4_from_ak_events(events, flag_piplus)
-        p4_piminus = get_p4_from_ak_events(events, flag_piminus)
+        p4_piplus = events['Part_p4'][events['flag_is_lead_piplus']]
+        p4_piminus = events['Part_p4'][events['flag_is_lead_piminus']]
         angles = p4_piplus.deltaangle(p4_piminus)
         return angles
-    bin_edges = np.linspace(2.99, 3.1, 21)
+    # bin_edges = np.linspace(2.99, 3.1, 21)
+    bin_edges = np.linspace(2.9, 3.14, 101)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
         func_get_variable=get_angle_between_pions,
@@ -477,7 +306,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
         thrust_magnitude = events['thrust_Mag']
         neglog1mthrust = -np.log10(1 - thrust_magnitude + 1e-10) # avoid log(0)
         return neglog1mthrust
-    bin_edges = np.linspace(2.5, 4, 21)
+    bin_edges = np.linspace(0, 8, 51)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
         func_get_variable=get_neglog1mthrust,
@@ -540,7 +369,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
         p4_all = get_all_p4_from_ak_events(events, flag)
         ht = ak.sum(p4_all.pt, axis=-1)
         return ht
-    bin_edges = np.linspace(10, 65, 21)
+    bin_edges = np.linspace(10, 90, 51)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
         func_get_variable=get_ht,
@@ -559,10 +388,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
     ################################################
     def get_missing_momentum(dl):
         events = dl.data.get(region_name)
-        missing_px = -ak.sum(events['Part_fourMomentum_fCoordinates_fX'], axis=-1)
-        missing_py = -ak.sum(events['Part_fourMomentum_fCoordinates_fY'], axis=-1)
-        missing_pz = -ak.sum(events['Part_fourMomentum_fCoordinates_fZ'], axis=-1)
-        missing_p = np.sqrt(missing_px**2 + missing_py**2 + missing_pz**2)
+        missing_p = events['missing_p']
         return missing_p
     bin_edges = np.linspace(0, 40, 21)
     fig, ax, ax_ratio = do_control_plot(
@@ -580,11 +406,9 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
     # missing pt
     def get_missing_pt(dl):
         events = dl.data.get(region_name)
-        missing_px = -ak.sum(events['Part_fourMomentum_fCoordinates_fX'], axis=-1)
-        missing_py = -ak.sum(events['Part_fourMomentum_fCoordinates_fY'], axis=-1)
-        missing_pt = np.sqrt(missing_px**2 + missing_py**2)
+        missing_pt = events['missing_pt']
         return missing_pt
-    bin_edges = np.linspace(0, 40, 21)
+    bin_edges = np.linspace(0, 90, 51)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
         func_get_variable=get_missing_pt,
@@ -615,9 +439,9 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
     # missing E
     def get_missing_energy(dl):
         events = dl.data.get(region_name)
-        missing_E = cme - ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=-1)
+        missing_E = events['missing_E']
         return missing_E
-    bin_edges = np.linspace(20, 90, 21)
+    bin_edges = np.linspace(0, 90, 51)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
         func_get_variable=get_missing_energy,
@@ -771,6 +595,7 @@ def make_control_plots_leplep(dl_dict, luminosity, normalize, output_dir, region
         luminosity=luminosity, normalize=normalize,
     )
     ax.set_yscale('log')
+    ax.set_ylim(bottom=0.9)
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_num_reco_particles.png")
     

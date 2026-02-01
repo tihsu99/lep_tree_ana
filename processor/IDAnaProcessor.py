@@ -86,6 +86,7 @@ class IDAnaProcessor(BaseProcessor):
                         normalize=False
                     )
                     plt.tight_layout()
+                    ax.set_ylim(bottom=0.1)
                     fig.savefig(f"{output_dir_region}/ReconPdgid_{pdgId}_{id_name}_WP_Distribution.png")
 
 

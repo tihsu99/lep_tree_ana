@@ -223,6 +223,7 @@ class DataLoader:
         if len(glob.glob(self.output_dir + "/filtered___*.parquet")) > 0:
             log.info(f"Loading existing filtered data from {self.output_dir}")
             for region in self.load_regions:
+                if region == 'pipiLoose': continue
                 file = self.output_dir + "/filtered___" + region + ".parquet"
                 if os.path.exists(file):
                     self.data[region] = ak.from_parquet(file)
@@ -424,8 +425,121 @@ class DataLoader:
             log.info(f"Data saved to {output_file}.")
 
 
-    def run(self, dl):
-        pass
+    def postprocess(self):
+        events = copy.deepcopy(self.data['raw'])
+        pdg_id = np.abs(events['Part_pdgId'])
+
+        pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+        # redefine pdgId for pions 
+        events['Part_pdgId'] = ak.where(pdg_id == 41, 0, events['Part_pdgId'])
+        events['Part_pdgId'] = ak.where(
+            (events['Haid_pionRich'] >= 0) 
+            # (events['Haid_pionRich'] >= 0) & 
+            # (events['Haide_pionTag'] >= 0) &
+            # (events['Haidn_pionTag'] >= 0) 
+            , 41, events['Part_pdgId'])
+        # events['Part_pdgId'] = ak.where((events['Elid_tag'] >= 1) & (events['Elid_tag'] < 3), 41, events['Part_pdgId'])
+        # events['Part_pdgId'] = ak.where((events['Part_pdgId'] == 41) & (events['Elid_tag'] < 1) | (events['Elid_tag'] > 3), 0, events['Part_pdgId'])
+        # events['Part_pdgId'] = ak.where((events['Part_pdgId'] == 41) & ((events['Haid_pionRich'] == -1) | (events['Haide_pionTag'] == -1) | (events['Haidn_pionTag'] == -1)  | (events['Haidr_pionTag']==-1) | (events['Haidc_pionTag']==-1)), 0, events['Part_pdgId'])
+        # events['Part_pdgId'] = ak.where((events['Part_pdgId'] == 41) & ((events['Haid_pionRich'] == -1) | (events['Haide_pionTag'] == -1) | (events['Haidn_pionTag'] == -1) ), 0, events['Part_pdgId'])
+        # events['Part_pdgId'] = ak.where((events['Part_pdgId'] == 41) & ((events['Haid_pionRich'] < 0)), 0, events['Part_pdgId'])
+        events['Part_pdgId'] = ak.where((np.abs(events['Part_pdgId']) == 41) & (events['Muid_tag']>1), 0, events['Part_pdgId'])
+
+        particle_pt = ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2)**0.5
+        particle_pz = events['Part_fourMomentum_fCoordinates_fZ']
+        events['Part_pdgId'] = ak.where( (np.abs(events['Part_pdgId']) == 41) & ((particle_pt > 50) | (np.abs(particle_pz) > 35)), 0, events['Part_pdgId'])
+
+        new_pdgid = np.abs(events['Part_pdgId'])
+        charge = events['Part_charge']
+        has_os_pion = (ak.sum( (new_pdgid == 41) & (charge == 1), axis=1) >=1 ) & (ak.sum( (new_pdgid == 41) & (charge == -1), axis=1) >=1 )
+        pass_filter = has_os_pion & pass_filter
+
+        events = events[pass_filter]
+        self.data[self.region_of_interest] = events
+
+
+        # define some basic variables for all regions
+        for region in self.load_regions:
+            if region == 'raw':
+                continue
+            events = self.data[region]
+            events['Part_p4'] = vector.zip({
+                "px": events['Part_fourMomentum_fCoordinates_fX'],
+                "py": events['Part_fourMomentum_fCoordinates_fY'],
+                "pz": events['Part_fourMomentum_fCoordinates_fZ'],
+                "E": events['Part_fourMomentum_fCoordinates_fT'],
+                }
+            )
+            events['Part_absPdgId'] = np.abs(events['Part_pdgId'])
+
+            # define number of particles (pion, electron, muon)
+            mask_piplus = (events['Part_absPdgId'] == 41) & (events['Part_charge'] == 1)
+            mask_piminus = (events['Part_absPdgId'] == 41) & (events['Part_charge'] == -1)
+            mask_elplus = (events['Part_absPdgId'] == 2) & (events['Part_charge'] == 1)
+            mask_elminus = (events['Part_absPdgId'] == 2) & (events['Part_charge'] == -1)
+            mask_muplus = (events['Part_absPdgId'] == 6) & (events['Part_charge'] == 1)
+            mask_muminus = (events['Part_absPdgId'] == 6) & (events['Part_charge'] == -1)
+            events['num_pi_plus'] = ak.sum(mask_piplus, axis=1)
+            events['num_pi_minus'] = ak.sum(mask_piminus, axis=1)
+            events['num_el_plus'] = ak.sum(mask_elplus, axis=1)
+            events['num_el_minus'] = ak.sum(mask_elminus, axis=1)
+            events['num_mu_plus'] = ak.sum(mask_muplus, axis=1)
+            events['num_mu_minus'] = ak.sum(mask_muminus, axis=1)
+
+            # define energy leading particle for each type
+            idx_all = ak.local_index(events['Part_p4'], axis=1)
+            for name, mask in [
+                ('piplus', mask_piplus),
+                ('piminus', mask_piminus),
+                ('elplus', mask_elplus),
+                ('elminus', mask_elminus),
+                ('muplus', mask_muplus),
+                ('muminus', mask_muminus),
+            ]:
+                p4 = events['Part_p4'][mask]
+                idx_type = idx_all[mask]
+                idx_sorted = ak.argsort(p4.E, axis=1, ascending=False)
+                type_idx_sorted = idx_type[idx_sorted]
+                first_idx = ak.firsts(type_idx_sorted)
+                events[f'flag_is_lead_{name}'] = (idx_all == ak.firsts(type_idx_sorted))
+
+            # define missing momentum
+            events['missing_px'] = -ak.sum(events['Part_fourMomentum_fCoordinates_fX'], axis=-1)
+            events['missing_py'] = -ak.sum(events['Part_fourMomentum_fCoordinates_fY'], axis=-1)
+            events['missing_pz'] = -ak.sum(events['Part_fourMomentum_fCoordinates_fZ'], axis=-1)
+            events['missing_p'] = np.sqrt(events['missing_px']**2 + events['missing_py']**2 + events['missing_pz']**2)
+            events['missing_E'] = cme - ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=-1)
+            events['missing_pt'] = np.sqrt(events['missing_px']**2 + events['missing_py']**2)
+
+        # some extra cuts for piploose region
+        events = self.data['pipiLoose']
+        p4_piplus = events['Part_p4'][events['flag_is_lead_piplus']][:,0]
+        p4_piminus = events['Part_p4'][events['flag_is_lead_piminus']][:,0]
+        pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+
+        events['P_rad'] = (((p4_piplus.px**2 + p4_piplus.py**2 + p4_piplus.pz**2) + (p4_piminus.px**2 + p4_piminus.py**2 + p4_piminus.pz**2))**0.5)
+
+        dr_pi_pairs = p4_piplus.deltaangle(p4_piminus)
+        pass_filter = (dr_pi_pairs > 2.91) & (dr_pi_pairs < 3.13) & pass_filter
+
+        m_pi_pairs =  (p4_piplus + p4_piminus).mass
+        pass_filter = (m_pi_pairs > 8) & (m_pi_pairs < 82) & pass_filter
+
+        thrust_magnitude = events['thrust_Mag']
+        neglog1mthrust = -np.log10(1 - thrust_magnitude + 1e-10) # avoid log(0)
+        pass_filter = (neglog1mthrust > 1) & (neglog1mthrust < 4.7) & pass_filter
+
+        n_part = ak.num(events['Part_pdgId'])
+        pass_filter = (n_part <= 5) & pass_filter
+
+        p_rad = events['P_rad']
+        pass_filter = (p_rad < 58) & pass_filter
+
+        missing_pt = events['missing_pt']
+        pass_filter = (missing_pt < 40) & pass_filter
+
+        events = events[pass_filter]
+        self.data['pipiLoose'] = events
 
 
     def finalize(self):

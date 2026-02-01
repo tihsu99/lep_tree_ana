@@ -58,8 +58,8 @@ Processors:
     output_dir_name: "ID_analysis"
     targeted_recon_pdgId: 
       - 41
-      - 6
-      - 2
+      # - 6
+      # - 2
     regions:
       # - "pipi"
       # - "leplep"

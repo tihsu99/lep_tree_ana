@@ -8,10 +8,12 @@ import yaml
 import copy
 from importlib import import_module
 import awkward as ak
+import vector
 
 from utils.wrappers import timeit
 from processor import DataLoader
 pd.set_option('display.max_columns', None)
+vector.register_awkward()
 
 
 def create_parser():
@@ -52,7 +54,9 @@ if __name__ == "__main__":
     for key, dl_config in analysis_config["DataLoaders"].items():
         dl_config_with_globals = copy.deepcopy(global_configs)
         dl_config_with_globals.update(dl_config)
-        data_loaders[key] = DataLoader.DataLoader(dl_config_with_globals, output_dir=f"{output_dir}/{key}/")
+        dl = DataLoader.DataLoader(dl_config_with_globals, output_dir=f"{output_dir}/{key}/")
+        dl.postprocess()
+        data_loaders[key] = dl
 
     # split signal categories from Ztautau data loader if specified
     if global_configs.get("signal_categories", None) is not None:
@@ -71,8 +75,11 @@ if __name__ == "__main__":
             signal_dl.data[region] = signal_events
             ztautau_dl.data[region] = background_events
 
-        data_loaders['Ztautau_signal'] = signal_dl
-        data_loaders['Ztautau_others'] = ztautau_dl
+        ztautau_dls = {
+            'Ztautau_signal': signal_dl,
+            'Ztautau_others': ztautau_dl
+        }
+        data_loaders = {**ztautau_dls, **data_loaders}
 
 
     for processor_name, processor_config in analysis_config['Processors'].items():
