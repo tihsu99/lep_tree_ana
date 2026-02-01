@@ -8,12 +8,12 @@ import awkward as ak
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme
 from utils.plotter import do_control_plot
 
-def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_name="pipi"):
+def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_name="pipi"):
     ########################################################
     # p_rad and E_rad
     ########################################################
     def get_p_rad(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         return events['P_rad']
     bin_edges = np.linspace(0, 40, 21)
     fig, ax, ax_ratio = do_control_plot(
@@ -28,7 +28,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_p_rad.png")
     # def get_e_rad(dl):
-    #     events = dl.data.get(channel_name)
+    #     events = dl.data.get(region_name)
     #     return events['E_rad']
     # bin_edges = np.linspace(0, 100, 21)
     # fig, ax, ax_ratio = do_control_plot(
@@ -47,7 +47,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # total energy
     ########################################################
     def get_total_energy(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         total_energy = ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=-1)
         return total_energy
     bin_edges = np.linspace(20, 80, 21)
@@ -66,7 +66,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # theta of pions
     ########################################################
     def get_pion_theta(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         reco_pdgId = events['Part_pdgId']
         reco_abs_pdgId = np.abs(reco_pdgId)
         flag_pion = (reco_abs_pdgId == 41)
@@ -87,7 +87,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     plt.savefig(f"{output_dir}/control_plot_sum_pion_theta.png")
 
     def get_piplus_theta(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         reco_pdgId = events['Part_pdgId']
         reco_charge = events['Part_charge']
         reco_abs_pdgId = np.abs(reco_pdgId)
@@ -108,7 +108,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_pion_plus_theta.png")
     def get_piminus_theta(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         reco_pdgId = events['Part_pdgId']
         reco_charge = events['Part_charge']
         reco_abs_pdgId = np.abs(reco_pdgId)
@@ -130,7 +130,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     plt.savefig(f"{output_dir}/control_plot_pion_minus_theta.png")
 
     def get_piplus_phi(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         reco_pdgId = events['Part_pdgId']
         reco_charge = events['Part_charge']
         reco_abs_pdgId = np.abs(reco_pdgId)
@@ -151,7 +151,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_pion_plus_phi.png")
     def get_piminus_phi(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         reco_pdgId = events['Part_pdgId']
         reco_charge = events['Part_charge']
         reco_abs_pdgId = np.abs(reco_pdgId)
@@ -177,7 +177,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # pion pm pt
     #########################################################
     # def get_pion_plus_pt(dl):
-    #     events = dl.data.get(channel_name)
+    #     events = dl.data.get(region_name)
     #     reco_pdgId = events['Part_pdgId']
     #     reco_charge = events['Part_charge']
     #     reco_abs_pdgId = np.abs(reco_pdgId)
@@ -197,7 +197,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # plt.tight_layout()
     # plt.savefig(f"{output_dir}/control_plot_pion_plus_pt.png")
     # def get_pion_minus_pt(dl):
-    #     events = dl.data.get(channel_name)
+    #     events = dl.data.get(region_name)
     #     reco_pdgId = events['Part_pdgId']
     #     reco_charge = events['Part_charge']
     #     reco_abs_pdgId = np.abs(reco_pdgId)
@@ -218,7 +218,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # plt.savefig(f"{output_dir}/control_plot_pion_minus_pt.png")
     for charge in ['plus', 'minus']:
         def get_pion_pt(dl, charge=charge):
-            events = dl.data.get(channel_name)
+            events = dl.data.get(region_name)
             reco_pdgId = events['Part_pdgId']
             reco_charge = events['Part_charge']
             reco_abs_pdgId = np.abs(reco_pdgId)
@@ -242,7 +242,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
         plt.savefig(f"{output_dir}/control_plot_pion_{charge}_pt.png") 
 
         def get_pion_px(dl, charge=charge):
-            events = dl.data.get(channel_name)
+            events = dl.data.get(region_name)
             reco_pdgId = events['Part_pdgId']
             reco_charge = events['Part_charge']
             reco_abs_pdgId = np.abs(reco_pdgId)
@@ -265,7 +265,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
         plt.tight_layout()
         plt.savefig(f"{output_dir}/control_plot_pion_{charge}_px.png")
         def get_pion_py(dl, charge=charge):
-            events = dl.data.get(channel_name)
+            events = dl.data.get(region_name)
             reco_pdgId = events['Part_pdgId']
             reco_charge = events['Part_charge']
             reco_abs_pdgId = np.abs(reco_pdgId)
@@ -288,7 +288,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
         plt.tight_layout()
         plt.savefig(f"{output_dir}/control_plot_pion_{charge}_py.png")
         def get_pion_pz(dl, charge=charge):
-            events = dl.data.get(channel_name)
+            events = dl.data.get(region_name)
             reco_pdgId = events['Part_pdgId']
             reco_charge = events['Part_charge']
             reco_abs_pdgId = np.abs(reco_pdgId)
@@ -317,10 +317,10 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # num recon particles
     #########################################################
     def get_num_reco_particles(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         num_particles = ak.num(events['Part_pdgId'])
         return num_particles
-    bin_edges = np.array([2, 3])
+    bin_edges = np.linspace(0, 5, 6)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
         func_get_variable=get_num_reco_particles,
@@ -336,14 +336,14 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     #  Invariant mass of di-pion system
     ########################################################
     def get_dipion_mass(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         reco_pdgId = events['Part_pdgId']
         reco_abs_pdgId = np.abs(reco_pdgId)
         flag_pion = (reco_abs_pdgId == 41)
         p4_pipi = get_sum_p4_from_ak_events(events, flag_pion)
         return p4_pipi.mass
 
-    bin_edges = np.linspace(10, 85, 21)
+    bin_edges = np.linspace(0, 100, 31)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
         func_get_variable=get_dipion_mass,
@@ -360,7 +360,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # Angle between two pions
     ################################################
     def get_angle_between_pions(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         reco_pdgId = events['Part_pdgId']
         reco_charge = events['Part_charge']
         reco_abs_pdgId = np.abs(reco_pdgId)
@@ -387,7 +387,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # # Thrust costh
     # ################################################
     # def get_thrust_costh(dl):
-    #     events = dl.data.get(channel_name)
+    #     events = dl.data.get(region_name)
     #     thrust_magnitude = events['thrust_Mag'] # avoid division by zero
     #     thrust_z = events['thrust_z']
     #     thrust_cosine = (thrust_z / thrust_magnitude)
@@ -405,7 +405,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # plt.savefig(f"{output_dir}/control_plot_thrust_costh.png")
 
     # def get_thrust_phi(dl):
-    #     events = dl.data.get(channel_name)
+    #     events = dl.data.get(region_name)
     #     thrust_x = events['thrust_x']
     #     thrust_y = events['thrust_y']
     #     thrust_phi = np.arctan2(thrust_y, thrust_x)
@@ -423,7 +423,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # plt.savefig(f"{output_dir}/control_plot_thrust_phi.png")
 
     # def get_thrust_x(dl):
-    #     events = dl.data.get(channel_name)
+    #     events = dl.data.get(region_name)
     #     thrust_x = events['thrust_x']
     #     return thrust_x
     # bin_edges = np.linspace(-1, 1, 21)
@@ -438,7 +438,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # plt.tight_layout()
     # plt.savefig(f"{output_dir}/control_plot_thrust_x.png")
     # def get_thrust_y(dl):
-    #     events = dl.data.get(channel_name)
+    #     events = dl.data.get(region_name)
     #     thrust_y = events['thrust_y']
     #     return thrust_y
     # bin_edges = np.linspace(-1, 1, 21)
@@ -453,7 +453,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # plt.tight_layout()
     # plt.savefig(f"{output_dir}/control_plot_thrust_y.png")
     # def get_thrust_z(dl):
-    #     events = dl.data.get(channel_name)
+    #     events = dl.data.get(region_name)
     #     thrust_z = events['thrust_z']
     #     return thrust_z
     # bin_edges = np.linspace(-1, 1, 21)
@@ -473,7 +473,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # -log10(1-thrust)
     ################################################
     def get_neglog1mthrust(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         thrust_magnitude = events['thrust_Mag']
         neglog1mthrust = -np.log10(1 - thrust_magnitude + 1e-10) # avoid log(0)
         return neglog1mthrust
@@ -494,7 +494,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # pt of charged particles
     ################################################
     def get_charged_particle_pt(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         reco_charge = events['Part_charge']
         flag_charged = (reco_charge != 0)
         p4_charged = get_sum_p4_from_ak_events(events, flag_charged)
@@ -515,7 +515,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # pt of all particles
     ################################################
     def get_total_particle_pt(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         flag = ak.ones_like(events['Part_charge'], dtype=bool)
         p4 = get_sum_p4_from_ak_events(events, flag)
         return p4.pt
@@ -535,7 +535,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # HT
     ################################################
     def get_ht(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         flag = ak.ones_like(events['Part_charge'], dtype=bool)
         p4_all = get_all_p4_from_ak_events(events, flag)
         ht = ak.sum(p4_all.pt, axis=-1)
@@ -558,7 +558,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     # Missing transverse and longitudinal momentum
     ################################################
     def get_missing_momentum(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         missing_px = -ak.sum(events['Part_fourMomentum_fCoordinates_fX'], axis=-1)
         missing_py = -ak.sum(events['Part_fourMomentum_fCoordinates_fY'], axis=-1)
         missing_pz = -ak.sum(events['Part_fourMomentum_fCoordinates_fZ'], axis=-1)
@@ -579,7 +579,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
 
     # missing pt
     def get_missing_pt(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         missing_px = -ak.sum(events['Part_fourMomentum_fCoordinates_fX'], axis=-1)
         missing_py = -ak.sum(events['Part_fourMomentum_fCoordinates_fY'], axis=-1)
         missing_pt = np.sqrt(missing_px**2 + missing_py**2)
@@ -598,7 +598,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
 
     # missing pz
     def get_missing_pz(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         missing_pz = -ak.sum(events['Part_fourMomentum_fCoordinates_fZ'], axis=-1)
         return missing_pz
     bin_edges = np.linspace(-25, 25, 21)
@@ -614,7 +614,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     plt.savefig(f"{output_dir}/control_plot_missing_pz.png")
     # missing E
     def get_missing_energy(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         missing_E = cme - ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=-1)
         return missing_E
     bin_edges = np.linspace(20, 90, 21)
@@ -630,10 +630,10 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, channel_
     plt.savefig(f"{output_dir}/control_plot_missing_energy.png")
 
 
-def make_control_plots_leplep(dl_dict, luminosity, normalize, output_dir, channel_name="leplep"):
-    # apply cuts for leplep channel if needed
+def make_control_plots_leplep(dl_dict, luminosity, normalize, output_dir, region_name="leplep"):
+    # apply cuts for leplep region if needed
     for dl_name, dl in dl_dict.items():
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
 
         reco_pdgId = events['Part_pdgId']
@@ -663,12 +663,12 @@ def make_control_plots_leplep(dl_dict, luminosity, normalize, output_dir, channe
         # mll = p4_leptons.mass
         # pass_filter = (mll > 80) & pass_filter
 
-        dl.data[channel_name] = events[pass_filter]
+        dl.data[region_name] = events[pass_filter]
 
 
     # MLL
     def get_mll(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
 
         recpart_abspdgid = np.abs(events['Part_pdgId'])
         flag_is_mu = (recpart_abspdgid == 6)
@@ -691,7 +691,7 @@ def make_control_plots_leplep(dl_dict, luminosity, normalize, output_dir, channe
 
     # missing E
     def get_missing_energy(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         missing_E = cme - ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=-1)
         return missing_E
     bin_edges = np.linspace(0, 90, 21)
@@ -708,7 +708,7 @@ def make_control_plots_leplep(dl_dict, luminosity, normalize, output_dir, channe
 
     # Angle between two leptons
     def get_angle_between_leptons(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         reco_pdgId = events['Part_pdgId']
         reco_charge = events['Part_charge']
         reco_abs_pdgId = np.abs(reco_pdgId)
@@ -739,7 +739,7 @@ def make_control_plots_leplep(dl_dict, luminosity, normalize, output_dir, channe
 
     # HT
     def get_ht(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         flag = ak.ones_like(events['Part_charge'], dtype=bool)
         p4_all = get_all_p4_from_ak_events(events, flag)
         ht = ak.sum(p4_all.pt, axis=-1)
@@ -758,7 +758,7 @@ def make_control_plots_leplep(dl_dict, luminosity, normalize, output_dir, channe
 
     # particle multiplicity
     def get_num_reco_particles(dl):
-        events = dl.data.get(channel_name)
+        events = dl.data.get(region_name)
         num_particles = ak.num(events['Part_pdgId'])
         return num_particles
     bin_edges = np.arange(2, 30, 1)
@@ -792,11 +792,11 @@ class ControlPlotProcessor(BaseProcessor):
         os.makedirs(self.output_dir, exist_ok=True)
         self.luminosity = config.get('luminosity', None) 
         self.normalize = (self.luminosity is None)
-        self.channels = config.get('channels', ['pipi'])
+        self.regions = config.get('regions', ['pipi'])
         # self.normalize = True
 
     def run(self, dl_dict):
-        if 'pipi' in self.channels:
+        if 'pipi' in self.regions:
             output_dir_pipi = f"{self.output_dir}/pipi/"
             os.makedirs(output_dir_pipi, exist_ok=True)
             make_control_plots_pipi(
@@ -804,9 +804,9 @@ class ControlPlotProcessor(BaseProcessor):
                 luminosity=self.luminosity,
                 normalize=self.normalize,
                 output_dir=output_dir_pipi,
-                channel_name="pipi",
+                region_name="pipi",
             )
-        if 'leplep' in self.channels:
+        if 'leplep' in self.regions:
             output_dir_leplep = f"{self.output_dir}/leplep/"
             os.makedirs(output_dir_leplep, exist_ok=True)
             make_control_plots_leplep(
@@ -814,7 +814,17 @@ class ControlPlotProcessor(BaseProcessor):
                 luminosity=self.luminosity,
                 normalize=self.normalize,
                 output_dir=output_dir_leplep,
-                channel_name="leplep",
+                region_name="leplep",
+            )
+        if 'pipiLoose' in self.regions:
+            output_dir_pipiLoose = f"{self.output_dir}/pipiLoose/"
+            os.makedirs(output_dir_pipiLoose, exist_ok=True)
+            make_control_plots_pipi(
+                dl_dict,
+                luminosity=self.luminosity,
+                normalize=self.normalize,
+                output_dir=output_dir_pipiLoose,
+                region_name="pipiLoose",
             )
 
 

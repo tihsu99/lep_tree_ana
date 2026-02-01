@@ -147,17 +147,41 @@ def filter_pipi_channel(events: ak.Array, filter_log_dict: dict):
 
     return events_sr, filter_log_dict
 
+def filter_pipiLoose_channel(events: ak.Array, filter_log_dict: dict):
+    filter_log_dict['pipiLoose channel initial'] = filter_log_dict.get('pipiLoose channel initial', 0) + len(events)
+
+    recpart_pdgid = events['Part_pdgId']
+    recpart_abspdgid = abs(recpart_pdgid)
+    recpart_charge = events['Part_charge']
+
+    # require exactly two pions with opposite charge
+    pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+    flag_is_pion = (recpart_abspdgid == 41)
+    pass_filter = (ak.sum(flag_is_pion, axis=1) == 2) & pass_filter
+    charge_ary_of_pions = recpart_charge[flag_is_pion]
+    flag_opposite_charge = (ak.sum(charge_ary_of_pions, axis=1) == 0)
+    pass_filter = flag_opposite_charge & pass_filter
+    filter_log_dict['2 pions with opposite charge'] = filter_log_dict.get('2 pions with opposite charge', 0) + ak.sum(pass_filter)
+
+    events_pipiLoose = events[pass_filter]
+
+    return events_pipiLoose, filter_log_dict
+
 
 def filter_event(events: ak.Array, filter_log_dict: dict):
     filtered_events_dict = {
         'raw': events,
     }
     events_copy = copy.deepcopy(events)
-    filtered_events, filter_log_dict = filter_pipi_channel(events_copy, filter_log_dict)
-    filtered_events_dict['pipi'] = filtered_events
 
-    filtered_events, filter_log_dict = filter_leplep_channel(events_copy, filter_log_dict)
-    filtered_events_dict['leplep'] = filtered_events
+    # filtered_events, filter_log_dict = filter_pipi_channel(events_copy, filter_log_dict)
+    # filtered_events_dict['pipi'] = filtered_events
+
+    # filtered_events, filter_log_dict = filter_leplep_channel(events_copy, filter_log_dict)
+    # filtered_events_dict['leplep'] = filtered_events
+
+    filtered_events, filter_log_dict = filter_pipiLoose_channel(events_copy, filter_log_dict)
+    filtered_events_dict['pipiLoose'] = filtered_events
 
 
     return filtered_events_dict, filter_log_dict
@@ -175,6 +199,7 @@ class DataLoader:
         self.tree_name = self.config.get("tree_name", "t")
         self.input_files = self.config.get("input_files", [])
         self.region_of_interest = self.config.get("region_of_interest", "pipi")
+        self.load_regions = self.config.get("load_regions", [self.region_of_interest])
         self.is_data = self.config.get("is_data", False)
 
         if not self.input_files:
@@ -196,21 +221,23 @@ class DataLoader:
 
         _data_loaded = False
         if len(glob.glob(self.output_dir + "/filtered___*.parquet")) > 0:
-            log.info("Loading existing filtered data.")
-            file = self.output_dir + "/filtered___" + self.region_of_interest + ".parquet"
-            if os.path.exists(file):
-                self.data[self.region_of_interest] = ak.from_parquet(file)
-                self.initial_total_num_events = self.data[self.region_of_interest]['initial_total_num_events'][0]
-                _data_loaded = True
-            else:
-                log.warning(f"Filtered data file for region {self.region_of_interest} does not exist. Re-loading and filtering data from input files.")
+            log.info(f"Loading existing filtered data from {self.output_dir}")
+            for region in self.load_regions:
+                file = self.output_dir + "/filtered___" + region + ".parquet"
+                if os.path.exists(file):
+                    self.data[region] = ak.from_parquet(file)
+                    self.initial_total_num_events = self.data[region]['initial_total_num_events'][0]
+                    _data_loaded = True
+                else:
+                    log.warning(f"Filtered data file for region {region} does not exist. Re-loading and filtering data from input files.")
+                    _data_loaded = False
 
         if not _data_loaded:
             self.load_data()
             self.save_data()
             keys = list(self.data.keys())
             for key in keys:
-                if not (key == self.region_of_interest):
+                if key not in self.load_regions:
                     del self.data[key]
             _data_loaded = True
 
@@ -219,94 +246,112 @@ class DataLoader:
     
 
     def load_data(self) -> pd.DataFrame:
-        # Identify branches to load
-        f = ur.open(self.input_files[0])
-        tree = f[self.tree_name]
+        # if raw_data is already loaded, start from there
+        if os.path.exists(self.output_dir + "/raw_data.parquet"):
+            log.info(f"Loading existing raw data from {self.output_dir}/raw_data.parquet")
+            self.data['raw'] = ak.from_parquet(self.output_dir + "/raw_data.parquet")
+            self.initial_total_num_events = self.data['raw']['initial_total_num_events'][0]
+            self.filter_results['initial_total_num_events'] = self.initial_total_num_events
+            filtered_events, self.filter_results = filter_event(self.data['raw'], self.filter_results)
+            for key, evt in filtered_events.items():
+                self.data[key] = evt
+                self.data[key]['initial_total_num_events'] = self.initial_total_num_events
+        else:
+            log.info("Loading data from input files.")
+            # Identify branches to load
+            f = ur.open(self.input_files[0])
+            tree = f[self.tree_name]
 
-        common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart", 
-        # "event_category"
-        ]
-        gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
-        gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
-        
-        part_branches = ["charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood"]
-        part_branches = [f'Part_{b}' for b in part_branches]
+            common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart", 
+                "event_category"
+            ]
+            gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
+            gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
+            
+            part_branches = [
+                "charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood", "vtxIdx",
+            ]
+            part_branches = [f'Part_{b}' for b in part_branches]
+            id_branches = [
+                "Elid_partIdx", "Elid_tag", "Elid_gammaConversion",
+                "Muid_partIdx", "Muid_tag",
+                "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
+            ]
+            track_branches = [ f'Trac_{b}' for b in 
+                [
+                    "originVtxIdx", "impParToVertexRPhi", "impParToVertexZ"
+                ]
+            ]
 
-        particleID_branches = [
-            # "Elid_partIdx", "Elid_tag", "Elid_gammaConversion",
-            # "Muid_partIdx", "Muid_tag",
-            # "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
-        ]
+            part_branches = part_branches + id_branches + track_branches
 
-        branches_to_load = common_evt_branches + part_branches + particleID_branches
-        if not self.is_data:
-            branches_to_load += gen_part_branches
+            vertex_branches = [ f'Vtx_{b}' for b in 
+                ["position_fCoordinates_fX", "position_fCoordinates_fY", "position_fCoordinates_fZ",]
+            ]
 
-        # Load data from all files
-        initial_total_num_events = 0
-        for file in self.input_files:
-            log.info(f"Loading data from file: {file}")
-            try:
-                f = ur.open(file)
-                tree = f[self.tree_name]
-                # load all events as awkward array 
-                events = tree.arrays(branches_to_load, library="ak")
+            branches_to_load = common_evt_branches + part_branches + vertex_branches 
+            if not self.is_data:
+                branches_to_load += gen_part_branches
 
-                # adjust event index to be unique across files
-                # the original Event_evtNumber starts from 1 for each file
-                if len(events) == 0:
+            # Load data from all files
+            initial_total_num_events = 0
+            for file in self.input_files:
+                log.info(f"Loading data from file: {file}")
+                try:
+                    f = ur.open(file)
+                    tree = f[self.tree_name]
+                    # load all events as awkward array 
+                    events = tree.arrays(branches_to_load, library="ak")
+
+                    # adjust event index to be unique across files
+                    # the original Event_evtNumber starts from 1 for each file
+                    if len(events) == 0:
+                        continue
+                    events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
+                    events['initial_total_num_events'] = len(events)
+                    initial_total_num_events += len(events)
+
+                    # select Part_xxx via isGood flag
+                    part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
+                    flag_not_0pdgid = (events['Part_pdgId'] != 0)
+                    events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) # & flag_not_0pdgid
+                    for part_branch in part_branches:
+                        if part_branch != 'Part_isGood':
+                            events[part_branch] = events[part_branch][events['Part_isGood']] 
+
+                    if not self.is_data:
+                        # get truth info of tau pair and tau neutrinos
+                        dict_part_pdg = {
+                            'tau': 15,
+                            'anti_tau': -15,
+                            'nu_tau': 16,
+                            'anti_nu_tau': -16,
+                        }
+                        for key, pdgid in dict_part_pdg.items():
+                            flag = (events['GenPart_pdgId'] == pdgid)
+                            events[f'truth_{key}_px'] = ak.firsts(events['GenPart_vector_fCoordinates_fX'][flag][...,::-1])
+                            events[f'truth_{key}_py'] = ak.firsts(events['GenPart_vector_fCoordinates_fY'][flag][...,::-1])
+                            events[f'truth_{key}_pz'] = ak.firsts(events['GenPart_vector_fCoordinates_fZ'][flag][...,::-1])
+                            events[f'truth_{key}_E'] = ak.firsts(events['GenPart_vector_fCoordinates_fT'][flag][...,::-1])
+
+
+                    # filter events
+                    self.filter_results['initial_total_num_events'] += len(events)
+                    events_pass_filter, self.filter_results = filter_event(events, self.filter_results)
+
+                    # record filtered events into self.data
+                    for key, evt in events_pass_filter.items():
+                        self.data.setdefault(key, []).append(evt)
+
+                except Exception as e:
+                    log.error(f"Error reading file {file} or tree {self.tree_name}: {e}")
                     continue
-                events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
-                events['initial_total_num_events'] = len(events)
-                initial_total_num_events += len(events)
 
-                # select Part_xxx via isGood flag
-                part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
-                flag_not_0pdgid = (events['Part_pdgId'] != 0)
-                events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) # & flag_not_0pdgid
-                for part_branch in part_branches + particleID_branches:
-                    if part_branch != 'Part_isGood':
-                        events[part_branch] = events[part_branch][events['Part_isGood']] 
-
-                if not self.is_data:
-                    # get truth info of tau pair and tau neutrinos
-                    dict_part_pdg = {
-                        'tau': 15,
-                        'anti_tau': -15,
-                        'nu_tau': 16,
-                        'anti_nu_tau': -16,
-                    }
-                    for key, pdgid in dict_part_pdg.items():
-                        flag = (events['GenPart_pdgId'] == pdgid)
-                        events[f'truth_{key}_px'] = ak.firsts(events['GenPart_vector_fCoordinates_fX'][flag][...,::-1])
-                        events[f'truth_{key}_py'] = ak.firsts(events['GenPart_vector_fCoordinates_fY'][flag][...,::-1])
-                        events[f'truth_{key}_pz'] = ak.firsts(events['GenPart_vector_fCoordinates_fZ'][flag][...,::-1])
-                        events[f'truth_{key}_E'] = ak.firsts(events['GenPart_vector_fCoordinates_fT'][flag][...,::-1])
-
-
-                # filter events
-                self.filter_results['initial_total_num_events'] += len(events)
-                events_pass_filter, self.filter_results = filter_event(events, self.filter_results)
-
-                # # save filtered events
-                # log.info(f"Saving filtered data to {path_filtered_single_file_prefix}.")
-                # for key, evt in events_pass_filter.items():
-                #     path_filtered_single_file = path_filtered_single_file_prefix + f"___{key}.parquet"
-                #     ak.to_parquet(evt, path_filtered_single_file)
-
-                # record filtered events into self.data
-                for key, evt in events_pass_filter.items():
-                    self.data.setdefault(key, []).append(evt)
-
-            except Exception as e:
-                log.error(f"Error reading file {file} or tree {self.tree_name}: {e}")
-                continue
-
-        # Concatenate data from all files
-        for key in self.data:
-            self.data[key] = ak.concatenate(self.data[key], axis=0)
-            self.initial_total_num_events = initial_total_num_events
-            self.data[key]['initial_total_num_events'] = initial_total_num_events
+            # Concatenate data from all files
+            for key in self.data:
+                self.data[key] = ak.concatenate(self.data[key], axis=0)
+                self.initial_total_num_events = initial_total_num_events
+                self.data[key]['initial_total_num_events'] = initial_total_num_events
 
         # Log filter results
         if self.filter_results['initial_total_num_events'] > 0:
@@ -377,11 +422,6 @@ class DataLoader:
             ak.to_parquet(evt, output_file)
 
             log.info(f"Data saved to {output_file}.")
-
-        # structured_output_file = self.output_dir + f"/filtered_{self.region_of_interest}_structured.npy"
-        # np.save(structured_output_file, self.structured_data)
-        # # To load the structured data, use: np.load(structured_output_file, allow_pickle=True).item()
-        # log.info(f"Structured data saved to {structured_output_file}.")
 
 
     def run(self, dl):

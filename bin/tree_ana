@@ -5,7 +5,9 @@ import pandas as pd
 import numpy as np
 import argparse
 import yaml
+import copy
 from importlib import import_module
+import awkward as ak
 
 from utils.wrappers import timeit
 from processor import DataLoader
@@ -37,26 +39,49 @@ if __name__ == "__main__":
     log = logging.getLogger("LepAna")
 
     analysis_config = read_yaml(args.config_yaml)
+    global_configs = analysis_config.get("GlobalConfigs", {})
 
-    output_dir = args.output_dir if args.output_dir is not None else analysis_config.get("default_output_dir", "output")
+    output_dir = args.output_dir if args.output_dir is not None else global_configs.get('default_output_dir', './output/')
 
     os.makedirs(output_dir, exist_ok = True)
 
 
-    data_loaders = {
-        key: DataLoader.DataLoader(dl_config, output_dir=f"{output_dir}/{key}/")
-        for key, dl_config in analysis_config["DataLoaders"].items()
-    }
+    global_configs = analysis_config.get("GlobalConfigs", {})
 
+    data_loaders = {}
+    for key, dl_config in analysis_config["DataLoaders"].items():
+        dl_config_with_globals = copy.deepcopy(global_configs)
+        dl_config_with_globals.update(dl_config)
+        data_loaders[key] = DataLoader.DataLoader(dl_config_with_globals, output_dir=f"{output_dir}/{key}/")
+
+    # split signal categories from Ztautau data loader if specified
+    if global_configs.get("signal_categories", None) is not None:
+        log.info("Splitting signal categories from Ztautau data loader")
+        log.info(f"Signal categories: {global_configs['signal_categories']}")
+        ztautau_dl = data_loaders.pop('Ztautau')
+        signal_categories = global_configs["signal_categories"]
+        signal_dl = copy.deepcopy(ztautau_dl)
+        for region, events in ztautau_dl.data.items():
+            mask_signal = ak.zeros_like(events['event_category'], dtype=bool)
+            for cat in signal_categories:
+                mask_signal = mask_signal | (events['event_category'] == cat)
+            signal_events = events[mask_signal]
+            background_events = events[~mask_signal]
+
+            signal_dl.data[region] = signal_events
+            ztautau_dl.data[region] = background_events
+
+        data_loaders['Ztautau_signal'] = signal_dl
+        data_loaders['Ztautau_others'] = ztautau_dl
 
 
     for processor_name, processor_config in analysis_config['Processors'].items():
+        processor_config_with_globals = copy.deepcopy(global_configs)
+        processor_config_with_globals.update(processor_config)
         processor_class = getattr(import_module(f"processor.{processor_name}"), processor_name)
-        processor = processor_class(processor_config, output_dir=output_dir)
+        processor = processor_class(processor_config_with_globals, output_dir=output_dir)
         processor.run(data_loaders)
         processor.finalize()
-        # for dl_name, data_loader in data_loaders.items():
-            # output_dir_dl = f"{output_dir}/{dl_name}/"
 
     log.info("Done")
     os._exit(0)
