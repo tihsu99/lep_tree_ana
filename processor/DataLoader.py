@@ -156,8 +156,6 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
     # print("evtNumber: ", ak.sum(pass_filter))
 
-    #All commented print statements are for debugging purposes only and can be ignored or used if needed.
-
     # no other hadronic particles in truth particles
     pass_filter = (ak.sum(
         (genpart_abspdgid == 47) |  # pi0
@@ -185,21 +183,17 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
 
 
     # at least one pi+/-, one pi0
-    flag_pi_and_pi0 = (ak.sum(genpart_pdgid == 211, axis=1) == 1 ) & (ak.sum(genpart_pdgid == -211, axis=1) == 1 ) & (ak.sum(genpart_pdgid == 111, axis=1) == 1)
+    flag_pi_and_pi0 = (ak.sum(genpart_pdgid == 211, axis=-1) == 1 ) & (ak.sum(genpart_pdgid == -211, axis=-1) == 1 ) & (ak.sum(genpart_pdgid == 111, axis=-1) == 1)
     pass_filter = flag_pi_and_pi0 & pass_filter
-    filter_key = 'Rho, 1 of each pi+/- and 1 pi0'
+    filter_key = 'Rho: 1 of each pi+/- and 1 pi0'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
     # print("Rho Filter: ", ak.sum(pass_filter))
 
     events_pirho = events[pass_filter & flag_pi_and_pi0]
 
-    # define some new variables for pirho events
     p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
-    # print("p4_piplus: ", p4_piplus)
     p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211))
-    # print("p4_piminus: ", p4_piminus)
     p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111))
-    # print("p4_pi0: ", p4_pi0) 
 
     px = ak.sum(p4_piplus.px) + ak.sum(p4_pi0.px) + ak.sum(p4_piminus.px)
     py = ak.sum(p4_piplus.py) + ak.sum(p4_pi0.py) + ak.sum(p4_piminus.py)
@@ -208,20 +202,18 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     events_pirho['P_rad'] = P_rad
     # print("P_rad: ", P_rad)
 
+
     ##########################
     # define SR
     ########################## 
     genpart_abs_pdgId = np.abs(events_pirho['GenPart_pdgId'])
     p4_rho = p4_piminus + p4_pi0
     p4_pirho = p4_piplus + p4_rho
-    # print("p4_rho: ", p4_rho)
-    # print("p4_pirho: ", p4_pirho)
     pass_filter_sr = ak.ones_like(events_pirho['evtNumber'], dtype=bool)
-
+    
 
     # angle between rho/pion
     angle_between_pirho = p4_piplus.deltaangle(p4_rho)
-    # print("angle_between_pirho: ", angle_between_pirho)
     mask1 = (angle_between_pirho > 2.90) & (angle_between_pirho < 3.10)
     mask_event1 = ak.any(mask1, axis=-1)
     pass_filter_sr = mask_event1 & pass_filter_sr
@@ -231,7 +223,6 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
 
     # Rho invariant mass
     rho_mass = p4_rho.mass
-    # print("rho_mass: ", rho_mass)
     mask2 = (rho_mass > 0.70) & (rho_mass < 0.84)
     mask_event2 = ak.any(mask2, axis=-1)
     pass_filter_sr = mask_event2 & pass_filter_sr
@@ -241,7 +232,6 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
 
     # charged pion mass
     pion_mass = p4_piplus.mass
-    # print("pion_mass: ", pion_mass)
     mask2 = (pion_mass > 0.08) & (pion_mass < 0.2)
     mask_event2 = ak.any(mask2, axis=-1)
     pass_filter_sr = mask_event2 & pass_filter_sr
@@ -251,7 +241,6 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
 
     # neutral pion mass
     pi0_mass = p4_pi0.mass
-    # print("pi0_mass: ", pi0_mass)
     mask2 = (pi0_mass > 0.08) & (pi0_mass < 0.14)
     mask_event2 = ak.any(mask2, axis=-1)
     pass_filter_sr = mask_event2 & pass_filter_sr
@@ -261,7 +250,6 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
 
     # pirho invariant mass
     pirho_mass = p4_pirho.mass
-    # print("pirho_mass: ", pirho_mass)
     mask3 = (pirho_mass > 10) & (pirho_mass < 85)
     mask_event3 = ak.any(mask3, axis=-1)
     pass_filter_sr = mask_event3 & pass_filter_sr
@@ -269,11 +257,16 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
     
 
-    # total energy
-    total_energy = ak.sum(events_pirho['GenPart_vector_fCoordinates_fT'], axis=-1)
-    # print("total_energy: ", total_energy)
-    pass_filter_sr = (total_energy < 600) & (total_energy > 400) & pass_filter_sr
-    filter_key = 'Total energy between 400 and 600 GeV'
+    # total energy 
+    p4_piplus_filled = ak.fill_none(p4_piplus, 0)
+    p4_piminus_filled = ak.fill_none(p4_piminus, 0)
+    p4_pi0_filled = ak.fill_none(p4_pi0, 0)
+    piplus_energy = ak.sum(p4_piplus_filled.energy, axis=-1)
+    piminus_energy = ak.sum(p4_piminus_filled.energy, axis=-1)
+    pi0_energy = ak.sum(p4_pi0_filled.energy, axis=-1)
+    total_energy = piplus_energy + piminus_energy + pi0_energy
+    pass_filter_sr = (total_energy < 80) & (total_energy > 40) & pass_filter_sr
+    filter_key = 'Total energy between 40 and 80 GeV'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
    
 
@@ -282,8 +275,7 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     missing_py = -ak.sum(events_pirho['GenPart_vector_fCoordinates_fY'], axis=-1)
     missing_pz = -ak.sum(events_pirho['GenPart_vector_fCoordinates_fZ'], axis=-1)
     missing_p = np.sqrt(missing_px**2 + missing_py**2 + missing_pz**2)
-    # print("missing_p: ", missing_p)
-    pass_filter_sr = (missing_p < 80) & pass_filter_sr
+    pass_filter_sr = (missing_p < 25) & (missing_p > 10) & pass_filter_sr
     filter_key = 'Missing p < 80 GeV'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
     
@@ -295,9 +287,8 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     filter_key = 'P_rad < cme/2'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
 
-
+   
     events_sr = events_pirho[pass_filter_sr]
-    # print('Check for debugging 7')
     return events_sr, filter_log_dict
 
 def filter_event(events: ak.Array, filter_log_dict: dict):
