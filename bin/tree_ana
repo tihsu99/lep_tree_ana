@@ -58,6 +58,13 @@ if __name__ == "__main__":
         dl.postprocess()
         data_loaders[key] = dl
 
+    data_loaders = {
+        'data94': data_loaders['data94'],
+        'Zqq': data_loaders['Zqq'],
+        'Zll': data_loaders['Zll'],
+        'Ztautau': data_loaders['Ztautau'],
+    }
+
     # split signal categories from Ztautau data loader if specified
     if global_configs.get("signal_categories", None) is not None:
         log.info("Splitting signal categories from Ztautau data loader")

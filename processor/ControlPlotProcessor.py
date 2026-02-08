@@ -451,6 +451,7 @@ def make_control_plots_pipi(dl_dict, luminosity, normalize, output_dir, region_n
         luminosity=luminosity, normalize=normalize,
     )
     plt.tight_layout()
+    ax.set_yscale('log')
     plt.savefig(f"{output_dir}/control_plot_missing_energy.png")
 
 
@@ -600,6 +601,64 @@ def make_control_plots_leplep(dl_dict, luminosity, normalize, output_dir, region
     plt.savefig(f"{output_dir}/control_plot_num_reco_particles.png")
     
 
+def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region_name="tautau"):
+    # isolation angle
+    def get_isolation_angle(dl):
+        events = dl.data.get(region_name)
+        # return events['isolation_angle']
+        isolation_angle = ak.to_numpy(events['isolation_angle'], allow_missing=True)
+        isolation_angle = np.nan_to_num(isolation_angle, nan=0) #
+        return isolation_angle
+
+    bin_edges = np.linspace(140, 180, 101)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_isolation_angle,
+        bin_edges=bin_edges,
+        x_label='Isolation Angle [deg]',
+        title='Control Plot: Isolation Angle',
+        luminosity=luminosity, normalize=normalize,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_isolation_angle.png")
+
+    # Erad
+    def get_erad(dl):
+        events = dl.data.get(region_name)
+        erad = ak.to_numpy(events['E_rad'], allow_missing=True)
+        erad = np.nan_to_num(erad, nan=-1) #
+        return erad
+    bin_edges = np.linspace(0, 2, 101)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_erad,
+        bin_edges=bin_edges,
+        x_label='E_rad',
+        title='Control Plot: E_rad',
+        luminosity=luminosity, normalize=normalize,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_erad.png")
+
+    # p_rad
+    def get_prad(dl):
+        events = dl.data.get(region_name)
+        prad = ak.to_numpy(events['P_rad'], allow_missing=True)
+        prad = np.nan_to_num(prad, nan=0) #
+        return prad
+    bin_edges = np.linspace(0, 2, 101)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_prad,
+        bin_edges=bin_edges,
+        x_label='P_rad',
+        title='Control Plot: P_rad',
+        luminosity=luminosity, normalize=normalize,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_prad.png")
+
+
 
 
 class ControlPlotProcessor(BaseProcessor):
@@ -650,6 +709,16 @@ class ControlPlotProcessor(BaseProcessor):
                 normalize=self.normalize,
                 output_dir=output_dir_pipiLoose,
                 region_name="pipiLoose",
+            )
+        if 'tautau' in self.regions:
+            output_dir_tautau = f"{self.output_dir}/tautau/"
+            os.makedirs(output_dir_tautau, exist_ok=True)
+            make_control_plots_tautau(
+                dl_dict,
+                luminosity=self.luminosity,
+                normalize=self.normalize,
+                output_dir=output_dir_tautau,
+                region_name="tautau",
             )
 
 

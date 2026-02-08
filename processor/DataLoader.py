@@ -172,7 +172,7 @@ def filter_event(events: ak.Array, filter_log_dict: dict):
     filtered_events_dict = {
         'raw': events,
     }
-    events_copy = copy.deepcopy(events)
+    # events_copy = copy.deepcopy(events)
 
     # filtered_events, filter_log_dict = filter_pipi_channel(events_copy, filter_log_dict)
     # filtered_events_dict['pipi'] = filtered_events
@@ -180,8 +180,8 @@ def filter_event(events: ak.Array, filter_log_dict: dict):
     # filtered_events, filter_log_dict = filter_leplep_channel(events_copy, filter_log_dict)
     # filtered_events_dict['leplep'] = filtered_events
 
-    filtered_events, filter_log_dict = filter_pipiLoose_channel(events_copy, filter_log_dict)
-    filtered_events_dict['pipiLoose'] = filtered_events
+    # filtered_events, filter_log_dict = filter_pipiLoose_channel(events_copy, filter_log_dict)
+    # filtered_events_dict['pipiLoose'] = filtered_events
 
 
     return filtered_events_dict, filter_log_dict
@@ -223,7 +223,7 @@ class DataLoader:
         if len(glob.glob(self.output_dir + "/filtered___*.parquet")) > 0:
             log.info(f"Loading existing filtered data from {self.output_dir}")
             for region in self.load_regions:
-                if region == 'pipiLoose': continue
+                if region == 'tautau': continue
                 file = self.output_dir + "/filtered___" + region + ".parquet"
                 if os.path.exists(file):
                     self.data[region] = ak.from_parquet(file)
@@ -312,13 +312,13 @@ class DataLoader:
                     events['initial_total_num_events'] = len(events)
                     initial_total_num_events += len(events)
 
-                    # select Part_xxx via isGood flag
-                    part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
-                    flag_not_0pdgid = (events['Part_pdgId'] != 0)
-                    events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) # & flag_not_0pdgid
-                    for part_branch in part_branches:
-                        if part_branch != 'Part_isGood':
-                            events[part_branch] = events[part_branch][events['Part_isGood']] 
+                    # # select Part_xxx via isGood flag
+                    # part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
+                    # flag_not_0pdgid = (events['Part_pdgId'] != 0)
+                    # events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) # & flag_not_0pdgid
+                    # for part_branch in part_branches:
+                    #     if part_branch != 'Part_isGood':
+                    #         events[part_branch] = events[part_branch][events['Part_isGood']] 
 
                     if not self.is_data:
                         # get truth info of tau pair and tau neutrinos
@@ -426,120 +426,123 @@ class DataLoader:
 
 
     def postprocess(self):
-        events = copy.deepcopy(self.data['raw'])
-        pdg_id = np.abs(events['Part_pdgId'])
+        events = self.data['raw']
+        part_branches = [
+            "charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood", "vtxIdx",
+        ]
+        part_branches = [f'Part_{b}' for b in part_branches]
+        id_branches = [
+            "Elid_partIdx", "Elid_tag", "Elid_gammaConversion",
+            "Muid_partIdx", "Muid_tag",
+            "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
+        ]
+        track_branches = [ f'Trac_{b}' for b in 
+            [
+                "originVtxIdx", "impParToVertexRPhi", "impParToVertexZ"
+            ]
+        ]
+        part_branches = part_branches + id_branches + track_branches
 
+
+        part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
+        # events['Part_isGood'] =(part_abscosth < 0.732) & (events['Part_isGood']==1)
+        events['Part_isGood'] = (part_abscosth > 0.035) & (part_abscosth < 0.732)
+        # events['Part_isGood'] = (part_abscosth > 0.035) & (part_abscosth < 0.732) & (events['Part_fourMomentum_fCoordinates_fT'] > 0.5) # & (np.abs(events['Trac_impParToVertexZ']) < 10) & (np.abs(events['Trac_impParToVertexRPhi']) < 5)#  & (events['Part_fourMomentum_fCoordinates_fT'] > 3)
+
+        for part_branch in part_branches:
+            if part_branch != 'Part_isGood':
+                events[part_branch] = events[part_branch][events['Part_isGood']==1]
+
+
+        events['nprong'] = ak.sum((events['Part_charge'] != 0), axis=1)
         pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
-        # redefine pdgId for pions 
-        events['Part_pdgId'] = ak.where(pdg_id == 41, 0, events['Part_pdgId'])
-        events['Part_pdgId'] = ak.where(
-            (events['Haid_pionRich'] >= 0) 
-            # (events['Haid_pionRich'] >= 0) & 
-            # (events['Haide_pionTag'] >= 0) &
-            # (events['Haidn_pionTag'] >= 0) 
-            , 41, events['Part_pdgId'])
-        # events['Part_pdgId'] = ak.where((events['Elid_tag'] >= 1) & (events['Elid_tag'] < 3), 41, events['Part_pdgId'])
-        # events['Part_pdgId'] = ak.where((events['Part_pdgId'] == 41) & (events['Elid_tag'] < 1) | (events['Elid_tag'] > 3), 0, events['Part_pdgId'])
-        # events['Part_pdgId'] = ak.where((events['Part_pdgId'] == 41) & ((events['Haid_pionRich'] == -1) | (events['Haide_pionTag'] == -1) | (events['Haidn_pionTag'] == -1)  | (events['Haidr_pionTag']==-1) | (events['Haidc_pionTag']==-1)), 0, events['Part_pdgId'])
-        # events['Part_pdgId'] = ak.where((events['Part_pdgId'] == 41) & ((events['Haid_pionRich'] == -1) | (events['Haide_pionTag'] == -1) | (events['Haidn_pionTag'] == -1) ), 0, events['Part_pdgId'])
-        # events['Part_pdgId'] = ak.where((events['Part_pdgId'] == 41) & ((events['Haid_pionRich'] < 0)), 0, events['Part_pdgId'])
-        events['Part_pdgId'] = ak.where((np.abs(events['Part_pdgId']) == 41) & (events['Muid_tag']>1), 0, events['Part_pdgId'])
-
-        particle_pt = ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2)**0.5
-        particle_pz = events['Part_fourMomentum_fCoordinates_fZ']
-        events['Part_pdgId'] = ak.where( (np.abs(events['Part_pdgId']) == 41) & ((particle_pt > 50) | (np.abs(particle_pz) > 35)), 0, events['Part_pdgId'])
-
-        new_pdgid = np.abs(events['Part_pdgId'])
-        charge = events['Part_charge']
-        has_os_pion = (ak.sum( (new_pdgid == 41) & (charge == 1), axis=1) >=1 ) & (ak.sum( (new_pdgid == 41) & (charge == -1), axis=1) >=1 )
-        pass_filter = has_os_pion & pass_filter
-
+        pass_filter = (events['nprong'] >= 2) & (events['nprong'] <= 6) & pass_filter
         events = events[pass_filter]
-        self.data[self.region_of_interest] = events
-
-
-        # define some basic variables for all regions
-        for region in self.load_regions:
-            if region == 'raw':
-                continue
-            events = self.data[region]
-            events['Part_p4'] = vector.zip({
-                "px": events['Part_fourMomentum_fCoordinates_fX'],
-                "py": events['Part_fourMomentum_fCoordinates_fY'],
-                "pz": events['Part_fourMomentum_fCoordinates_fZ'],
-                "E": events['Part_fourMomentum_fCoordinates_fT'],
-                }
-            )
-            events['Part_absPdgId'] = np.abs(events['Part_pdgId'])
-
-            # define number of particles (pion, electron, muon)
-            mask_piplus = (events['Part_absPdgId'] == 41) & (events['Part_charge'] == 1)
-            mask_piminus = (events['Part_absPdgId'] == 41) & (events['Part_charge'] == -1)
-            mask_elplus = (events['Part_absPdgId'] == 2) & (events['Part_charge'] == 1)
-            mask_elminus = (events['Part_absPdgId'] == 2) & (events['Part_charge'] == -1)
-            mask_muplus = (events['Part_absPdgId'] == 6) & (events['Part_charge'] == 1)
-            mask_muminus = (events['Part_absPdgId'] == 6) & (events['Part_charge'] == -1)
-            events['num_pi_plus'] = ak.sum(mask_piplus, axis=1)
-            events['num_pi_minus'] = ak.sum(mask_piminus, axis=1)
-            events['num_el_plus'] = ak.sum(mask_elplus, axis=1)
-            events['num_el_minus'] = ak.sum(mask_elminus, axis=1)
-            events['num_mu_plus'] = ak.sum(mask_muplus, axis=1)
-            events['num_mu_minus'] = ak.sum(mask_muminus, axis=1)
-
-            # define energy leading particle for each type
-            idx_all = ak.local_index(events['Part_p4'], axis=1)
-            for name, mask in [
-                ('piplus', mask_piplus),
-                ('piminus', mask_piminus),
-                ('elplus', mask_elplus),
-                ('elminus', mask_elminus),
-                ('muplus', mask_muplus),
-                ('muminus', mask_muminus),
-            ]:
-                p4 = events['Part_p4'][mask]
-                idx_type = idx_all[mask]
-                idx_sorted = ak.argsort(p4.E, axis=1, ascending=False)
-                type_idx_sorted = idx_type[idx_sorted]
-                first_idx = ak.firsts(type_idx_sorted)
-                events[f'flag_is_lead_{name}'] = (idx_all == ak.firsts(type_idx_sorted))
-
-            # define missing momentum
-            events['missing_px'] = -ak.sum(events['Part_fourMomentum_fCoordinates_fX'], axis=-1)
-            events['missing_py'] = -ak.sum(events['Part_fourMomentum_fCoordinates_fY'], axis=-1)
-            events['missing_pz'] = -ak.sum(events['Part_fourMomentum_fCoordinates_fZ'], axis=-1)
-            events['missing_p'] = np.sqrt(events['missing_px']**2 + events['missing_py']**2 + events['missing_pz']**2)
-            events['missing_E'] = cme - ak.sum(events['Part_fourMomentum_fCoordinates_fT'], axis=-1)
-            events['missing_pt'] = np.sqrt(events['missing_px']**2 + events['missing_py']**2)
-
-        # some extra cuts for piploose region
-        events = self.data['pipiLoose']
-        p4_piplus = events['Part_p4'][events['flag_is_lead_piplus']][:,0]
-        p4_piminus = events['Part_p4'][events['flag_is_lead_piminus']][:,0]
         pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
 
-        events['P_rad'] = (((p4_piplus.px**2 + p4_piplus.py**2 + p4_piplus.pz**2) + (p4_piminus.px**2 + p4_piminus.py**2 + p4_piminus.pz**2))**0.5)
+        events['Part_p4'] = vector.zip({
+            "px": events['Part_fourMomentum_fCoordinates_fX'],
+            "py": events['Part_fourMomentum_fCoordinates_fY'],
+            "pz": events['Part_fourMomentum_fCoordinates_fZ'],
+            "E": events['Part_fourMomentum_fCoordinates_fT'],
+            }
+        )
+        events['Part_p'] = events['Part_p4'].p
+        events['truthst_vector'] = vector.zip({
+            "x": events['thrust_x'],
+            "y": events['thrust_y'],
+            "z": events['thrust_z'],
+        })
+        events['Part_hemisphere'] = ak.where(events['Part_p4'].dot(events['truthst_vector']) > 0, 1, -1)
+        # find the p4 of leading charged particle in each hemisphere
+        idx_all = ak.local_index(events['Part_pdgId'])
+        for hemisphere in [1, -1]:
+            mask = (events['Part_hemisphere'] == hemisphere) & (events['Part_charge'] != 0)
+            p4 = events['Part_p4'][mask]
+            idx_sphere = idx_all[mask]
+            idx_sorted = ak.argsort(p4.p, axis=1, ascending=False)
+            hemisphere_idx_sorted = idx_sphere[idx_sorted]
+            first_idx = ak.firsts(hemisphere_idx_sorted)
+            flag_is_hemisphere_leading = (idx_all == ak.firsts(hemisphere_idx_sorted))
+            hemisphere_id = 'a' if hemisphere == 1 else 'b'
+            events[f'lead_{hemisphere_id}_p4'] = events['Part_p4'][flag_is_hemisphere_leading][:,0]
+            events[f'lead_{hemisphere_id}_z0'] = events['Trac_impParToVertexZ'][flag_is_hemisphere_leading][:,0]
+            events[f'lead_{hemisphere_id}_d0'] = events['Trac_impParToVertexRPhi'][flag_is_hemisphere_leading][:,0]
+        pass_filter = (events['lead_a_p4'].p > 0) & (events['lead_b_p4'].p > 0) & pass_filter
 
-        dr_pi_pairs = p4_piplus.deltaangle(p4_piminus)
-        pass_filter = (dr_pi_pairs > 2.91) & (dr_pi_pairs < 3.13) & pass_filter
+        cut_lead_a = (np.abs(events['lead_a_p4'].costheta) > 0.035) & (np.abs(events['lead_a_p4'].costheta) < 0.731)
+        cut_lead_b = (np.abs(events['lead_b_p4'].costheta) > 0.035) & (np.abs(events['lead_b_p4'].costheta) < 0.731)
+        pass_filter = (cut_lead_a | cut_lead_b) & pass_filter
 
-        m_pi_pairs =  (p4_piplus + p4_piminus).mass
-        pass_filter = (m_pi_pairs > 8) & (m_pi_pairs < 82) & pass_filter
+        pass_filter = (np.abs(events['lead_a_z0']) < 4.5) & (np.abs(events['lead_b_z0']) < 4.5) & pass_filter
+        pass_filter = ((np.abs(events['lead_a_d0']) < 0.3) | (np.abs(events['lead_b_d0']) < 0.3)) & pass_filter
 
-        thrust_magnitude = events['thrust_Mag']
-        neglog1mthrust = -np.log10(1 - thrust_magnitude + 1e-10) # avoid log(0)
-        pass_filter = (neglog1mthrust > 1) & (neglog1mthrust < 4.7) & pass_filter
+        # define isolation angle: minimum angle between any charged particles in different hemisphere
+        pairs = ak.cartesian({
+            'a': events['Part_p4'][(events['Part_charge'] != 0) & (events['Part_hemisphere'] == 1)], 
+            'b': events['Part_p4'][(events['Part_charge'] != 0) & (events['Part_hemisphere'] == -1)]
+        }, nested=False, axis=1)
+        angle_between_charged = pairs['a'].deltaangle(pairs['b']) * 180 / np.pi
+        min_angle_between_charged = ak.min(angle_between_charged, axis=-1)
+        events['isolation_angle'] = min_angle_between_charged
 
-        n_part = ak.num(events['Part_pdgId'])
-        pass_filter = (n_part <= 5) & pass_filter
+        # # find all charged particle within 30 degree of leading particle in each hemisphere, and sum their energy for E_rad calculation
+        # for hemisphere in [1, -1]:
+        #     hemisphere_id = 'a' if hemisphere == 1 else 'b'
+        #     lead_p4 = events[f'lead_{hemisphere_id}_p4']
+        #     charged_mask = (events['Part_charge'] != 0) & (events['Part_hemisphere'] == hemisphere)
+        #     charged_p4 = events['Part_p4'][charged_mask]
+        #     angle_to_lead = lead_p4.deltaangle(charged_p4) * 180 / np.pi
+        #     nearby_charged_mask = angle_to_lead < 30
+        #     nearby_charged_energy = ak.sum(events['Part_fourMomentum_fCoordinates_fT'][charged_mask][nearby_charged_mask], axis=-1)
+        #     events[f'{hemisphere_id}_nearby_charged_energy'] = nearby_charged_energy
 
-        p_rad = events['P_rad']
-        pass_filter = (p_rad < 58) & pass_filter
+        # E_rad
+        events['E_rad'] = (events['lead_a_p4'].E**2 + events['lead_b_p4'].E**2)**0.5 / (cme/2)
+        # events['E_rad'] = ((events['lead_a_p4'].E + events['a_nearby_charged_energy'])**2 + (events['lead_b_p4'].E + events['b_nearby_charged_energy'])**2)**0.5 / (cme/2)
+        # P_rad
+        events['P_rad'] = (events['lead_a_p4'].p**2 + events['lead_b_p4'].p**2)**0.5 / (cme/2)
 
-        missing_pt = events['missing_pt']
-        pass_filter = (missing_pt < 40) & pass_filter
+        pass_filter = (events['E_rad'] < 1) & (events['P_rad'] < 1) & pass_filter
 
-        events = events[pass_filter]
-        self.data['pipiLoose'] = events
+        # isolation angle < 179.5 for 2-prong events
+        pass_filter = (((events['nprong'] == 2) & (events['isolation_angle'] < 179.5)) | (events['nprong'] != 2)) & pass_filter
+
+        # sum charged E
+        charged_E = ak.sum(events['Part_fourMomentum_fCoordinates_fT'] * (events['Part_charge'] != 0), axis=-1)
+        pass_filter = (charged_E > 0.0875 * cme) & pass_filter
+
+
+        events['missing_px'] = -ak.sum(events['Part_fourMomentum_fCoordinates_fX'] * (events['Part_charge'] != 0), axis=-1)
+        events['missing_py'] = -ak.sum(events['Part_fourMomentum_fCoordinates_fY'] * (events['Part_charge'] != 0), axis=-1)
+        # events['missing_pz'] = -ak.sum(events['Part_fourMomentum_fCoordinates_fZ'], axis=-1)
+        events['missing_pt'] = np.sqrt(events['missing_px']**2 + events['missing_py']**2)
+        pass_filter = (((events['nprong'] == 2) & (events['missing_pt'] > 0.4)) | (events['nprong'] != 2)) & pass_filter
+        # pass_filter = (events['missing_pt'] > 0.4) & pass_filter
+
+
+        self.data['tautau'] = events[pass_filter]
+
 
 
     def finalize(self):

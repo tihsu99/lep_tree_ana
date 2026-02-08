@@ -173,6 +173,7 @@ def do_control_plot_from_hists(
     print(f"Total Data yield: {data_yields}")
     print(f"Data/MC yield ratio: {data_yields/sum_MC_yields if sum_MC_yields>0 else 'N/A'}")
     print()
+    ax.set_yscale('log')
 
     return fig, ax, ax_ratio
 
@@ -215,6 +216,7 @@ def do_control_plot(
     hist_data = np.zeros(len(bin_edges)-1)
     for dl_name, dl in dl_dict.items():
         variable_values = func_get_variable(dl)
+        variable_values = variable_values.astype(np.float64)
         hist, _ = np.histogram(variable_values, bins=bin_edges)
         hist_err2 = hist
         if not dl.is_data:

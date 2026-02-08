@@ -1,12 +1,12 @@
 GlobalConfigs:
-  default_output_dir: "./20260130-PiIDStudy-pipiLoose"
-  region_of_interest: &RegionName "pipiLoose"
+  default_output_dir: "./20260207-reproduce-paper"
+  region_of_interest: &RegionName "tautau"
   load_regions:
     - *RegionName
     - "raw"
   luminosity: &Luminosity 46.3 # pb^-1
-  signal_categories:
-    - 11
+  # signal_categories:
+  #   - 11
 
 DataLoaders:
   data94:
@@ -42,26 +42,27 @@ DataLoaders:
     is_signal: false
     norm_factor: 30511.2 # pb
     input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qqnew/simana_*_ttree.root"
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qqnew/simana_*9_ttree.root"
 
 Processors:
-  # PlotProcessor: 
-  # TemporaryProcessor: 
+  # # PlotProcessor: 
+  # # TemporaryProcessor: 
   ControlPlotProcessor:
     output_dir_name: "control_plots"
     regions:
       # - "pipi"
       # - "leplep"
-      - "pipiLoose"
-  # NeutrinoReconstructionProcessor:
-  IDAnaProcessor:
-    output_dir_name: "ID_analysis"
-    targeted_recon_pdgId: 
-      - 41
-      # - 6
-      # - 2
-    regions:
-      # - "pipi"
-      # - "leplep"
-      - "pipiLoose"
-      # - "raw"
+      # - "pipiLoose"
+      - "tautau"
+  # # NeutrinoReconstructionProcessor:
+  # IDAnaProcessor:
+  #   output_dir_name: "ID_analysis"
+  #   targeted_recon_pdgId: 
+  #     - 41
+  #     # - 6
+  #     # - 2
+  #   regions:
+  #     # - "pipi"
+  #     # - "leplep"
+  #     - "pipiLoose"
+  #     # - "raw"
