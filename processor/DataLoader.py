@@ -270,7 +270,11 @@ class DataLoader:
             gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
             
             part_branches = [
-                "charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood", "vtxIdx",
+                "charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood", "vtxIdx", 
+                "hpcShowerEnergy", "hpcShowerTheta", "hpcShowerPhi", "hpcParticleCode", "hpcNumLayers", "hpcLayerHitPattern", "hpcNumAssociatedShowers", "hpcTotalShowerEnergy", 
+                "hacShowerEnergy", "hacShowerTheta", "hacShowerPhi", "hacParticleCode", "hacNumTowers", "hacTowerHitPattern", "hacNumAssociatedShowers", "hacTotalShowerEnergy", 
+                "sticShowerEnergy", "sticShowerTheta", "sticShowerPhi", "sticNumTowers", "sticChargedTag", "sticSiliconVertexPos", 
+                "lock",
             ]
             part_branches = [f'Part_{b}' for b in part_branches]
             id_branches = [
@@ -280,7 +284,7 @@ class DataLoader:
             ]
             track_branches = [ f'Trac_{b}' for b in 
                 [
-                    "originVtxIdx", "impParToVertexRPhi", "impParToVertexZ"
+                    "originVtxIdx", "impParToVertexRPhi", "impParToVertexZ", "impParRPhi", "impParZ",
                 ]
             ]
 
@@ -428,7 +432,11 @@ class DataLoader:
     def postprocess(self):
         events = self.data['raw']
         part_branches = [
-            "charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood", "vtxIdx",
+            "charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood", "vtxIdx", 
+            "hpcShowerEnergy", "hpcShowerTheta", "hpcShowerPhi", "hpcParticleCode", "hpcNumLayers", "hpcLayerHitPattern", "hpcNumAssociatedShowers", "hpcTotalShowerEnergy", 
+            "hacShowerEnergy", "hacShowerTheta", "hacShowerPhi", "hacParticleCode", "hacNumTowers", "hacTowerHitPattern", "hacNumAssociatedShowers", "hacTotalShowerEnergy", 
+            "sticShowerEnergy", "sticShowerTheta", "sticShowerPhi", "sticNumTowers", "sticChargedTag", "sticSiliconVertexPos", 
+            "lock",
         ]
         part_branches = [f'Part_{b}' for b in part_branches]
         id_branches = [
@@ -438,19 +446,17 @@ class DataLoader:
         ]
         track_branches = [ f'Trac_{b}' for b in 
             [
-                "originVtxIdx", "impParToVertexRPhi", "impParToVertexZ"
+                "originVtxIdx", "impParToVertexRPhi", "impParToVertexZ", "impParRPhi", "impParZ",
             ]
         ]
         part_branches = part_branches + id_branches + track_branches
 
 
         part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
-        # events['Part_isGood'] =(part_abscosth < 0.732) & (events['Part_isGood']==1)
-        events['Part_isGood'] = (part_abscosth > 0.035) & (part_abscosth < 0.732)
-        # events['Part_isGood'] = (part_abscosth > 0.035) & (part_abscosth < 0.732) & (events['Part_fourMomentum_fCoordinates_fT'] > 0.5) # & (np.abs(events['Trac_impParToVertexZ']) < 10) & (np.abs(events['Trac_impParToVertexRPhi']) < 5)#  & (events['Part_fourMomentum_fCoordinates_fT'] > 3)
+        events['Part_isGood'] =(part_abscosth < 0.732) & (events['Part_isGood']==1)
 
         for part_branch in part_branches:
-            if part_branch != 'Part_isGood':
+            if part_branch != 'Part_isGood' and part_branch != 'Part_lock':
                 events[part_branch] = events[part_branch][events['Part_isGood']==1]
 
 
@@ -485,10 +491,33 @@ class DataLoader:
             first_idx = ak.firsts(hemisphere_idx_sorted)
             flag_is_hemisphere_leading = (idx_all == ak.firsts(hemisphere_idx_sorted))
             hemisphere_id = 'a' if hemisphere == 1 else 'b'
-            events[f'lead_{hemisphere_id}_p4'] = events['Part_p4'][flag_is_hemisphere_leading][:,0]
-            events[f'lead_{hemisphere_id}_z0'] = events['Trac_impParToVertexZ'][flag_is_hemisphere_leading][:,0]
-            events[f'lead_{hemisphere_id}_d0'] = events['Trac_impParToVertexRPhi'][flag_is_hemisphere_leading][:,0]
-        pass_filter = (events['lead_a_p4'].p > 0) & (events['lead_b_p4'].p > 0) & pass_filter
+            lead_part_exist = ak.any(flag_is_hemisphere_leading, axis=1)
+            events[f'lead_{hemisphere_id}_valid'] = ak.fill_none(lead_part_exist, False)
+            lead_px = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fX'][flag_is_hemisphere_leading]), 0)
+            lead_py = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fY'][flag_is_hemisphere_leading]), 0)
+            lead_pz = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fZ'][flag_is_hemisphere_leading]), 0)
+            lead_E = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fT'][flag_is_hemisphere_leading]), 0)
+            events[f'lead_{hemisphere_id}_p4'] = vector.zip({
+                "px": lead_px,
+                "py": lead_py,
+                "pz": lead_pz,
+                "E": lead_E,
+            })
+            # events[f'lead_{hemisphere_id}_p4'] = events['Part_p4'][flag_is_hemisphere_leading][:,0]
+            # lead_p4 = events['Part_p4'][flag_is_hemisphere_leading][:,0]
+            # events[f'lead_{hemisphere_id}_p4'] = ak.where(flag_is_hemisphere_leading, lead_p4, vector.obj(px=-999, py=-999, pz=-999, E=-999))
+            # events[f'lead_{hemisphere_id}_z0'] = events['Trac_impParToVertexZ'][flag_is_hemisphere_leading][:,0]
+            # events[f'lead_{hemisphere_id}_d0'] = events['Trac_impParToVertexRPhi'][flag_is_hemisphere_leading][:,0]
+            # events[f'lead_{hemisphere_id}_z0'] = events['Trac_impParZ'][flag_is_hemisphere_leading][:,0]
+            # events[f'lead_{hemisphere_id}_d0'] = events['Trac_impParRPhi'][flag_is_hemisphere_leading][:,0]
+            z0 = events['Trac_impParToVertexZ'][flag_is_hemisphere_leading][:,0]
+            d0 = events['Trac_impParToVertexRPhi'][flag_is_hemisphere_leading][:,0]
+            events[f'lead_{hemisphere_id}_z0'] = ak.fill_none(z0, -999)
+            events[f'lead_{hemisphere_id}_d0'] = ak.fill_none(d0, -999)
+
+            events[f'lead_{hemisphere_id}_hpcTotalShowerEnergy'] = events['Part_hpcTotalShowerEnergy'][flag_is_hemisphere_leading][:,0]
+        # pass_filter = (events['lead_a_p4'].p > 0) & (events['lead_b_p4'].p > 0) & pass_filter
+        pass_filter = events['lead_a_valid'] & events['lead_b_valid'] & pass_filter
 
         cut_lead_a = (np.abs(events['lead_a_p4'].costheta) > 0.035) & (np.abs(events['lead_a_p4'].costheta) < 0.731)
         cut_lead_b = (np.abs(events['lead_b_p4'].costheta) > 0.035) & (np.abs(events['lead_b_p4'].costheta) < 0.731)
@@ -504,32 +533,30 @@ class DataLoader:
         }, nested=False, axis=1)
         angle_between_charged = pairs['a'].deltaangle(pairs['b']) * 180 / np.pi
         min_angle_between_charged = ak.min(angle_between_charged, axis=-1)
-        events['isolation_angle'] = min_angle_between_charged
-
-        # # find all charged particle within 30 degree of leading particle in each hemisphere, and sum their energy for E_rad calculation
-        # for hemisphere in [1, -1]:
-        #     hemisphere_id = 'a' if hemisphere == 1 else 'b'
-        #     lead_p4 = events[f'lead_{hemisphere_id}_p4']
-        #     charged_mask = (events['Part_charge'] != 0) & (events['Part_hemisphere'] == hemisphere)
-        #     charged_p4 = events['Part_p4'][charged_mask]
-        #     angle_to_lead = lead_p4.deltaangle(charged_p4) * 180 / np.pi
-        #     nearby_charged_mask = angle_to_lead < 30
-        #     nearby_charged_energy = ak.sum(events['Part_fourMomentum_fCoordinates_fT'][charged_mask][nearby_charged_mask], axis=-1)
-        #     events[f'{hemisphere_id}_nearby_charged_energy'] = nearby_charged_energy
+        events['isolation_angle'] = ak.fill_none(min_angle_between_charged, -1)
 
         # E_rad
-        events['E_rad'] = (events['lead_a_p4'].E**2 + events['lead_b_p4'].E**2)**0.5 / (cme/2)
-        # events['E_rad'] = ((events['lead_a_p4'].E + events['a_nearby_charged_energy'])**2 + (events['lead_b_p4'].E + events['b_nearby_charged_energy'])**2)**0.5 / (cme/2)
+        for hemisphere in [1, -1]:
+            hemisphere_id = 'a' if hemisphere == 1 else 'b'
+            lead_p4 = events[f'lead_{hemisphere_id}_p4']
+            part_p4 = events['Part_p4']
+            angle_to_lead = lead_p4.deltaangle(part_p4) * 180 / np.pi
+            nearby_part_mask = angle_to_lead < 30
+            nearby_hpc_energy = ak.sum(events['Part_hpcTotalShowerEnergy'][nearby_part_mask], axis=-1)
+            events[f'{hemisphere_id}_nearby_hpc_energy'] = nearby_hpc_energy
+
+        # events['E_rad'] = (events['lead_a_p4'].E**2 + events['lead_b_p4'].E**2)**0.5 / (cme/2)
+        events['E_rad'] = (events['a_nearby_hpc_energy']**2 + events['b_nearby_hpc_energy']**2)**0.5 / (cme/2)
+        # events['E_rad'] = ((events['lead_a_p4'].E + events['a_nearby_hpc_energy'])**2 + (events['lead_b_p4'].E + events['b_nearby_hpc_energy'])**2)**0.5 / (cme/2)
         # P_rad
         events['P_rad'] = (events['lead_a_p4'].p**2 + events['lead_b_p4'].p**2)**0.5 / (cme/2)
 
-        pass_filter = (events['E_rad'] < 1) & (events['P_rad'] < 1) & pass_filter
-
-        # isolation angle < 179.5 for 2-prong events
-        pass_filter = (((events['nprong'] == 2) & (events['isolation_angle'] < 179.5)) | (events['nprong'] != 2)) & pass_filter
+        # pass_filter = (events['P_rad'] < 1) & pass_filter
 
         # sum charged E
         charged_E = ak.sum(events['Part_fourMomentum_fCoordinates_fT'] * (events['Part_charge'] != 0), axis=-1)
+        charged_E = charged_E + ak.sum(events['Part_hpcTotalShowerEnergy'] * (events['Part_charge'] == 0), axis=-1)
+        events['charged_E'] = charged_E
         pass_filter = (charged_E > 0.0875 * cme) & pass_filter
 
 
@@ -538,9 +565,15 @@ class DataLoader:
         # events['missing_pz'] = -ak.sum(events['Part_fourMomentum_fCoordinates_fZ'], axis=-1)
         events['missing_pt'] = np.sqrt(events['missing_px']**2 + events['missing_py']**2)
         pass_filter = (((events['nprong'] == 2) & (events['missing_pt'] > 0.4)) | (events['nprong'] != 2)) & pass_filter
-        # pass_filter = (events['missing_pt'] > 0.4) & pass_filter
 
 
+        # isolation angle < 179.5 for 2-prong events
+        # pass_filter = (((events['nprong'] == 2) & (events['isolation_angle'] < 179.5)) | (events['nprong'] != 2)) & pass_filter
+        pass_filter = (((events['nprong'] == 2) & (events['isolation_angle'] < 179.5) & (events['isolation_angle'] > 160)) | (events['nprong'] != 2)) & pass_filter
+        # # Erad Prad
+        # pass_filter = (events['E_rad'] < 0.8) & (events['P_rad'] < 1) & pass_filter
+
+        pass_filter = ak.fill_none(pass_filter, False)
         self.data['tautau'] = events[pass_filter]
 
 

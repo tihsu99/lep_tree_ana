@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import copy
 import numpy as np
 from utils.common_functions import get_color_iterator
 
@@ -46,7 +47,7 @@ def do_ratio_plot(
     - ax: matplotlib Axes object with the plot.
     """
     if ax is None or ax_ratio is None:
-        fig, (ax, ax_ratio) = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [4, 1]}, figsize=(8, 8), dpi=300)
+        fig, (ax, ax_ratio) = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [4, 1]}, figsize=(8, 6), dpi=300)
 
     # Plot the two datasets
     ax.step(x, y1, where='mid', label=label1, alpha=0.7, color=color1, linestyle=linestyle1)
@@ -107,7 +108,7 @@ def do_control_plot_from_hists(
     - ax_ratio: matplotlib Axes object with the ratio plot.
     """
     print("Control Plot from Histograms:", title)
-    fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 8), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
+    fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 6), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
 
     num_bins = len(bin_edges) - 1
     # Calculate sum of MC yields
@@ -174,6 +175,7 @@ def do_control_plot_from_hists(
     print(f"Data/MC yield ratio: {data_yields/sum_MC_yields if sum_MC_yields>0 else 'N/A'}")
     print()
     ax.set_yscale('log')
+    ax.set_ylim(bottom=1)
 
     return fig, ax, ax_ratio
 
@@ -216,7 +218,6 @@ def do_control_plot(
     hist_data = np.zeros(len(bin_edges)-1)
     for dl_name, dl in dl_dict.items():
         variable_values = func_get_variable(dl)
-        variable_values = variable_values.astype(np.float64)
         hist, _ = np.histogram(variable_values, bins=bin_edges)
         hist_err2 = hist
         if not dl.is_data:

@@ -1,5 +1,5 @@
 GlobalConfigs:
-  default_output_dir: "./20260207-reproduce-paper"
+  default_output_dir: "./20260212-reproduce-paper_v3"
   region_of_interest: &RegionName "tautau"
   load_regions:
     - *RegionName
@@ -15,7 +15,7 @@ DataLoaders:
     is_data: true
     is_signal: false
     input_files:
-      - "/eos/home-y/yulei/Ztautau/ntuple/collision_datanew/v94c/91.25/nanoaod_*.al_ttree.root"
+      - "/eos/home-y/yulei/Ztautau/ntuple/collision_data_v3/v94c/91.25/nanoaod_*.al_ttree.root"
   
   Ztautau:
     name: "Ztautau"
@@ -24,7 +24,7 @@ DataLoaders:
     is_signal: false
     norm_factor: 1458.9 # pb
     input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_tautaunew/simana_*_ttree.root"
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_tautau_v3/simana_*_ttree.root"
       
   Zll:
     name: "Zll"
@@ -33,7 +33,7 @@ DataLoaders:
     is_signal: false
     norm_factor:  2844.4 # pb
     input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_llnew/simana_*_ttree.root"
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_ll_v3/simana_*_ttree.root"
 
   Zqq:
     name: "Zqq"
@@ -42,13 +42,16 @@ DataLoaders:
     is_signal: false
     norm_factor: 30511.2 # pb
     input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qqnew/simana_*9_ttree.root"
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*0_ttree.root"
+      # - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*1_ttree.root"
 
 Processors:
   # # PlotProcessor: 
   # # TemporaryProcessor: 
   ControlPlotProcessor:
-    output_dir_name: "control_plots"
+    # output_dir_name: "control_plots"
+    output_dir_name: "control_plots-EradPrad"
+    # output_dir_name: "control_plots-isoAngle"
     regions:
       # - "pipi"
       # - "leplep"

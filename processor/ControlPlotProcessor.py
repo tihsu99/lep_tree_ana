@@ -605,9 +605,7 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
     # isolation angle
     def get_isolation_angle(dl):
         events = dl.data.get(region_name)
-        # return events['isolation_angle']
-        isolation_angle = ak.to_numpy(events['isolation_angle'], allow_missing=True)
-        isolation_angle = np.nan_to_num(isolation_angle, nan=0) #
+        isolation_angle = ak.to_numpy(events['isolation_angle'], allow_missing=False)
         return isolation_angle
 
     bin_edges = np.linspace(140, 180, 101)
@@ -625,8 +623,7 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
     # Erad
     def get_erad(dl):
         events = dl.data.get(region_name)
-        erad = ak.to_numpy(events['E_rad'], allow_missing=True)
-        erad = np.nan_to_num(erad, nan=-1) #
+        erad = ak.to_numpy(events['E_rad'], allow_missing=False)
         return erad
     bin_edges = np.linspace(0, 2, 101)
     fig, ax, ax_ratio = do_control_plot(
@@ -643,8 +640,7 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
     # p_rad
     def get_prad(dl):
         events = dl.data.get(region_name)
-        prad = ak.to_numpy(events['P_rad'], allow_missing=True)
-        prad = np.nan_to_num(prad, nan=0) #
+        prad = ak.to_numpy(events['P_rad'], allow_missing=False)
         return prad
     bin_edges = np.linspace(0, 2, 101)
     fig, ax, ax_ratio = do_control_plot(
@@ -657,6 +653,24 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
     )
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_prad.png")
+
+    # charged_E
+    def get_charged_E(dl):
+        events = dl.data.get(region_name)
+        charged_E = ak.to_numpy(events['charged_E'], allow_missing=False)
+        return charged_E
+    bin_edges = np.linspace(0, cme, 101)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_charged_E,
+        bin_edges=bin_edges,
+        x_label='charged_E',
+        title='Control Plot: charged_E',
+        luminosity=luminosity, normalize=normalize,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_chargedE.png")
+
 
 
 
