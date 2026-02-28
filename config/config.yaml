@@ -3,7 +3,7 @@ GlobalConfigs:
   region_of_interest: &RegionName "tautau"
   load_regions:
     - *RegionName
-    - "raw"
+    # - "raw"
   luminosity: &Luminosity 46.3 # pb^-1
   # signal_categories:
   #   - 11
@@ -42,20 +42,14 @@ DataLoaders:
     is_signal: false
     norm_factor: 30511.2 # pb
     input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*0_ttree.root"
-      # - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*1_ttree.root"
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*_ttree.root"
 
 Processors:
   # # PlotProcessor: 
   # # TemporaryProcessor: 
   ControlPlotProcessor:
-    # output_dir_name: "control_plots"
-    output_dir_name: "control_plots-EradPrad"
-    # output_dir_name: "control_plots-isoAngle"
+    output_dir_name: "control_plots"
     regions:
-      # - "pipi"
-      # - "leplep"
-      # - "pipiLoose"
       - "tautau"
   # # NeutrinoReconstructionProcessor:
   # IDAnaProcessor:
