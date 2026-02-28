@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import copy
 import numpy as np
 from utils.common_functions import get_color_iterator
 
@@ -46,7 +47,7 @@ def do_ratio_plot(
     - ax: matplotlib Axes object with the plot.
     """
     if ax is None or ax_ratio is None:
-        fig, (ax, ax_ratio) = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [4, 1]}, figsize=(8, 8), dpi=300)
+        fig, (ax, ax_ratio) = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [4, 1]}, figsize=(8, 6), dpi=300)
 
     # Plot the two datasets
     ax.step(x, y1, where='mid', label=label1, alpha=0.7, color=color1, linestyle=linestyle1)
@@ -84,6 +85,102 @@ def do_ratio_plot(
         ax_ratio.legend(loc='upper right')
     return (ax, ax_ratio)
 
+def do_control_plot_from_hists(
+    hist_data,
+    hist_MC_dict,
+    hist_MC_err2_dict,
+    bin_edges,
+    x_label="X-axis",
+    title="Control Plot",
+    normalize=True,
+):
+    """
+    Create a control plot comparing data and MC from precomputed histograms.
+    Parameters:
+    - data_hist: array-like, histogram of data.
+    - mc_hists_dict: dict of array-like, histograms of MC samples.
+    - mc_hists_err2_dict: dict of array-like, squared errors of MC histograms.
+    - x_label: str, label for the x-axis.
+    - title: str, title of the plot.
+    Returns:
+    - fig: matplotlib Figure object.
+    - ax: matplotlib Axes object with the plot.
+    - ax_ratio: matplotlib Axes object with the ratio plot.
+    """
+    print("Control Plot from Histograms:", title)
+    fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 6), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
+
+    num_bins = len(bin_edges) - 1
+    # Calculate sum of MC yields
+    sum_MC_yields = 0
+    for hist in hist_MC_dict.values():
+        sum_MC_yields += np.sum(hist)
+
+    # Plot MC stacked
+    cumulative_MC = np.zeros(num_bins)
+    cumulative_MC_err2 = np.zeros(num_bins)
+    color_iterator = get_color_iterator(len(hist_MC_dict))
+    for sample_name in hist_MC_dict.keys():
+        hist = hist_MC_dict.get(sample_name, np.zeros(num_bins))
+        normhist = hist / sum_MC_yields if normalize else hist
+        color = next(color_iterator)
+        ax.bar(bin_edges[:-1], normhist, bottom=cumulative_MC, width=np.diff(bin_edges), align='edge', color=color, label=sample_name, alpha=0.7, edgecolor='black')
+        cumulative_MC += normhist
+        cumulative_MC_err2 += hist_MC_err2_dict.get(sample_name, np.zeros(num_bins)) / (sum_MC_yields**2 if normalize else 1)
+
+    # plot uncertainty band for MC
+    cumulative_MC_err = np.sqrt(cumulative_MC_err2)
+    ax.fill_between((bin_edges[:-1] + bin_edges[1:]) / 2,
+                    cumulative_MC - cumulative_MC_err,
+                    cumulative_MC + cumulative_MC_err,
+                    step='mid',
+                    color='gray',
+                    alpha=0.5,
+                    label='MC Uncertainty')
+
+    # Plot data
+    data_yields = np.sum(hist_data)
+    if normalize:
+        hist_data = hist_data / data_yields
+        data_err = np.sqrt(hist_data) / data_yields
+    else:
+        hist_data = hist_data
+        data_err = np.sqrt(hist_data)
+    ax.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, hist_data, yerr=data_err, fmt='o', color='black', label='Data')
+    # ax.set_yscale('log')
+    if normalize:
+        ax.set_ylabel('Normalized Events')
+    else:
+        ax.set_ylabel('Events')
+    ax.set_title(title)
+    ax.legend(loc='best')
+
+    # Create ratio plot
+    ratio = hist_data / cumulative_MC
+    ratio_err = ratio * np.sqrt( (data_err / hist_data)**2 + (cumulative_MC_err / cumulative_MC)**2 )
+    ax_ratio.step((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, where='mid', color='black')
+    ax_ratio.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, yerr=ratio_err, fmt='o', color='black')
+    ax_ratio.set_xlabel(x_label)
+    ax_ratio.set_ylabel('Data / MC')
+    ax_ratio.set_ylim(0.5, 1.5)
+    # ax_ratio.set_xlim(bin_edges[0], bin_edges[-1])
+    ax_ratio.axhline(1, color='gray', linestyle=':')
+    sum_MC_yields = 0
+    for sample_name in hist_MC_dict.keys():
+        hist = hist_MC_dict.get(sample_name, np.zeros(len(bin_edges)-1))
+        sum_MC_yields += np.sum(hist)
+        print(f"{sample_name} yield: {np.sum(hist)}")
+    print(f"Sum MC yield: {sum_MC_yields}")
+    print(f"Total Data yield: {data_yields}")
+    print(f"Data/MC yield ratio: {data_yields/sum_MC_yields if sum_MC_yields>0 else 'N/A'}")
+    print()
+    ax.set_yscale('log')
+    ax.set_ylim(bottom=1)
+
+    return fig, ax, ax_ratio
+
+
+
 
 def do_control_plot(
     dl_dict,
@@ -108,7 +205,7 @@ def do_control_plot(
     - ax_ratio: matplotlib Axes object with the ratio plot.
     """
     print("Control Plot:", title)
-    fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 8), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
+    # fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 8), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
 
     signal_keys = [key for key, val in dl_dict.items() if val.is_signal]
     background_keys = [key for key, val in dl_dict.items() if (not val.is_signal and not val.is_data)]
@@ -134,65 +231,15 @@ def do_control_plot(
         else:
             hist_data += hist
 
-    # Plot MC stacked
-    cumulative_MC = np.zeros(len(bin_edges)-1)
-    cumulative_MC_err2 = np.zeros(len(bin_edges)-1)
-    color_iterator = get_color_iterator(num_MC_samples)
-    for dl_name in signal_keys + background_keys:
-        hist = hists_MC.get(dl_name, np.zeros(len(bin_edges)-1))
-        normhist = hist / sum_MC_yields if normalize else hist
-        color = next(color_iterator)
-        ax.bar(bin_edges[:-1], normhist, bottom=cumulative_MC, width=np.diff(bin_edges), align='edge', color=color, label=dl_name, alpha=0.7, edgecolor='black')
-        cumulative_MC += normhist
-        cumulative_MC_err2 += hist_MC_err2.get(dl_name, np.zeros(len(bin_edges)-1)) / (sum_MC_yields**2 if normalize else 1)
-
-    # plot uncertainty band for MC
-    cumulative_MC_err = np.sqrt(cumulative_MC_err2)
-    ax.fill_between((bin_edges[:-1] + bin_edges[1:]) / 2,
-                    cumulative_MC - cumulative_MC_err,
-                    cumulative_MC + cumulative_MC_err,
-                    step='mid',
-                    color='gray',
-                    alpha=0.5,
-                    label='MC Uncertainty')
-
-    # Plot data
-    if normalize:
-        hist_data = hist_data / np.sum(hist_data)
-        data_err = np.sqrt(hist_data) / np.sum(hist_data)
-    else:
-        hist_data = hist_data
-        data_err = np.sqrt(hist_data)
-    ax.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, hist_data, yerr=data_err, fmt='o', color='black', label='Data')
-    # ax.set_yscale('log')
-    if normalize:
-        ax.set_ylabel('Normalized Events')
-    else:
-        ax.set_ylabel('Events')
-    ax.set_title(title)
-    ax.legend(loc='best')
-
-    # Create ratio plot
-    ratio = hist_data / cumulative_MC
-    ratio_err = ratio * np.sqrt( (data_err / hist_data)**2 + (cumulative_MC_err / cumulative_MC)**2 )
-    ax_ratio.step((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, where='mid', color='black')
-    ax_ratio.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, yerr=ratio_err, fmt='o', color='black')
-    ax_ratio.set_xlabel(x_label)
-    ax_ratio.set_ylabel('Data / MC')
-    ax_ratio.set_ylim(0.5, 1.5)
-    # ax_ratio.set_xlim(bin_edges[0], bin_edges[-1])
-    ax_ratio.axhline(1, color='gray', linestyle=':')
-    sum_MC_yields = 0
-    for dl_name in signal_keys + background_keys:
-        hist = hists_MC.get(dl_name, np.zeros(len(bin_edges)-1))
-        sum_MC_yields += np.sum(hist)
-        print(f"{dl_name} yield: {np.sum(hist)}")
-    print(f"Sum MC yield: {sum_MC_yields}")
-    print(f"Total Data yield: {np.sum(hist_data)}")
-    print(f"Data/MC yield ratio: {np.sum(hist_data)/sum_MC_yields if sum_MC_yields>0 else 'N/A'}")
-    print()
-
-    return fig, ax, ax_ratio
+    return do_control_plot_from_hists(
+        hist_data=hist_data,
+        hist_MC_dict=hists_MC,
+        hist_MC_err2_dict=hist_MC_err2,
+        bin_edges=bin_edges,
+        x_label=x_label,
+        title=title,
+        normalize=normalize,
+    )
 
 
 
