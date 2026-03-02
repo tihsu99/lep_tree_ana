@@ -430,7 +430,32 @@ class DataLoader:
 
 
     def postprocess(self):
-        ...
+        # redefine Part_p4 for all channels
+        for ch, ch_events in self.data.items():
+            ch_events['Part_p4'] = vector.zip(
+                {
+                    "px": ch_events['Part_fourMomentum_fCoordinates_fX'],
+                    "py": ch_events['Part_fourMomentum_fCoordinates_fY'],
+                    "pz": ch_events['Part_fourMomentum_fCoordinates_fZ'],
+                    "E": ch_events['Part_fourMomentum_fCoordinates_fT'],
+                }
+            )
+        # redefine the lead_a/b_p4
+        for channel in [
+            'inclusive_tautau_loose',
+            'tautau',
+        ]:
+            if channel in self.data:
+                events = self.data[channel]
+                for part in ['a', 'b']:
+                    events[f'lead_{part}_p4'] = vector.zip(
+                        {
+                            "px": events[f'lead_{part}_p4'].x,
+                            "py": events[f'lead_{part}_p4'].y,
+                            "pz": events[f'lead_{part}_p4'].z,
+                            "E": events[f'lead_{part}_p4'].t,
+                        }
+                    )
 
 
 
