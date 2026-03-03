@@ -5,8 +5,11 @@ GlobalConfigs:
     - *RegionName
     # - "raw"
   luminosity: &Luminosity 46.3 # pb^-1
-  # signal_categories:
-  #   - 11
+  # Ztautau sample can be further split categorizes below
+  signal_categories:
+    pipi: 11
+    pirho: [12, 21]
+    pilep: [13, 31, 14, 41]
 
 DataLoaders:
   data94:

@@ -71,22 +71,25 @@ if __name__ == "__main__":
         log.info(f"Signal categories: {global_configs['signal_categories']}")
         ztautau_dl = data_loaders.pop('Ztautau')
         signal_categories = global_configs["signal_categories"]
-        signal_dl = copy.deepcopy(ztautau_dl)
-        for region, events in ztautau_dl.data.items():
-            mask_signal = ak.zeros_like(events['event_category'], dtype=bool)
-            for cat in signal_categories:
-                mask_signal = mask_signal | (events['event_category'] == cat)
-            signal_events = events[mask_signal]
-            background_events = events[~mask_signal]
+        split_ztautau_dls = {}
+        for cat_name, cat_list in signal_categories.items():
+            log.info(f"Splitting category: {cat_name} from Ztautau data loader with categories: {cat_list}")
+            if type(cat_list) is int or type(cat_list) is str:
+                cat_list = [int(cat_list)]
+            dl_cat = copy.deepcopy(ztautau_dl)
+            for region, events in ztautau_dl.data.items():
+                mask_cat = ak.zeros_like(events['event_category'], dtype=bool)
+                for cat in cat_list:
+                    mask_cat = mask_cat | (events['event_category'] == cat)
+                cat_events = events[mask_cat]
+                other_events = events[~mask_cat]
 
-            signal_dl.data[region] = signal_events
-            ztautau_dl.data[region] = background_events
+                dl_cat.data[region] = cat_events
+                ztautau_dl.data[region] = other_events
+            split_ztautau_dls[cat_name] = dl_cat
+        split_ztautau_dls['Ztautau_others'] = ztautau_dl
 
-        ztautau_dls = {
-            'Ztautau_signal': signal_dl,
-            'Ztautau_others': ztautau_dl
-        }
-        data_loaders = {**ztautau_dls, **data_loaders}
+        data_loaders = {**data_loaders, **split_ztautau_dls}
 
 
     for processor_name, processor_config in analysis_config['Processors'].items():
