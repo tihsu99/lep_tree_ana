@@ -440,20 +440,15 @@ class DataLoader:
                     "E": ch_events['Part_fourMomentum_fCoordinates_fT'],
                 }
             )
-        # redefine the lead_a/b_p4
-        for channel in [
-            'inclusive_tautau_loose',
-            'tautau',
-        ]:
-            if channel in self.data:
-                events = self.data[channel]
+            # redefine the lead_a/b_p4
+            if f'lead_a_p4' in ch_events.fields and f'lead_b_p4' in ch_events.fields:
                 for part in ['a', 'b']:
-                    events[f'lead_{part}_p4'] = vector.zip(
+                    ch_events[f'lead_{part}_p4'] = vector.zip(
                         {
-                            "px": events[f'lead_{part}_p4'].x,
-                            "py": events[f'lead_{part}_p4'].y,
-                            "pz": events[f'lead_{part}_p4'].z,
-                            "E": events[f'lead_{part}_p4'].t,
+                            "px": ch_events[f'lead_{part}_p4'].x,
+                            "py": ch_events[f'lead_{part}_p4'].y,
+                            "pz": ch_events[f'lead_{part}_p4'].z,
+                            "E": ch_events[f'lead_{part}_p4'].t,
                         }
                     )
 
