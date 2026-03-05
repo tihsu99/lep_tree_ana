@@ -93,6 +93,7 @@ def do_control_plot_from_hists(
     x_label="X-axis",
     title="Control Plot",
     normalize=True,
+    log_scale=True,
 ):
     """
     Create a control plot comparing data and MC from precomputed histograms.
@@ -159,7 +160,7 @@ def do_control_plot_from_hists(
     ratio = hist_data / cumulative_MC
     ratio_err = ratio * np.sqrt( (data_err / hist_data)**2 + (cumulative_MC_err / cumulative_MC)**2 )
     ax_ratio.step((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, where='mid', color='black')
-    ax_ratio.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, yerr=ratio_err, fmt='o', color='black')
+    ax_ratio.errorbar((bin_edges[:-1] + bin_edges[1:]) / 2, ratio, yerr=ratio_err, fmt='.', color='black')
     ax_ratio.set_xlabel(x_label)
     ax_ratio.set_ylabel('Data / MC')
     ax_ratio.set_ylim(0.5, 1.5)
@@ -174,8 +175,11 @@ def do_control_plot_from_hists(
     print(f"Total Data yield: {data_yields}")
     print(f"Data/MC yield ratio: {data_yields/sum_MC_yields if sum_MC_yields>0 else 'N/A'}")
     print()
-    ax.set_yscale('log')
-    ax.set_ylim(bottom=1)
+    if log_scale:
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=1)
+    else:
+        ax.set_ylim(bottom=0)
 
     return fig, ax, ax_ratio
 
@@ -190,6 +194,7 @@ def do_control_plot(
     title="Control Plot",
     luminosity=None,
     normalize=True,
+    log_scale=True,
 ):
     """
     Create a control plot comparing data and MC.
@@ -239,6 +244,7 @@ def do_control_plot(
         x_label=x_label,
         title=title,
         normalize=normalize,
+        log_scale=log_scale,
     )
 
 

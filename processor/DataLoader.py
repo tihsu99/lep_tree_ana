@@ -170,6 +170,37 @@ def filter_inclusive_tautau_tight(events: ak.Array, filter_log_dict: dict):
     events = events[pass_filter]
     return events, filter_log_dict
 
+        
+def filter_pion_events(events: ak.Array, filter_log_dict: dict):
+    filter_log_dict['pion channel initial'] = filter_log_dict.get('pion channel initial', 0) + len(events)
+    pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+
+    # thrust within range
+    thrust_magnitude = events['thrust_Mag']
+    neglog1mthrust = -np.log10(1 - thrust_magnitude + 1e-10) # avoid log(0)
+    pass_filter = (neglog1mthrust > 2.5) & (neglog1mthrust < 4.5) & pass_filter
+    filter_log_dict['thrust within [2.5, 4.5]'] = filter_log_dict.get('thrust within [2.5, 4.5]', 0) + ak.sum(pass_filter)
+
+    # nprong = 2
+    pass_filter = (events['nprong'] == 2) & pass_filter
+    filter_log_dict['nprong=2'] = filter_log_dict.get('nprong=2', 0) + ak.sum(pass_filter)
+
+    # event contains at least one charged pion
+    flag_is_pion = (abs(events['Part_pdgId']) == 41) & (events['Part_charge'] != 0)
+    pass_filter = ak.any(flag_is_pion, axis=1) & pass_filter
+    filter_log_dict['at least one charged pion'] = filter_log_dict.get('at least one charged pion', 0) + ak.sum(pass_filter)
+
+    # event contains at no charged pdgId=0, 42, or 65 particles (unk, kaon, proton)
+    flag_charged_unk_kaon_proton = ak.any(((abs(events['Part_pdgId']) == 0) | (abs(events['Part_pdgId']) == 42) | (abs(events['Part_pdgId']) == 65)) & (events['Part_charge'] != 0), axis=1)
+    pass_filter = pass_filter & ~flag_charged_unk_kaon_proton 
+    filter_log_dict['no charged unk/kaon/proton'] = filter_log_dict.get('no charged unk/kaon/proton', 0) + ak.sum(pass_filter)
+
+    # finalize
+    pass_filter = ak.fill_none(pass_filter, False)
+    events = events[pass_filter]
+    return events, filter_log_dict
+
+
 
 
 def filter_event(events: ak.Array, filter_log_dict: dict):
@@ -182,8 +213,12 @@ def filter_event(events: ak.Array, filter_log_dict: dict):
     filtered_events_dict['inclusive_tautau_loose'] = filtered_events
 
     # inclusive tautau tight is a subset of inclusive tautau loose, so we can directly apply filter on the already filtered events to save time
-    filtered_events, filter_log_dict = filter_inclusive_tautau_tight(filtered_events, filter_log_dict)
+    filtered_events, filter_log_dict = filter_inclusive_tautau_tight(filtered_events_dict['inclusive_tautau_loose'], filter_log_dict)
     filtered_events_dict['tautau'] = filtered_events
+
+    # define pion channel on top of tautau
+    filtered_events, filter_log_dict = filter_pion_events(filtered_events_dict['tautau'], filter_log_dict)
+    filtered_events_dict['pion'] = filtered_events
 
     return filtered_events_dict, filter_log_dict
 
@@ -252,7 +287,22 @@ class DataLoader:
             log.info(f"Loading existing raw data from {self.output_dir}/filtered___raw.parquet")
             self.data['raw'] = ak.from_parquet(self.output_dir + "/filtered___raw.parquet")
             self.initial_total_num_events = self.data['raw']['initial_total_num_events'][0]
-            self.filter_results['initial_total_num_events'] = self.initial_total_num_events
+            # load existing cutflow log if exists
+            if os.path.exists(self.output_dir + "/cutflow.txt"):
+                log.info(f"Loading existing cutflow log from {self.output_dir}/cutflow.txt")
+                with open(self.output_dir + "/cutflow.txt", "r") as f:
+                    lines = f.readlines()
+                    for line in lines[2:]: # skip header
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            cut_name = parts[0]
+                            num_events = int(parts[1])
+                            self.filter_results[cut_name] = num_events
+            else:
+                log.warning(f"Cutflow log does not exist. Will create new cutflow log after filtering.")
+                self.filter_results['initial_total_num_events'] = self.initial_total_num_events
+
+
             filtered_events, self.filter_results = filter_event(self.data['raw'], self.filter_results)
             for key, evt in filtered_events.items():
                 self.data[key] = evt
@@ -319,7 +369,7 @@ class DataLoader:
                     # select Part_xxx via isGood flag
                     part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
                     flag_not_0pdgid = (events['Part_pdgId'] != 0)
-                    events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) # & flag_not_0pdgid
+                    events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) & (part_abscosth > 0.035) # & flag_not_0pdgid
                     for part_branch in part_branches:
                         if part_branch != 'Part_isGood':
                             events[part_branch] = events[part_branch][events['Part_isGood']] 
@@ -451,7 +501,6 @@ class DataLoader:
                             "E": ch_events[f'lead_{part}_p4'].t,
                         }
                     )
-
 
 
     def finalize(self):
