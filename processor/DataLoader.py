@@ -502,6 +502,26 @@ class DataLoader:
                         }
                     )
 
+        if 'pion' in self.data:
+            pion_events = self.data['pion']
+
+            # define is_lead_a/b. In this region, only one charged particle exists in each hemisphere.
+            for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+                pion_events[f'is_lead_{hemisphere_id}'] = (pion_events['Part_hemisphere'] == hemisphere) & (pion_events['Part_charge'] != 0)
+                pion_events[f'lead_{hemisphere_id}_is_pion'] = ak.any(pion_events[f'is_lead_{hemisphere_id}'] & (abs(pion_events['Part_pdgId']) == 41), axis=1)
+
+            # match photon with leading particle in each hemisphere by dR
+            dR_threshold = 0.3
+            photon_mask = (pion_events['Part_pdgId'] == 21)
+
+            for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+                lead_p4 = pion_events[f'lead_{hemisphere_id}_p4']
+                part_p4 = pion_events['Part_p4']
+                dR_to_lead = lead_p4.deltaR(part_p4)
+                nearby_photon_mask = (dR_to_lead < dR_threshold) & (photon_mask) & (pion_events['Part_hemisphere'] == hemisphere)
+                pion_events[f'is_photon_near_lead_{hemisphere_id}'] = nearby_photon_mask
+                pion_events[f'has_pion_photon_pair_{hemisphere_id}'] = ak.any(nearby_photon_mask, axis=1) & pion_events[f'lead_{hemisphere_id}_is_pion'] 
+
 
     def finalize(self):
         log.info("DataLoader finalization complete.")

@@ -370,7 +370,138 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_n_pions.png")
 
+    # number of leptons
+    def get_n_leptons(dl):
+        events = dl.data.get(region_name)
+        lepton_mask = (np.abs(events['Part_pdgId']) == 2) | (np.abs(events['Part_pdgId']) == 6)
+        n_leptons = ak.to_numpy(ak.sum(lepton_mask, axis=-1), allow_missing=False)
+        return n_leptons
+    bin_edges = np.linspace(0, 8, 9)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_n_leptons,
+        bin_edges=bin_edges,
+        x_label='Number of Leptons',
+        title='Control Plot: Number of Leptons',
+        luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_n_leptons.png")
 
+    # plot pion-photon pair features
+    def get_lead_pion_photon_pair_dR(dl):
+        events = dl.data.get(region_name)
+        dr_list = []
+        for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+            tmp_events = events[events[f'has_pion_photon_pair_{hemisphere_id}'] == 1]
+            pion_p4 = tmp_events[f'lead_{hemisphere_id}_p4']
+            photon_mask = tmp_events[f'is_photon_near_lead_{hemisphere_id}'] == 1
+            photon_p4 = tmp_events['Part_p4'][photon_mask]
+            dr = pion_p4.deltaR(photon_p4)
+            dr_list.append(ak.to_numpy(ak.flatten(dr, axis=-1), allow_missing=False))
+        dr_all = ak.concatenate(dr_list, axis=-1)
+        dr_all = ak.to_numpy(dr_all, allow_missing=False)
+        return dr_all
+    bin_edges = np.linspace(0, 0.3, 51)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_lead_pion_photon_pair_dR,
+        bin_edges=bin_edges,
+        x_label='dR between Lead Pion and nearby Photons',
+        title='Control Plot: dR between Lead Pion and nearby Photons',
+        luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_lead_pion_photon_pair_dR.png")
+
+    def get_num_photon_near_lead_pion(dl):
+        events = dl.data.get(region_name)
+        num_list = []
+        for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+            tmp_events = events[events[f'lead_{hemisphere_id}_is_pion'] == 1] 
+            photon_mask = tmp_events[f'is_photon_near_lead_{hemisphere_id}'] == 1
+            num_photons = ak.to_numpy(ak.sum(photon_mask, axis=-1), allow_missing=False)
+            num_list.append(num_photons)
+        num_all = ak.concatenate(num_list, axis=-1)
+        num_all = ak.to_numpy(num_all, allow_missing=False)
+        return num_all
+    bin_edges = np.linspace(0, 10, 11)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_num_photon_near_lead_pion,
+        bin_edges=bin_edges,
+        x_label='Number of Photons near Lead Pion',
+        title='Control Plot: Number of Photons near Lead Pion',
+        luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_lead_pion_num_photon_nearby.png")
+
+    # invariant mass of lead pion and nearby photon
+    def get_lead_pion_nearby_photon_pair_mass(dl):
+        events = dl.data.get(region_name)
+        mass_list = []
+        for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+            tmp_events = events[events[f'has_pion_photon_pair_{hemisphere_id}'] == 1]
+            pion_p4 = tmp_events[f'lead_{hemisphere_id}_p4']
+            photon_mask = tmp_events[f'is_photon_near_lead_{hemisphere_id}'] == 1
+            photon_p4 = tmp_events['Part_p4'][photon_mask]
+            sum_photon_p4 = get_sum_p4_from_ak_events(tmp_events, photon_mask)
+            system_p4 = pion_p4 + sum_photon_p4
+            pair_mass = system_p4.mass
+            mass_list.append(ak.to_numpy(ak.flatten(pair_mass, axis=-1), allow_missing=False))
+        mass_all = ak.concatenate(mass_list, axis=-1)
+        mass_all = ak.to_numpy(mass_all, allow_missing=False)
+        return mass_all
+    bin_edges = np.linspace(0, 2, 101)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_lead_pion_nearby_photon_pair_mass,
+        bin_edges=bin_edges,
+        x_label='Invariant Mass of Lead Pion and Nearby Photons [GeV]',
+        title='Control Plot: Invariant Mass of Lead Pion and Nearby Photons',
+        luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_lead_pion_nearby_photon_pair_mass.png")
+
+
+
+    # # pion features
+    # for var in [
+    #         "impParToVertexRPhi", "impParToVertexZ", 
+    #         "impParRPhi", "impParZ",
+    #         "hpcTotalShowerEnergy", "hpcShowerEnergy", 
+    #         "hacTotalShowerEnergy", "hacShowerEnergy",
+    #         ]:
+    #     prefix = 'Part_'
+    #     if var.startswith('impPar'):
+    #         prefix = 'Trac_'
+    #     def get_pion_var(dl, var=var):
+    #         events = dl.data.get(region_name)
+    #         pion_mask = np.abs(events['Part_pdgId']) == 41
+    #         pion_var = ak.flatten(events[f'{prefix}{var}'][pion_mask], axis=1)
+    #         pion_var = ak.to_numpy(pion_var, allow_missing=False)
+    #         return pion_var
+
+    #     if "Ztautau_pirho" in dl_dict:
+    #         bin_max, bin_min = np.percentile(get_pion_var(dl_dict['Ztautau_pirho']), [95, 5])
+    #     else:
+    #         dl = dl_dict.values()[0]
+    #         bin_max, bin_min = np.percentile(get_pion_var(dl), [95, 5])
+    #     bin_edges = np.linspace(bin_min, bin_max, 101)
+
+    #     fig, ax, ax_ratio = do_control_plot(
+    #         dl_dict,
+    #         func_get_variable=get_pion_var,
+    #         bin_edges=bin_edges,
+    #         x_label=f'Pion {var}',
+    #         title=f'Control Plot: Pion {var}',
+    #         luminosity=luminosity, normalize=normalize,
+    #         log_scale=log_scale,
+    #     )
+    #     plt.tight_layout()
+    #     plt.savefig(f"{output_dir}/control_plot_pion_{var}.png")
 
 class ControlPlotProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
