@@ -6,6 +6,7 @@ import os
 import copy
 import vector
 import awkward as ak
+from utils.common_functions import get_color_iterator
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme
 from utils import plotter
 
@@ -35,11 +36,24 @@ class TruthMatchProcessor(BaseProcessor):
                 "baseline", 
                 # "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
             ]
+            self.reco_pdgid = 41
+        elif self.target_recon_particle == 'electron':
+            self.id_algorithms = [
+                "baseline", 
+            ]
+            self.reco_pdgid = 2
+        elif self.target_recon_particle == 'muon':
+            self.id_algorithms = [
+                "baseline", 
+            ]
+            self.reco_pdgid = 6
+        else:
+            raise ValueError(f"Unsupported target_recon_particle: {self.target_recon_particle}. Supported options are 'pion', 'electron', 'muon'.")
 
     
     def particle_pass_WP(self, events, id_algo):
         if id_algo == "baseline":
-            return abs(events.Part_pdgId)==41
+            return abs(events.Part_pdgId)==self.reco_pdgid
         else:
             return (events[id_algo] >= 1)
 
@@ -133,42 +147,61 @@ class TruthMatchProcessor(BaseProcessor):
                         is_matched = best_dR < dR_threshold
                         return is_matched, best_dR, truth_part_p4
 
+                    ###############################################################################################################
+                    # Rate of truth particles being identified as the target reco particle vs truth particle p, pt, costh
+                    ###############################################################################################################
+                    fig, ax = None, None
+                    fig_pt, ax_pt = None, None
+                    fig_costh, ax_costh = None, None
+                    color_iter = get_color_iterator(10)
                     # pion efficiency
                     is_matched_pion, best_dR_pion, truth_part_p4_pion = truth_match_recon_efficiency(events, truth_abs_pdgId=211, dR_threshold=self.dR_threshold)
-                    print(f"Identification Rate of truth pions as {self.target_recon_particle}: ", ak.sum(is_matched_pion)/len(ak.flatten(best_dR_pion)))
                     # plot efficiency vs pion p
                     pion_p = ak.flatten(truth_part_p4_pion.mag)
                     identified = ak.flatten(is_matched_pion)
-                    fig, ax = plotter.plot_y_vs_x(
-                        x=pion_p,
-                        y=identified,
-                        bins=51,
-                        band_method='stderr',
-                        label='Pion ID Rate',
-                    )
+                    color = next(color_iter)
+                    if len(pion_p) > 0:
+                        print(f"Identification Rate of truth pions as {self.target_recon_particle}: ", ak.sum(is_matched_pion)/len(ak.flatten(best_dR_pion)))
+                        fig, ax = plotter.plot_y_vs_x(
+                            x=pion_p,
+                            y=identified,
+                            fig=fig,
+                            ax=ax,
+                            bins=51,
+                            band_method='stderr',
+                            label='Pion ID Rate',
+                            color=color
+                        )
 
-                    fig_pt, ax_pt = plotter.plot_y_vs_x(
-                        x=ak.flatten(truth_part_p4_pion.pt),
-                        y=identified,
-                        bins=51,
-                        band_method='stderr',
-                        label='Pion ID Rate',
-                    )
+                        fig_pt, ax_pt = plotter.plot_y_vs_x(
+                            x=ak.flatten(truth_part_p4_pion.pt),
+                            y=identified,
+                            fig=fig_pt,
+                            ax=ax_pt,
+                            bins=51,
+                            band_method='stderr',
+                            label='Pion ID Rate',
+                            color=color
+                        )
 
 
-                    fig_costh, ax_costh = plotter.plot_y_vs_x(
-                        x=ak.flatten(truth_part_p4_pion.costheta),
-                        y=identified,
-                        bins=51,
-                        band_method='stderr',
-                        label='Pion ID Rate',
-                    )
+                        fig_costh, ax_costh = plotter.plot_y_vs_x(
+                            x=ak.flatten(truth_part_p4_pion.costheta),
+                            fig=fig_costh,
+                            ax=ax_costh,
+                            y=identified,
+                            bins=51,
+                            band_method='stderr',
+                            label='Pion ID Rate',
+                            color=color
+                        )
 
                     # electron ID rate
                     is_matched_electron, best_dR_electron, truth_part_p4_electron = truth_match_recon_efficiency(events, truth_abs_pdgId=11, dR_threshold=self.dR_threshold)
                     # plot ID rate vs electron p
                     electron_p = ak.flatten(truth_part_p4_electron.mag)
                     identified = ak.flatten(is_matched_electron)
+                    color = next(color_iter)
                     if len(electron_p) > 0:
                         print(f"Identification Rate of electrons as {self.target_recon_particle}: ", ak.sum(is_matched_electron)/len(ak.flatten(best_dR_electron)))
                         fig, ax = plotter.plot_y_vs_x(
@@ -178,7 +211,8 @@ class TruthMatchProcessor(BaseProcessor):
                             band_method='stderr',
                             label='Electron ID Rate',
                             fig=fig,
-                            ax=ax
+                            ax=ax,
+                            color=color
                         )
 
                         fig_pt, ax_pt = plotter.plot_y_vs_x(
@@ -188,7 +222,8 @@ class TruthMatchProcessor(BaseProcessor):
                             band_method='stderr',
                             label='Electron ID Rate',
                             fig=fig_pt,
-                            ax=ax_pt
+                            ax=ax_pt,
+                            color=color
                         )
 
                         fig_costh, ax_costh = plotter.plot_y_vs_x(
@@ -198,7 +233,8 @@ class TruthMatchProcessor(BaseProcessor):
                             band_method='stderr',
                             label='Electron ID Rate',
                             fig=fig_costh,
-                            ax=ax_costh
+                            ax=ax_costh,
+                            color=color
                         )
 
                     # muon ID rate
@@ -206,6 +242,7 @@ class TruthMatchProcessor(BaseProcessor):
                     # plot ID rate vs muon p
                     muon_p = ak.flatten(truth_part_p4_muon.mag)
                     identified = ak.flatten(is_matched_muon)
+                    color = next(color_iter)
                     if len(muon_p) > 0:
                         print(f"Identification Rate of muons as {self.target_recon_particle}: ", ak.sum(is_matched_muon)/len(ak.flatten(best_dR_muon)))
                         fig, ax = plotter.plot_y_vs_x(
@@ -215,7 +252,8 @@ class TruthMatchProcessor(BaseProcessor):
                             band_method='stderr',
                             label='Muon ID Rate',
                             fig=fig,
-                            ax=ax
+                            ax=ax,
+                            color=color
                         )
 
 
@@ -226,7 +264,8 @@ class TruthMatchProcessor(BaseProcessor):
                             band_method='stderr',
                             label='Muon ID Rate',
                             fig=fig_pt,
-                            ax=ax_pt
+                            ax=ax_pt,
+                            color=color
                         )
 
                         fig_costh, ax_costh = plotter.plot_y_vs_x(
@@ -236,7 +275,8 @@ class TruthMatchProcessor(BaseProcessor):
                             band_method='stderr',
                             label='Muon ID Rate',
                             fig=fig_costh,
-                            ax=ax_costh
+                            ax=ax_costh,
+                            color=color
                         )
 
                     ax.set_ylim(0,1.1)
