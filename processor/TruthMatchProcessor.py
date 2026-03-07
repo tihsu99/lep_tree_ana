@@ -6,10 +6,12 @@ import os
 import copy
 import vector
 import awkward as ak
-from utils.common_functions import get_color_iterator
+import logging
+from utils.common_functions import get_color_iterator, print_and_write_to_file
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme
 from utils import plotter
 
+log = logging.getLogger(__name__)
 
 class TruthMatchProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
@@ -63,16 +65,20 @@ class TruthMatchProcessor(BaseProcessor):
             for region in self.regions:
                 for dl_name in self.dl_to_load:
                     if dl_name not in dl_dict:
-                        print(f"DataLoader {dl_name} not found in dl_dict. Skipping.")
+                        log.warning(f"DataLoader {dl_name} not found in dl_dict. Skipping.")
                         continue
                     dl = dl_dict[dl_name]
                     if region not in dl.data:
-                        print(f"Region {region} not found in DataLoader {dl_name}. Skipping.")
+                        log.warning(f"Region {region} not found in DataLoader {dl_name}. Skipping.")
                         continue
                     events = dl.data.get(region)
 
                     output_dir = f"{self.output_dir}/{region}_{dl_name}_{id_algo}/"
                     os.makedirs(output_dir, exist_ok=True)
+                    # remove existing log file
+                    log_file = f"{output_dir}/log.txt"
+                    if os.path.exists(log_file):
+                        os.remove(log_file)
 
                     final_state_truth_particles_flag = (events['GenPart_status']==1)
                     final_state_truth_particles_p4 = get_all_p4_from_ak_events(events, final_state_truth_particles_flag, prefix='GenPart_vector')
@@ -161,7 +167,8 @@ class TruthMatchProcessor(BaseProcessor):
                     identified = ak.flatten(is_matched_pion)
                     color = next(color_iter)
                     if len(pion_p) > 0:
-                        print(f"Identification Rate of truth pions as {self.target_recon_particle}: ", ak.sum(is_matched_pion)/len(ak.flatten(best_dR_pion)))
+                        # print(f"Identification Rate of truth pions as {self.target_recon_particle}: ", ak.sum(is_matched_pion)/len(ak.flatten(best_dR_pion)))
+                        print_and_write_to_file(f"Identification Rate of truth pions as {self.target_recon_particle}: {ak.sum(is_matched_pion)/len(ak.flatten(best_dR_pion)):.4f}", log_file")
                         fig, ax = plotter.plot_y_vs_x(
                             x=pion_p,
                             y=identified,
@@ -203,7 +210,8 @@ class TruthMatchProcessor(BaseProcessor):
                     identified = ak.flatten(is_matched_electron)
                     color = next(color_iter)
                     if len(electron_p) > 0:
-                        print(f"Identification Rate of electrons as {self.target_recon_particle}: ", ak.sum(is_matched_electron)/len(ak.flatten(best_dR_electron)))
+                        # print(f"Identification Rate of electrons as {self.target_recon_particle}: ", ak.sum(is_matched_electron)/len(ak.flatten(best_dR_electron)))
+                        print_and_write_to_file(f"Identification Rate of truth electrons as {self.target_recon_particle}: {ak.sum(is_matched_electron)/len(ak.flatten(best_dR_electron)):.4f}", log_file")
                         fig, ax = plotter.plot_y_vs_x(
                             x=electron_p,
                             y=identified,
@@ -244,7 +252,8 @@ class TruthMatchProcessor(BaseProcessor):
                     identified = ak.flatten(is_matched_muon)
                     color = next(color_iter)
                     if len(muon_p) > 0:
-                        print(f"Identification Rate of muons as {self.target_recon_particle}: ", ak.sum(is_matched_muon)/len(ak.flatten(best_dR_muon)))
+                        # print(f"Identification Rate of muons as {self.target_recon_particle}: ", ak.sum(is_matched_muon)/len(ak.flatten(best_dR_muon)))
+                        print_and_write_to_file(f"Identification Rate of truth muons as {self.target_recon_particle}: {ak.sum(is_matched_muon)/len(ak.flatten(best_dR_muon)):.4f}", log_file")
                         fig, ax = plotter.plot_y_vs_x(
                             x=muon_p,
                             y=identified,

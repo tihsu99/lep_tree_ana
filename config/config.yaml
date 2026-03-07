@@ -58,7 +58,8 @@ Processors:
     output_dir_name: "truth_match_pion"
     target_recon_particle: "pion"
     dl_to_load: 
-      - Ztautau_pion
+      - Ztautau_pipi
+      - Ztautau_pirho
       - Ztautau_rhorho
       - Ztautau_pilep
       - Ztautau_leplep
