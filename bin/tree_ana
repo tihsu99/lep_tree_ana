@@ -92,7 +92,8 @@ if __name__ == "__main__":
         data_loaders = {**data_loaders, **split_ztautau_dls}
 
 
-    for processor_name, processor_config in analysis_config['Processors'].items():
+    for processor_title, processor_config in analysis_config['Processors'].items():
+        processor_name = processor_config.pop("processor_name", processor_title)
         processor_config_with_globals = copy.deepcopy(global_configs)
         processor_config_with_globals.update(processor_config)
         processor_class = getattr(import_module(f"processor.{processor_name}"), processor_name)

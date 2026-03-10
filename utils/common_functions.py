@@ -5,6 +5,11 @@ import vector
 cme = 91.25 # GeV
 m_tau = 1.77686 # GeV
 
+def print_and_write_to_file(text, file_path, mode='a'):
+    print(text)
+    with open(file_path, mode) as f:
+        f.write(text + '\n')
+
 def get_color_iterator(n):
     return iter(plt.cm.tab10.colors * (n // 10 + 1))
 

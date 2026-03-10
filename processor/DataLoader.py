@@ -170,20 +170,138 @@ def filter_inclusive_tautau_tight(events: ak.Array, filter_log_dict: dict):
     events = events[pass_filter]
     return events, filter_log_dict
 
+        
+def filter_pion_events(events: ak.Array, filter_log_dict: dict):
+    filter_log_dict['pion channel initial'] = filter_log_dict.get('pion channel initial', 0) + len(events)
+    pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+
+    # thrust within range
+    thrust_magnitude = events['thrust_Mag']
+    neglog1mthrust = -np.log10(1 - thrust_magnitude + 1e-10) # avoid log(0)
+    pass_filter = (neglog1mthrust > 2.5) & (neglog1mthrust < 4.5) & pass_filter
+    filter_log_dict['thrust within [2.5, 4.5]'] = filter_log_dict.get('thrust within [2.5, 4.5]', 0) + ak.sum(pass_filter)
+
+    # nprong = 2
+    pass_filter = (events['nprong'] == 2) & pass_filter
+    filter_log_dict['nprong=2'] = filter_log_dict.get('nprong=2', 0) + ak.sum(pass_filter)
+
+    # event contains at least one charged pion
+    flag_is_pion = (abs(events['Part_pdgId']) == 41) & (events['Part_charge'] != 0)
+    pass_filter = ak.any(flag_is_pion, axis=1) & pass_filter
+    filter_log_dict['at least one charged pion'] = filter_log_dict.get('at least one charged pion', 0) + ak.sum(pass_filter)
+
+    # event contains at no charged pdgId=0, 42, or 65 particles (unk, kaon, proton)
+    flag_charged_unk_kaon_proton = ak.any(((abs(events['Part_pdgId']) == 0) | (abs(events['Part_pdgId']) == 42) | (abs(events['Part_pdgId']) == 65)) & (events['Part_charge'] != 0), axis=1)
+    pass_filter = pass_filter & ~flag_charged_unk_kaon_proton 
+    filter_log_dict['no charged unk/kaon/proton'] = filter_log_dict.get('no charged unk/kaon/proton', 0) + ak.sum(pass_filter)
+
+    # finalize
+    pass_filter = ak.fill_none(pass_filter, False)
+    events = events[pass_filter]
+    return events, filter_log_dict
+
+def filter_pilep_events(events: ak.Array, filter_log_dict: dict):
+    filter_log_dict['pilep channel initial'] = filter_log_dict.get('pilep channel initial', 0) + len(events)
+    pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
+
+    # find leading pion in each hemisphere
+    for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+        events[f'is_lead_{hemisphere_id}_e'] = (events['Part_hemisphere'] == hemisphere) & (events['Part_charge'] != 0) & (abs(events['Part_pdgId']) == 2)
+        events[f'is_lead_{hemisphere_id}_mu'] = (events['Part_hemisphere'] == hemisphere) & (events['Part_charge'] != 0) & (abs(events['Part_pdgId']) == 6)
+        events[f'has_lead_{hemisphere_id}_e'] = ak.any(events[f'is_lead_{hemisphere_id}_e'], axis=1)
+        events[f'has_lead_{hemisphere_id}_mu'] = ak.any(events[f'is_lead_{hemisphere_id}_mu'], axis=1)
+        events[f'has_lead_{hemisphere_id}_lepton'] = events[f'has_lead_{hemisphere_id}_e'] | events[f'has_lead_{hemisphere_id}_mu']
+    
+    pass_filter = (events['has_lead_a_lepton'] | events['has_lead_b_lepton']) & pass_filter
+    filter_log_dict['at least one leading lepton (e or mu) in either hemisphere'] = filter_log_dict.get('at least one leading lepton (e or mu) in either hemisphere', 0) + ak.sum(pass_filter)
+
+    # number of photons near leading pion == 0
+    pass_filter = ( (events['lead_a_is_pion'] * ak.sum(events['is_photon_near_lead_a'], axis=1)) + (events['lead_b_is_pion'] * ak.sum(events['is_photon_near_lead_b'], axis=1)) == 0 ) & pass_filter
+    filter_log_dict['no photons near leading pion'] = filter_log_dict.get('no photons near leading pion', 0) + ak.sum(pass_filter)
+
+    # # number of photons <= 1
+    # pass_filter = (ak.sum((events['Part_pdgId'] == 21), axis=1) <= 1) & pass_filter
+    # print(f"Filter efficiency for pilep region after photon multiplicity cut: {ak.sum(pass_filter) / len(events):.4f}")
+
+    events = events[pass_filter]
+    return events, filter_log_dict
 
 
-def filter_event(events: ak.Array, filter_log_dict: dict):
+def filter_event(events: ak.Array, filter_log_dict: dict, input_channel='raw', skip_channels=[]):
+    # redefine Part_p4
+    events['Part_p4'] = vector.zip(
+        {
+            "px": events['Part_fourMomentum_fCoordinates_fX'],
+            "py": events['Part_fourMomentum_fCoordinates_fY'],
+            "pz": events['Part_fourMomentum_fCoordinates_fZ'],
+            "E": events['Part_fourMomentum_fCoordinates_fT'],
+        }
+    )
+    # redefine the lead_a/b_p4
+    if f'lead_a_p4' in events.fields and f'lead_b_p4' in events.fields:
+        for part in ['a', 'b']:
+            events[f'lead_{part}_p4'] = vector.zip(
+                {
+                    "px": events[f'lead_{part}_p4'].x,
+                    "py": events[f'lead_{part}_p4'].y,
+                    "pz": events[f'lead_{part}_p4'].z,
+                    "E": events[f'lead_{part}_p4'].t,
+                }
+            )
+
     filtered_events_dict = {
-        # 'raw': events,
+        input_channel: events
     }
-    events_copy = copy.deepcopy(events)
 
-    filtered_events, filter_log_dict = filter_inclusive_tautau_loose(events_copy, filter_log_dict)
-    filtered_events_dict['inclusive_tautau_loose'] = filtered_events
+    # select inclusive tautau loose from raw events.
+    if ('raw' in filtered_events_dict) and (not 'inclusive tautau' in skip_channels):
+        filtered_events, filter_log_dict = filter_inclusive_tautau_loose(filtered_events_dict['raw'], filter_log_dict)
+        filtered_events_dict['inclusive_tautau_loose'] = filtered_events
 
-    # inclusive tautau tight is a subset of inclusive tautau loose, so we can directly apply filter on the already filtered events to save time
-    filtered_events, filter_log_dict = filter_inclusive_tautau_tight(filtered_events, filter_log_dict)
-    filtered_events_dict['tautau'] = filtered_events
+    # select inclusive tautau tight from inclusive tautau loose
+    if ('inclusive tautau loose' in filtered_events_dict) and (not 'inclusive tautau tight' in skip_channels):
+        filtered_events, filter_log_dict = filter_inclusive_tautau_tight(filtered_events_dict['inclusive_tautau_loose'], filter_log_dict)
+        filtered_events_dict['tautau'] = filtered_events
+
+    # select pion channel from inclusive tautau channel. 
+    if ('tautau' in filtered_events_dict) and (not 'pion' in skip_channels):
+        filtered_events, filter_log_dict = filter_pion_events(filtered_events_dict['tautau'], filter_log_dict)
+        # TODO: define the following variables inside filter_pion_events or filter_inclusive_tautau_tight
+        # define is_lead_a/b. In this region, only one charged particle exists in each hemisphere.
+        for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+            filtered_events[f'is_lead_{hemisphere_id}'] = (filtered_events['Part_hemisphere'] == hemisphere) & (filtered_events['Part_charge'] != 0)
+            filtered_events[f'lead_{hemisphere_id}_is_pion'] = ak.any(filtered_events[f'is_lead_{hemisphere_id}'] & (abs(filtered_events['Part_pdgId']) == 41), axis=1)
+
+        # match photon with leading particle in each hemisphere by dR
+        dR_threshold = 0.3
+        photon_mask = (filtered_events['Part_pdgId'] == 21)
+
+        for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+            lead_p4 = filtered_events[f'lead_{hemisphere_id}_p4']
+            part_p4 = filtered_events['Part_p4']
+            dR_to_lead = lead_p4.deltaR(part_p4)
+            nearby_photon_mask = (dR_to_lead < dR_threshold) & (photon_mask) & (filtered_events['Part_hemisphere'] == hemisphere)
+            filtered_events[f'is_photon_near_lead_{hemisphere_id}'] = nearby_photon_mask
+            filtered_events[f'has_pion_photon_pair_{hemisphere_id}'] = ak.any(nearby_photon_mask, axis=1) & filtered_events[f'lead_{hemisphere_id}_is_pion'] 
+
+        filtered_events_dict['pion'] = filtered_events
+
+    # select pilep channels from pion channel
+    if ('pion' in filtered_events_dict) and (not 'pilep' in skip_channels):
+        filtered_events, filter_log_dict = filter_pilep_events(filtered_events_dict['pion'], filter_log_dict)
+        filtered_events_dict['pilep'] = filtered_events
+
+        # further define piele and pimu regions inside pilep channel
+        # piele region: events with at least one leading electron in either hemisphere
+        pilep_events = filtered_events_dict['pilep']
+        piele_events = pilep_events[pilep_events['has_lead_a_e'] | pilep_events['has_lead_b_e']]
+        filter_log_dict['piele region'] = filter_log_dict.get('piele region', 0) + len(piele_events)
+        filtered_events_dict['piele'] = piele_events
+
+        # pimu region: events with at least one leading muon in either hemisphere
+        pimu_events = pilep_events[pilep_events['has_lead_a_mu'] | pilep_events['has_lead_b_mu']]
+        filter_log_dict['pimu region'] = filter_log_dict.get('pimu region', 0) + len(pimu_events)
+        filtered_events_dict['pimu'] = pimu_events
 
     return filtered_events_dict, filter_log_dict
 
@@ -202,6 +320,7 @@ class DataLoader:
         self.region_of_interest = self.config.get("region_of_interest", "pipi")
         self.load_regions = self.config.get("load_regions", [self.region_of_interest])
         self.is_data = self.config.get("is_data", False)
+        self.initial_total_num_events = 0
 
         if not self.input_files:
             raise ValueError("Input files must be specified.")
@@ -227,7 +346,13 @@ class DataLoader:
                 file = self.output_dir + "/filtered___" + region + ".parquet"
                 if os.path.exists(file):
                     self.data[region] = ak.from_parquet(file)
-                    self.initial_total_num_events = self.data[region]['initial_total_num_events'][0]
+                    if len(self.data[region]) == 0:
+                        log.warning(f"Filtered data for region {region} is empty. This may be due to previous filtering steps removing all events. Creating empty array for this region.")
+                        empty_events = next(iter(self.data.values())) # get the structure of events from any existing region
+                        filter_events = ak.zeros_like(empty_events['evtNumber'], dtype=bool)
+                        self.data[region] = empty_events[filter_events]
+                    if self.initial_total_num_events == 0:
+                        self.initial_total_num_events = self.data[region]['initial_total_num_events'][0]
                     _data_loaded = True
                 else:
                     log.warning(f"Filtered data file for region {region} does not exist. Re-loading and filtering data from input files.")
@@ -247,13 +372,34 @@ class DataLoader:
     
 
     def load_data(self) -> pd.DataFrame:
-        # if filtered___raw is already loaded, start from there
-        if os.path.exists(self.output_dir + "/filtered___raw.parquet"):
-            log.info(f"Loading existing raw data from {self.output_dir}/filtered___raw.parquet")
-            self.data['raw'] = ak.from_parquet(self.output_dir + "/filtered___raw.parquet")
-            self.initial_total_num_events = self.data['raw']['initial_total_num_events'][0]
-            self.filter_results['initial_total_num_events'] = self.initial_total_num_events
-            filtered_events, self.filter_results = filter_event(self.data['raw'], self.filter_results)
+        # if filtered___tautau is already loaded, start from there
+        channel_init = "tautau"
+        if os.path.exists(self.output_dir + f"/filtered___{channel_init}.parquet"):
+            log.info(f"Loading existing raw data from {self.output_dir}/filtered___{channel_init}.parquet")
+            self.data[channel_init] = ak.from_parquet(self.output_dir + f"/filtered___{channel_init}.parquet")
+            self.initial_total_num_events = self.data[channel_init]['initial_total_num_events'][0]
+            # load existing cutflow log if exists
+            if os.path.exists(self.output_dir + "/cutflow.txt"):
+                log.info(f"Loading existing cutflow log from {self.output_dir}/cutflow.txt")
+                with open(self.output_dir + "/cutflow.txt", "r") as f:
+                    lines = f.readlines()
+                    for line in lines[1:]: # skip header
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            cut_name = ' '.join(parts[:-3]) 
+                            num_events = int(parts[-3])
+                            self.filter_results[cut_name] = num_events
+            else:
+                log.warning(f"Cutflow log does not exist. Will create new cutflow log after filtering.")
+                self.filter_results['initial_total_num_events'] = self.initial_total_num_events
+
+            # skip existing channels
+            existing_channels = []
+            for existing_files in glob.glob(self.output_dir + f"/filtered___*.parquet"):
+                existing_channel = os.path.basename(existing_files).split("___")[1].split(".parquet")[0]
+                existing_channels.append(existing_channel)
+
+            filtered_events, self.filter_results = filter_event(self.data[channel_init], self.filter_results, input_channel=channel_init, skip_channels=existing_channels)
             for key, evt in filtered_events.items():
                 self.data[key] = evt
                 self.data[key]['initial_total_num_events'] = self.initial_total_num_events
@@ -319,7 +465,7 @@ class DataLoader:
                     # select Part_xxx via isGood flag
                     part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
                     flag_not_0pdgid = (events['Part_pdgId'] != 0)
-                    events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) # & flag_not_0pdgid
+                    events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) & (part_abscosth > 0.035) # & flag_not_0pdgid
                     for part_branch in part_branches:
                         if part_branch != 'Part_isGood':
                             events[part_branch] = events[part_branch][events['Part_isGood']] 
@@ -375,7 +521,7 @@ class DataLoader:
             cutflow_values = [self.filter_results[key] for key in cutflow_labels]
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
             p = ax.bar(cutflow_labels, cutflow_values)
-            ax.bar_label(p, labels=[f"{v}" for v in cutflow_values], padding=3)
+            ax.bar_label(p, labels=[f"{v}" for v in cutflow_values], padding=3, fontsize=4)
             ax.set_ylabel('Number of Events')
             ax.set_title('Event Cutflow')
             ax.set_yscale('log')
@@ -387,7 +533,7 @@ class DataLoader:
             cutflow_normalized = [v / self.filter_results['initial_total_num_events'] for v in cutflow_values]
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
             p = ax.bar(cutflow_labels, cutflow_normalized)
-            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_normalized], padding=3)
+            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_normalized], padding=3, fontsize=4)
             ax.set_ylabel('Efficiency')
             ax.set_title('Event Cutflow Efficiency')
             plt.xticks(rotation=45, ha='right', fontsize=8)
@@ -398,7 +544,7 @@ class DataLoader:
             cutflow_relative = [1.0]
             tmp_cutflow_label = ['initial_totoal_num_events']
             for i in range(1, len(cutflow_values)):
-                rel = cutflow_values[i] / cutflow_values[i-1] 
+                rel = cutflow_values[i] / cutflow_values[i-1] if cutflow_values[i-1] > 0 else 0
                 label = cutflow_labels[i]
                 if rel>1:
                     # if eff>1 then calculate ratio relative to initial num
@@ -409,7 +555,7 @@ class DataLoader:
 
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
             p = ax.bar(tmp_cutflow_label, cutflow_relative)
-            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_relative], padding=3)
+            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_relative], padding=3, fontsize=4)
             ax.set_ylabel('Relative Efficiency')
             ax.set_title('Event Cutflow Relative Efficiency')
             plt.xticks(rotation=45, ha='right', fontsize=8)
@@ -440,23 +586,79 @@ class DataLoader:
                     "E": ch_events['Part_fourMomentum_fCoordinates_fT'],
                 }
             )
-        # redefine the lead_a/b_p4
-        for channel in [
-            'inclusive_tautau_loose',
-            'tautau',
-        ]:
-            if channel in self.data:
-                events = self.data[channel]
+            # redefine the lead_a/b_p4
+            if f'lead_a_p4' in ch_events.fields and f'lead_b_p4' in ch_events.fields:
                 for part in ['a', 'b']:
-                    events[f'lead_{part}_p4'] = vector.zip(
+                    ch_events[f'lead_{part}_p4'] = vector.zip(
                         {
-                            "px": events[f'lead_{part}_p4'].x,
-                            "py": events[f'lead_{part}_p4'].y,
-                            "pz": events[f'lead_{part}_p4'].z,
-                            "E": events[f'lead_{part}_p4'].t,
+                            "px": ch_events[f'lead_{part}_p4'].x,
+                            "py": ch_events[f'lead_{part}_p4'].y,
+                            "pz": ch_events[f'lead_{part}_p4'].z,
+                            "E": ch_events[f'lead_{part}_p4'].t,
                         }
                     )
 
+        # if 'pion' in self.data:
+        #     pion_events = self.data['pion']
+
+        #     # define is_lead_a/b. In this region, only one charged particle exists in each hemisphere.
+        #     for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+        #         pion_events[f'is_lead_{hemisphere_id}'] = (pion_events['Part_hemisphere'] == hemisphere) & (pion_events['Part_charge'] != 0)
+        #         pion_events[f'lead_{hemisphere_id}_is_pion'] = ak.any(pion_events[f'is_lead_{hemisphere_id}'] & (abs(pion_events['Part_pdgId']) == 41), axis=1)
+
+        #     # match photon with leading particle in each hemisphere by dR
+        #     dR_threshold = 0.3
+        #     photon_mask = (pion_events['Part_pdgId'] == 21)
+
+        #     for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+        #         lead_p4 = pion_events[f'lead_{hemisphere_id}_p4']
+        #         part_p4 = pion_events['Part_p4']
+        #         dR_to_lead = lead_p4.deltaR(part_p4)
+        #         nearby_photon_mask = (dR_to_lead < dR_threshold) & (photon_mask) & (pion_events['Part_hemisphere'] == hemisphere)
+        #         pion_events[f'is_photon_near_lead_{hemisphere_id}'] = nearby_photon_mask
+        #         pion_events[f'has_pion_photon_pair_{hemisphere_id}'] = ak.any(nearby_photon_mask, axis=1) & pion_events[f'lead_{hemisphere_id}_is_pion'] 
+
+        # ##################################################################
+        # # You may temporarily define some new regions or variables here.
+        # ##################################################################
+
+        # # define pilep region inside pion channel: events with at least one leading lepton (e or mu) in either hemisphere
+        # if 'pion' in self.data:
+        #     pilep_events = self.data['pion']
+
+        #     pass_filter = ak.ones_like(pilep_events['evtNumber'], dtype=bool)
+            
+        #     # find leading lepton in each hemisphere
+        #     for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+        #         pilep_events[f'is_lead_{hemisphere_id}_e'] = (pilep_events['Part_hemisphere'] == hemisphere) & (pilep_events['Part_charge'] != 0) & (abs(pilep_events['Part_pdgId']) == 2)
+        #         pilep_events[f'is_lead_{hemisphere_id}_mu'] = (pilep_events['Part_hemisphere'] == hemisphere) & (pilep_events['Part_charge'] != 0) & (abs(pilep_events['Part_pdgId']) == 6)
+        #         pilep_events[f'has_lead_{hemisphere_id}_e'] = ak.any(pilep_events[f'is_lead_{hemisphere_id}_e'], axis=1)
+        #         pilep_events[f'has_lead_{hemisphere_id}_mu'] = ak.any(pilep_events[f'is_lead_{hemisphere_id}_mu'], axis=1)
+        #         pilep_events[f'has_lead_{hemisphere_id}_lepton'] = pilep_events[f'has_lead_{hemisphere_id}_e'] | pilep_events[f'has_lead_{hemisphere_id}_mu']
+            
+        #     pass_filter = (pilep_events['has_lead_a_lepton'] | pilep_events['has_lead_b_lepton']) & pass_filter
+        #     print(f"Filter efficiency for pilep region: {ak.sum(pass_filter) / len(pilep_events):.4f}")
+
+        #     # number of photons near leading pion == 0
+        #     pass_filter = ( (pilep_events['lead_a_is_pion'] * ak.sum(pilep_events['is_photon_near_lead_a'], axis=1)) + (pilep_events['lead_b_is_pion'] * ak.sum(pilep_events['is_photon_near_lead_b'], axis=1)) == 0 ) & pass_filter
+        #     print(f"Filter efficiency for pilep region after photon near leading pion cut: {ak.sum(pass_filter) / len(pilep_events):.4f}")
+
+        #     # # number of photons <= 1
+        #     # pass_filter = (ak.sum((pilep_events['Part_pdgId'] == 21), axis=1) <= 1) & pass_filter
+        #     # print(f"Filter efficiency for pilep region after photon multiplicity cut: {ak.sum(pass_filter) / len(pilep_events):.4f}")
+
+        #     pilep_events = pilep_events[pass_filter]
+        #     self.data['pilep'] = pilep_events
+
+        #     # piele region: events with at least one leading electron in either hemisphere
+        #     piele_events = pilep_events[pilep_events['has_lead_a_e'] | pilep_events['has_lead_b_e']]
+        #     print(f"Filter efficiency for piele region: {len(piele_events) / len(pilep_events):.4f}")
+        #     self.data['piele'] = piele_events
+
+        #     # pimu region: events with at least one leading muon in either hemisphere
+        #     pimu_events = pilep_events[pilep_events['has_lead_a_mu'] | pilep_events['has_lead_b_mu']]
+        #     print(f"Filter efficiency for pimu region: {len(pimu_events) / len(pilep_events):.4f}")
+        #     self.data['pimu'] = pimu_events
 
 
     def finalize(self):

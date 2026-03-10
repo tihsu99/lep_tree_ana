@@ -1,15 +1,21 @@
 GlobalConfigs:
-  default_output_dir: "./20260212-reproduce-paper_v3"
-  region_of_interest: &RegionName "tautau"
+  default_output_dir: "./20260212-pion-channel"
+  region_of_interest: &RegionName "pion"
   load_regions:
     - *RegionName
+    # - "tautau"
     # - "raw"
   luminosity: &Luminosity 46.3 # pb^-1
   # Ztautau sample can be further split categorizes below
   signal_categories:
-    pipi: 11
-    pirho: [12, 21]
-    pilep: [13, 31, 14, 41]
+    # Ztautau_pion: [11, 12, 13, 14, 41, 31, 21]
+    # Ztautau_rho: [21, 22, 23, 24, 25, 52, 42, 32, 12]
+    Ztautau_pipi: [11]
+    Ztautau_pirho: [12, 21]
+    Ztautau_pilep: [13, 31, 14, 41]
+    Ztautau_rhorho: [22]
+    Ztautau_leplep: [33, 34, 43, 44]
+    Ztautau_piother: [15, 51]
 
 DataLoaders:
   data94:
@@ -48,12 +54,40 @@ DataLoaders:
       - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*_ttree.root"
 
 Processors:
-  # # PlotProcessor: 
-  # # TemporaryProcessor: 
-  ControlPlotProcessor:
-    output_dir_name: "control_plots"
+  TruthMatchProcessor:
+    output_dir_name: "truth_match_pion"
+    target_recon_particle: "pion"
+    dl_to_load: 
+      - Ztautau_pipi
+      - Ztautau_pirho
+      - Ztautau_rhorho
+      - Ztautau_pilep
+      - Ztautau_leplep
     regions:
-      - "tautau"
+      - "pion"
+  ElTruthMatchProcessor:
+    processor_name: "TruthMatchProcessor"
+    output_dir_name: "truth_match_el"
+    target_recon_particle: "electron"
+    dl_to_load: 
+      - Ztautau_pilep
+      - Ztautau_leplep
+    regions:
+      - "pion"
+  MuonTruthMatchProcessor:
+    processor_name: "TruthMatchProcessor"
+    output_dir_name: "truth_match_mu"
+    target_recon_particle: "muon"
+    dl_to_load: 
+      - Ztautau_pilep
+      - Ztautau_leplep
+    regions:
+      - "pion"
+  # ControlPlotProcessor:
+  #   output_dir_name: "control_plots"
+  #   regions:
+  #     # - "tautau"
+  #     - "pion"
   # # NeutrinoReconstructionProcessor:
   # IDAnaProcessor:
   #   output_dir_name: "ID_analysis"
