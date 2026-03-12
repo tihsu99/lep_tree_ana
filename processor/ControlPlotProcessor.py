@@ -11,7 +11,7 @@ from utils.plotter import do_control_plot
 def make_control_plots_pirho(dl_dict, luminosity, normalize, output_dir, channel_name="pirho"):
     # apply cuts for leplep channel if needed
     for dl_name, dl in dl_dict.items():
-        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___raw.parquet")
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
         pass_filter = ak.ones_like(events_pirho['evtNumber'], dtype=bool)
         dl.data[channel_name] = events_pirho[pass_filter]
 
@@ -19,16 +19,13 @@ def make_control_plots_pirho(dl_dict, luminosity, normalize, output_dir, channel
     # total energy
     ########################################################
     def get_total_energy(dl):
-        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___raw.parquet")
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
         p4_piplus = get_all_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
         p4_piminus = get_all_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211))
         p4_pi0 = get_all_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111)) 
-        p4_piplus_filled = ak.fill_none(p4_piplus, 0)
-        p4_piminus_filled = ak.fill_none(p4_piminus, 0)
-        p4_pi0_filled = ak.fill_none(p4_pi0, 0)
-        piplus_energy = ak.sum(p4_piplus_filled.energy, axis=-1)
-        piminus_energy = ak.sum(p4_piminus_filled.energy, axis=-1)
-        pi0_energy = ak.sum(p4_pi0_filled.energy, axis=-1)
+        piplus_energy = ak.sum(p4_piplus.energy, axis=-1)
+        piminus_energy = ak.sum(p4_piminus.energy, axis=-1)
+        pi0_energy = ak.sum(p4_pi0.energy, axis=-1)
         total_energy = piplus_energy + piminus_energy + pi0_energy
         # total_energy = ak.sum(events_pirho['GenPart_vector_fCoordinates_fT'], axis=1)
         return total_energy
@@ -396,10 +393,10 @@ def make_control_plots_pirho(dl_dict, luminosity, normalize, output_dir, channel
     # plt.savefig(f"{output_dir}/control_plot_num_truth_particles.png")
 
     # ########################################################
-    # #  Invariant mass of pi system
+    # #  Invariant mass of pi/pi0 system
     # ########################################################
     def get_pi_mass(dl):
-        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___raw.parquet")
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
         p4_pi = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(abs(events_pirho['GenPart_pdgId']) == 211))
         pion_mass = p4_pi.mass
         return pion_mass
@@ -418,10 +415,9 @@ def make_control_plots_pirho(dl_dict, luminosity, normalize, output_dir, channel
     plt.savefig(f"{output_dir}/control_plot_pi_mass.png")
 
     def get_pi0_mass(dl):
-        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___raw.parquet")
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
         p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111))
-        p4_pi0_filled = ak.fill_none(p4_pi0, 0)
-        pi0_mass = p4_pi0_filled.mass
+        pi0_mass = p4_pi0.mass
         return pi0_mass
 
     bin_edges = np.linspace(0.1, 0.16, 21)
@@ -442,17 +438,24 @@ def make_control_plots_pirho(dl_dict, luminosity, normalize, output_dir, channel
     # ################################################
 
     def get_rho_mass(dl):
-        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___raw.parquet")
-        p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
-        p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211))
-        p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111)) 
-        p4_piplus_filled = ak.fill_none(p4_piplus, 0)
-        p4_pi0_filled = ak.fill_none(p4_pi0, 0)
-        p4_rho = p4_piplus_filled + p4_pi0_filled
-        
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
+        genpart_status = events_pirho['GenPart_status']
+        is_final = (genpart_status == 1)
+        is_intermediate = (genpart_status == 21)
+
+        p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211) & is_final)
+        p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211) & is_final)
+        p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111) & is_intermediate)
+        p4_nu_bar = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -16) & is_final)
+        p4_rhoplus = p4_piplus + p4_pi0
+        # print('PDGID LIST ', ak.to_list(events_pirho['GenPart_pdgId'][0]))
+        # p4_rhominus = p4_piminus + p4_pi0
+        p4_rho = p4_rhoplus
         rho_mass = p4_rho.mass
-        rho_mass_filtered = rho_mass[rho_mass > 0.2]
+
+        rho_mass_filtered = rho_mass[(rho_mass > 0.5) & (rho_mass < 0.9)]
         return rho_mass_filtered
+
 
     bin_edges = np.linspace(0, 1.5, 30)
     fig, ax, ax_ratio = do_control_plot(
@@ -467,21 +470,112 @@ def make_control_plots_pirho(dl_dict, luminosity, normalize, output_dir, channel
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_rho_mass.png")
 
+    # ################################################
+    # # Invariant Z mass from tau children
+    # ################################################
+
+    def get_z_mass(dl):
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
+        genpart_status = events_pirho['GenPart_status']
+        is_final = (genpart_status == 1)
+        is_intermediate = (genpart_status == 21)
+
+        p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211) & is_final)
+        p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211) & is_final)
+        p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111) & is_intermediate) 
+        p4_nuplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=events_pirho['GenPart_pdgId'] == 16)
+        p4_numinus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=events_pirho['GenPart_pdgId'] == -16)
+        p4_z = p4_piplus + p4_piminus + p4_pi0 + p4_nuplus + p4_numinus
+        z_mass = p4_z.mass
+
+        z_mass_filtered = z_mass[(z_mass > 0) & (z_mass < 100)]
+        return z_mass_filtered
+
+    bin_edges = np.linspace(0, 100, 40)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_z_mass,
+        bin_edges=bin_edges,
+        x_label='Invariant Mass [GeV]',
+        title='Control Plot: Invariant Mass of Z Boson From Tau Children',
+        luminosity=luminosity, normalize=normalize,
+    )
+    # ax.set_yscale('log')
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_zfromchildren_mass.png")
+
+
+    # ################################################
+    # # Invariant Z mass from tau themselves
+    # ################################################
+
+    def get_z_mass(dl):
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
+        genpart_status = events_pirho['GenPart_status']
+        is_final = (genpart_status == 1)
+        is_intermediate = (genpart_status == 21)
+
+        p4_tau1 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 15) & is_intermediate)
+        p4_tau2 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -15) & is_intermediate)
+        p4_z = p4_tau1 + p4_tau2
+        z_mass = p4_z.mass
+
+        z_mass_filtered = z_mass[(z_mass > 0) & (z_mass < 100)]
+        return z_mass_filtered
+
+    bin_edges = np.linspace(0, 100, 40)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_z_mass,
+        bin_edges=bin_edges,
+        x_label='Invariant Mass [GeV]',
+        title='Control Plot: Invariant Mass of Z Boson From Tau Directly',
+        luminosity=luminosity, normalize=normalize,
+    )
+    # ax.set_yscale('log')
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_zfromtau_mass.png")
+
+
+    # ################################################
+    # # Invariant Tau mass
+    # ################################################
+
+    def get_tau_mass(dl):
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
+
+        is_tau = abs(events_pirho['GenPart_pdgId']) == 15
+        p4_tau = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=is_tau)
+        tau_mass = p4_tau.mass
+
+        tau_mass_filtered = tau_mass[(tau_mass > 0) & (tau_mass < 2.5)]
+        return tau_mass_filtered
+
+    bin_edges = np.linspace(0, 2.5, 40)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_tau_mass,
+        bin_edges=bin_edges,
+        x_label='Invariant Mass [GeV]',
+        title='Control Plot: Invariant Mass of Tau Lepton',
+        luminosity=luminosity, normalize=normalize,
+    )
+    # ax.set_yscale('log')
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_tau_mass.png")
+
 
     # ################################################
     # # Invariant pirho mass
     # ################################################
 
     def get_pirho_mass(dl):
-        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___raw.parquet")
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
         p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
         p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211))
         p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111))
-        p4_piplus_filled = ak.fill_none(p4_piplus, 0)
-        p4_piminus_filled = ak.fill_none(p4_piminus, 0)
-        p4_pi0_filled = ak.fill_none(p4_pi0, 0)
-        p4_rho = p4_piplus_filled + p4_pi0_filled
-        p4_pirho = p4_rho + p4_piminus_filled
+        p4_rho = p4_piplus + p4_pi0
+        p4_pirho = p4_rho + p4_piminus
 
         pirho_mass = p4_pirho.mass
         pirho_mass_filtered = pirho_mass[(pirho_mass > 2.5) & (pirho_mass < 100)]
@@ -504,15 +598,12 @@ def make_control_plots_pirho(dl_dict, luminosity, normalize, output_dir, channel
     # # Angle between two pions
     # ################################################
     def get_angle_between_pirho(dl):
-        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___raw.parquet")
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
         p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
         p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211))
         p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111))
-        p4_piplus_filled = ak.fill_none(p4_piplus, 0)
-        p4_piminus_filled = ak.fill_none(p4_piminus, 0)
-        p4_pi0_filled = ak.fill_none(p4_pi0, 0)
-        p4_rho = p4_piplus_filled + p4_pi0_filled
-        angles = p4_piminus_filled.deltaangle(p4_rho)
+        p4_rho = p4_piplus + p4_pi0
+        angles = p4_piminus.deltaangle(p4_rho)
         return angles
 
     bin_edges = np.linspace(0, 3.14, 30)
@@ -528,6 +619,82 @@ def make_control_plots_pirho(dl_dict, luminosity, normalize, output_dir, channel
     plt.xlim(0, np.pi),
     plt.xticks([0, np.pi/2, np.pi], ["0", "π/2", "π"]),
     plt.savefig(f"{output_dir}/control_plot_angle_between_pirho.png")
+
+
+    # ################################################
+    # # Angle between taus
+    # ################################################
+    def get_angle_between_taus(dl):
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
+        p4_tau1 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 15))
+        p4_tau2 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -15))
+        angles = p4_tau2.deltaangle(p4_tau1)
+        return angles
+
+    bin_edges = np.linspace(0, 3.15, 30)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_angle_between_taus,
+        bin_edges=bin_edges,
+        x_label='Tau-Tau Angle [rad]',
+        title='Control Plot: Angle between Taus',
+        luminosity=luminosity, normalize=normalize,
+    )
+    plt.tight_layout()
+    plt.xlim(0, np.pi),
+    plt.xticks([0, np.pi/2, np.pi], ["0", "π/2", "π"]),
+    plt.savefig(f"{output_dir}/control_plot_angle_between_taus.png")
+
+
+    # ################################################
+    # # Angle between pion+/pi0
+    # ################################################
+    def get_angle_between_piplus_pi0(dl):
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
+        p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
+        p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111))
+        angles = p4_pi0.deltaangle(p4_piplus)
+        return angles
+
+    bin_edges = np.linspace(0, 3.15, 30)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_angle_between_piplus_pi0,
+        bin_edges=bin_edges,
+        x_label='Pion+/Pi0 Angle [rad]',
+        title='Control Plot: Angle between Pion+ and Pi0',
+        luminosity=luminosity, normalize=normalize,
+    )
+    plt.tight_layout()
+    plt.xlim(0, np.pi),
+    plt.xticks([0, np.pi/2, np.pi], ["0", "π/2", "π"]),
+    plt.savefig(f"{output_dir}/control_plot_angle_between_piplus_pi0.png")
+
+
+    # ################################################
+    # # Angle between pion+/pion-
+    # ################################################
+    def get_angle_between_piplus_piminus(dl):
+        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___pirho.parquet")
+        p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
+        p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211))
+        angles = p4_piminus.deltaangle(p4_piplus)
+        return angles
+
+    bin_edges = np.linspace(0, 3.14, 30)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_angle_between_piplus_piminus,
+        bin_edges=bin_edges,
+        x_label='Pion+/Pion- Angle [rad]',
+        title='Control Plot: Angle between Pion+ and Pion-',
+        luminosity=luminosity, normalize=normalize,
+    )
+    plt.tight_layout()
+    plt.xlim(0, np.pi),
+    plt.xticks([0, np.pi/2, np.pi], ["0", "π/2", "π"]),
+    plt.savefig(f"{output_dir}/control_plot_angle_between_piplus_piminus.png")
+
 
     # # ################################################
     # # # Thrust costh
@@ -634,64 +801,6 @@ def make_control_plots_pirho(dl_dict, luminosity, normalize, output_dir, channel
     # )
     # plt.tight_layout()
     # plt.savefig(f"{output_dir}/control_plot_thrust_neglog1mthrust.png")
-
-
-    # ################################################
-    # # pt of rho
-    # ################################################
-    def get_rho_pt(dl):
-        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___raw.parquet")
-        p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
-        p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211))
-        p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111)) 
-        p4_piplus_filled = ak.fill_none(p4_piplus, 0)
-        p4_pi0_filled = ak.fill_none(p4_pi0, 0)
-        p4_rho = p4_piplus_filled + p4_pi0_filled
-        
-        rho_pt = p4_rho.pt
-        # rho_pt_filtered = rho_pt[rho_pt < 30]
-        return rho_pt
-
-    bin_edges = np.linspace(0, 50, 35)
-    fig, ax, ax_ratio = do_control_plot(
-        dl_dict,
-        func_get_variable=get_rho_pt,
-        bin_edges=bin_edges,
-        x_label='Transverse Momentum of Charged Rho [GeV]',
-        title='Control Plot: pt of Charged Rho',
-        luminosity=luminosity, normalize=normalize,
-    )
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/control_plot_charged_rho_pt.png")
-
-
-    # ################################################
-    # # pt of charged pion
-    # ################################################
-    def get_charged_pion_pt(dl):
-        events_pirho = ak.from_parquet("/afs/cern.ch/user/c/clamore/lep_tree_ana/output-pirho/Ztautau/filtered___raw.parquet")
-        p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
-        p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211))
-        p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111)) 
-        p4_piplus_filled = ak.fill_none(p4_piplus, 0)
-        p4_pi0_filled = ak.fill_none(p4_pi0, 0)
-        p4_rho = p4_piplus_filled + p4_pi0_filled
-        
-        piplus_pt = p4_piplus_filled.pt
-        # piplus_pt_filtered = piplus_pt[(piplus_pt < 30)]
-        return piplus_pt
-
-    bin_edges = np.linspace(0, 50, 35)
-    fig, ax, ax_ratio = do_control_plot(
-        dl_dict,
-        func_get_variable=get_charged_pion_pt,
-        bin_edges=bin_edges,
-        x_label='Transverse Momentum of Charged Pion [GeV]',
-        title='Control Plot: pt of Charged Pion',
-        luminosity=luminosity, normalize=normalize,
-    )
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/control_plot_charged_pion_pt.png")
 
 
     # ################################################

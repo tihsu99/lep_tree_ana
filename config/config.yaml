@@ -32,8 +32,8 @@ DataLoaders:
     is_signal: false
     norm_factor: 1458.9 # pb
     input_files:
-      - "/eos/user/c/clamore/DELPHI/delphi-nanoaod/parton_3pion_root_out/simulation/v94c/91.25/pythia8/nanoaod_simana_job_*_ttree.root"
-      
+      - "/eos/user/c/clamore/DELPHI/delphi-nanoaod/parton_3pion_root_out/simulation/v94c/91.25/pythia8/nanoaod_simana_job_*70*_ttree.root"
+
   # Zll:
   #   name: "Zll"
   #   tree_name: "t"
@@ -59,7 +59,7 @@ DataLoaders:
   #     - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq/simana_*_ttree.root"
 
 Processors:
-  PlotProcessor: 
+  # PlotProcessor: 
   # TemporaryProcessor: 
   ControlPlotProcessor:
     output_dir_name: "control_plots"

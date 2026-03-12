@@ -150,15 +150,19 @@ log = logging.getLogger(__name__)
 def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     filter_log_dict['pirho channel initial'] = filter_log_dict.get('pirho channel initial', 0) + len(events)
     genpart_pdgid = events['GenPart_pdgId']
+    genpart_status = events['GenPart_status']
     genpart_abspdgid = abs(genpart_pdgid)
-    # recpart_charge = events['Part_charge']
+
+    # Require final state
+    is_final = (genpart_status == 1)
+    is_intermediate = (genpart_status == 21)
 
     pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
     # print("evtNumber: ", ak.sum(pass_filter))
 
     # no other hadronic particles in truth particles
     pass_filter = (ak.sum(
-        (genpart_abspdgid == 47) |  # pi0
+        (genpart_abspdgid == 47) |  # reoo pi0
         (genpart_abspdgid == 42) |  # kaon+
         (genpart_abspdgid == 61) |  # KS
         (genpart_abspdgid == 62) |  # KL
@@ -182,44 +186,84 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     # print("e/mu Filter: ", ak.sum(pass_filter))
 
 
-    # at least one pi+/-, one pi0
-    flag_pi_and_pi0 = (ak.sum(genpart_pdgid == 211, axis=-1) == 1 ) & (ak.sum(genpart_pdgid == -211, axis=-1) == 1 ) & (ak.sum(genpart_pdgid == 111, axis=-1) == 1)
-    pass_filter = flag_pi_and_pi0 & pass_filter
-    filter_key = 'Rho: 1 of each pi+/- and 1 pi0'
+    flag_tau1 = ((events['GenPart_pdgId']==-15) & is_intermediate)
+    flag_tau2 = ((events['GenPart_pdgId']==15) & is_intermediate)
+    flag_Z = ((events['GenPart_pdgId']==23) & is_intermediate)
+    flag_piplus_tau1 = ((events['GenPart_pdgId']==211) & is_final)
+    flag_pi0_tau1 = ((events['GenPart_pdgId']==111) & is_intermediate)
+    flag_piminus_tau2 = ((events['GenPart_pdgId']==-211) & is_final)
+
+
+    # one pi+ in final state
+    flag_piplus = (ak.sum(flag_piplus_tau1, axis=-1) == 1 ) & pass_filter
+    pass_filter = flag_piplus & pass_filter
+    filter_key = 'pi+: 1 pi+'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
-    # print("Rho Filter: ", ak.sum(pass_filter))
 
-    events_pirho = events[pass_filter & flag_pi_and_pi0]
 
+    # one pi- in final state
+    flag_piminus = (ak.sum(flag_piminus_tau2, axis=-1) == 1 ) & pass_filter
+    pass_filter = flag_piminus & pass_filter
+    filter_key = 'pi-: 1 pi-'
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+
+
+    # one pi0 in final state
+    flag_pi0 = (ak.sum(flag_pi0_tau1, axis=-1) == 1) & pass_filter
+    pass_filter = flag_pi0 & pass_filter
+    filter_key = 'pi0: 1 pi0'
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter)
+
+    # New pirho array
+    events_pirho = events[pass_filter & flag_piplus & flag_piminus & flag_pi0]
+
+
+    # calculate P_rad
     p4_piplus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 211))
     p4_piminus = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -211))
     p4_pi0 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 111))
 
-    px = ak.sum(p4_piplus.px) + ak.sum(p4_pi0.px) + ak.sum(p4_piminus.px)
-    py = ak.sum(p4_piplus.py) + ak.sum(p4_pi0.py) + ak.sum(p4_piminus.py)
-    pz = ak.sum(p4_piplus.pz) + ak.sum(p4_pi0.pz) + ak.sum(p4_piminus.pz)
-    P_rad = (px**2 + py**2 + pz**2)**0.5
+    px_one = p4_piplus.px
+    py_one = p4_piplus.py
+    pz_one = p4_piplus.pz
+    pE_one = p4_piplus.energy
+    px_two = p4_piminus.px
+    py_two = p4_piminus.py
+    pz_two = p4_piminus.pz
+    pE_two = p4_piminus.energy
+    P_rad_one = (px_one**2 + py_one**2 + pz_one**2 + pE_one**2)**0.5
+    P_rad_two = (px_two**2 + py_two**2 + pz_two**2 + pE_two**2)**0.5
+    P_rad = (P_rad_one**2 + P_rad_two**2)**0.5
     events_pirho['P_rad'] = P_rad
-    # print("P_rad: ", P_rad)
 
 
     ##########################
     # define SR
     ########################## 
-    genpart_abs_pdgId = np.abs(events_pirho['GenPart_pdgId'])
-    p4_rho = p4_piminus + p4_pi0
-    p4_pirho = p4_piplus + p4_rho
+    p4_rho = p4_piplus + p4_pi0
+    p4_pirho = p4_piminus + p4_rho
     pass_filter_sr = ak.ones_like(events_pirho['evtNumber'], dtype=bool)
     
 
     # angle between rho/pion
-    angle_between_pirho = p4_piplus.deltaangle(p4_rho)
+    angle_between_pirho = p4_piminus.deltaangle(p4_rho)
     mask1 = (angle_between_pirho > 2.90) & (angle_between_pirho < 3.10)
     mask_event1 = ak.any(mask1, axis=-1)
     pass_filter_sr = mask_event1 & pass_filter_sr
     filter_key = 'Pions angle between 2.90 and 3.10'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
     
+
+    # angle between taus
+    p4_tau1 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == 15))
+    p4_tau2 = get_p4_from_ak_events(prefix="GenPart_vector", events=events_pirho, flag=(events_pirho['GenPart_pdgId'] == -15))
+    angle_between_taus = p4_tau2.deltaangle(p4_tau1)
+    mask1 = (angle_between_taus > 3)
+    mask_event1 = ak.any(mask1, axis=-1)
+    pass_filter_sr = mask_event1 & pass_filter_sr
+    filter_key = 'Taus angle at 3.14'
+    filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
+
 
     # Rho invariant mass
     rho_mass = p4_rho.mass
@@ -228,7 +272,7 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     pass_filter_sr = mask_event2 & pass_filter_sr
     filter_key = 'Rho mass between 0.70 and 0.84 GeV'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
-   
+
 
     # charged pion mass
     pion_mass = p4_piplus.mass
@@ -257,15 +301,12 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
     
 
-    # total energy 
-    p4_piplus_filled = ak.fill_none(p4_piplus, 0)
-    p4_piminus_filled = ak.fill_none(p4_piminus, 0)
-    p4_pi0_filled = ak.fill_none(p4_pi0, 0)
-    piplus_energy = ak.sum(p4_piplus_filled.energy, axis=-1)
-    piminus_energy = ak.sum(p4_piminus_filled.energy, axis=-1)
-    pi0_energy = ak.sum(p4_pi0_filled.energy, axis=-1)
+    # total energy
+    piplus_energy = p4_piplus.energy
+    piminus_energy = p4_piminus.energy
+    pi0_energy = p4_pi0.energy
     total_energy = piplus_energy + piminus_energy + pi0_energy
-    pass_filter_sr = (total_energy < 80) & (total_energy > 40) & pass_filter_sr
+    pass_filter_sr = (total_energy < 100) & (total_energy > 0) & pass_filter_sr
     filter_key = 'Total energy between 40 and 80 GeV'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
    
@@ -276,9 +317,9 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     missing_pz = -ak.sum(events_pirho['GenPart_vector_fCoordinates_fZ'], axis=-1)
     missing_p = np.sqrt(missing_px**2 + missing_py**2 + missing_pz**2)
     pass_filter_sr = (missing_p < 25) & (missing_p > 10) & pass_filter_sr
-    filter_key = 'Missing p < 80 GeV'
+    filter_key = 'Missing p < 25 & p > 10 GeV'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
-    
+
 
     # P_rad
     mask4 = (events_pirho['P_rad'] < cme/2)
@@ -287,7 +328,6 @@ def filter_pirho_channel(events: ak.Array, filter_log_dict: dict):
     filter_key = 'P_rad < cme/2'
     filter_log_dict[filter_key] = filter_log_dict.get(filter_key, 0) + ak.sum(pass_filter_sr)
 
-   
     events_sr = events_pirho[pass_filter_sr]
     return events_sr, filter_log_dict
 
@@ -321,6 +361,7 @@ class DataLoader:
         self.input_files = self.config.get("input_files", [])
         self.region_of_interest = self.config.get("region_of_interest", "pirho")
         self.is_data = self.config.get("is_data", False)
+        print("Region of interest =", self.region_of_interest)
 
         if not self.input_files:
             raise ValueError("Input files must be specified.")
@@ -335,6 +376,7 @@ class DataLoader:
             self.input_files = all_files
 
         self.data = {}
+        self.structured_data = {}
         self.filter_results = {
             'initial_total_num_events': 0,
         }
@@ -361,7 +403,6 @@ class DataLoader:
 
         log.info(f"DataLoader initialization complete. Loaded {len(all_files)} files.")
 
-    
 
     def load_data(self) -> pd.DataFrame:
         # Identify branches to load
@@ -370,7 +411,7 @@ class DataLoader:
 
         common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy"] 
         # "event_category"
-        gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
+        gen_part_branches = ["pdgId", "status", "parentIdx", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
         gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
         
         #removed "charge" branch
@@ -523,11 +564,13 @@ class DataLoader:
 
             log.info(f"Data saved to {output_file}.")
 
-        # structured_output_file = self.output_dir + f"/filtered_{self.region_of_interest}_structured.npy"
-        # np.save(structured_output_file, self.structured_data)
-        # # To load the structured data, use: np.load(structured_output_file, allow_pickle=True).item()
-        # log.info(f"Structured data saved to {structured_output_file}.")
-        # np.load(structured_output_file, allow_pickle=True).item()
+            structured_output_file = self.output_dir + f"/filtered_{self.region_of_interest}_structured.npy"
+            np.save(structured_output_file, self.data)
+            np.load(structured_output_file, allow_pickle=True).item()
+            log.info(f"Structured data saved to {structured_output_file}.")
+            np.load(structured_output_file, allow_pickle=True).item()
+            # print("DEBUG structured_data keys:", self.data.keys())
+            # print("DEBUG structured_data length:", len(self.data))
 
 
     def run(self, dl):
