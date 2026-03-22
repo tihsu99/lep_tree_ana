@@ -48,14 +48,14 @@ Usage:
         python fit_tau_dr_pdf.py build input.parquet
 
     Closure test:
-        python fit_tau_dr_pdf.py closure input.parquet --pdf pdf_params.h5
+        python fit_tau_dr_pdf.py closure --input-parquet input.parquet --input-pdf pdf_params.h5 --output output_dir
 
 Optional:
     python fit_tau_dr_pdf.py build input.parquet \
         --output output.h5 --min-events 50 --dr-max 5.0 --dr-bins 120
 
-    python fit_tau_dr_pdf.py closure input.parquet \
-        --pdf pdf_params.h5 --output closure_test.h5 --dr-max 5.0 --dr-bins 120
+    python fit_tau_dr_pdf.py closure \
+        --input-parquet input.parquet --input-pdf pdf_params.h5 --output output_dir --modes lep rho
 """
 
 import argparse
@@ -473,9 +473,9 @@ def make_parser():
         "closure",
         help="Run closure test using an existing PDF file and parquet sample"
     )
-    p_closure.add_argument("--input_parquet", help="Input parquet file for validation",
+    p_closure.add_argument("--input-parquet", help="Input parquet file for validation",
         default="/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260311-pipi/Ztautau/filtered___tautau.parquet")
-    p_closure.add_argument("--input_pdf", help="Existing PDF parameter file, e.g. pdf.h5",
+    p_closure.add_argument("--input-pdf", help="Existing PDF parameter file, e.g. pdf.h5",
         default="mmc_lep_rho_parameters.h5"
     )
 
