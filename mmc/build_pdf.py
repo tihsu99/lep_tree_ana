@@ -193,7 +193,7 @@ def fit_one_bin(dr_values, dr_hist_bins=120, dr_range=(0.0, 5.0)):
 # Kinematics extraction
 # ============================================================
 
-def build_decay_sample(arr, tau_pdgId, vis_pdgId):
+def build_decay_sample(arr, tau_pdgId, vis_pdgId, extra_photon=False):
     """
     Build per-event arrays for:
       - p_tau
@@ -214,6 +214,19 @@ def build_decay_sample(arr, tau_pdgId, vis_pdgId):
     pdgId = arr['GenPart_pdgId']
     tau_p4 = get_p4_from_ak_events(arr, pdgId == tau_pdgId, prefix='GenPart_vector')
     vis_p4 = get_p4_from_ak_events(arr, pdgId == vis_pdgId, prefix='GenPart_vector')
+    if extra_photon:
+        tau_id = 'a' if tau_pdgId == -15 else 'b'
+        mask_photon_near_tau = arr[f'GenPart_is_photon_near_tau_{tau_id}'] == 1
+        flag_valid = (ak.sum(mask_photon_near_tau, axis=1) == 2)
+        if ak.sum(~flag_valid) > 0:
+            print(f"[WARNING] Found {ak.sum(~flag_valid)} events with !=2 photons near tau (pdgId={tau_pdgId}). These events will be skipped.")
+            print(f"Valid events: {ak.sum(flag_valid)}, Invalid events: {ak.sum(~flag_valid)}")
+        arr = arr[flag_valid]
+        mask_photon_near_tau = mask_photon_near_tau[flag_valid]
+        tau_p4 = tau_p4[flag_valid]
+        vis_p4 = vis_p4[flag_valid]
+        photon_p4 = get_p4_from_ak_events(arr, mask_photon_near_tau, prefix='GenPart_vector')
+        vis_p4 = vis_p4 + photon_p4
     mis_p4 = tau_p4 - vis_p4
 
     p_tau = tau_p4.p.to_numpy(allow_missing=False)
@@ -320,6 +333,7 @@ def build_ptau_dr_arrays(arr, decay_mode: str):
                 arr[mask],
                 tau_pdgId=-1 * charge * 15,
                 vis_pdgId=-1 * charge * vis_pdgId if decay_mode == "lep" else charge * vis_pdgId,
+                extra_photon=(decay_mode == "rho"),
             )
             p_tau_all = np.concatenate([p_tau_all, p_tau_bin])
             dr_all = np.concatenate([dr_all, dr_bin])
@@ -451,7 +465,7 @@ def make_parser():
         help="Build PDF parameters from parquet"
     )
     p_build.add_argument("input_parquet", help="Input parquet file",
-            default="/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260311-pipi/Ztautau/filtered___tautau.parquet")
+            default="/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260322-pipi/Ztautau/filtered___tautau.parquet")
     p_build.add_argument("--output", help="Output PDF file, e.g. pdf.h5", default="mmc_lep_rho_parameters.h5")
     p_build.add_argument(
         "--dr-max", type=float, default=0.5,
@@ -474,7 +488,8 @@ def make_parser():
         help="Run closure test using an existing PDF file and parquet sample"
     )
     p_closure.add_argument("--input-parquet", help="Input parquet file for validation",
-        default="/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260311-pipi/Ztautau/filtered___tautau.parquet")
+        default="/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260322-pipi/Ztautau/filtered___tautau.parquet")
+        # default="/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260322-pipi/Ztautau/filtered___pipi.parquet")
     p_closure.add_argument("--input-pdf", help="Existing PDF parameter file, e.g. pdf.h5",
         default="mmc_lep_rho_parameters.h5"
     )
