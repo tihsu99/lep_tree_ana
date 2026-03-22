@@ -52,50 +52,71 @@ def filter_inclusive_tautau_loose(events: ak.Array, filter_log_dict: dict):
     filter_log_dict['Chaarge multiplicity in [2, 6]'] = filter_log_dict.get('Chaarge multiplicity in [2, 6]', 0) + len(events)
 
     # define hemisphere by the sign of dot product between particle momentum and thrust vector
-    events['Part_p4'] = vector.zip({
-        "px": events['Part_fourMomentum_fCoordinates_fX'],
-        "py": events['Part_fourMomentum_fCoordinates_fY'],
-        "pz": events['Part_fourMomentum_fCoordinates_fZ'],
-        "E": events['Part_fourMomentum_fCoordinates_fT'],
-        }
-    )
     events['Part_p'] = events['Part_p4'].p
     events['truthst_vector'] = vector.zip({
         "x": events['thrust_x'],
         "y": events['thrust_y'],
         "z": events['thrust_z'],
     })
-    events['Part_hemisphere'] = ak.where(events['Part_p4'].to_Vector3D().dot(events['truthst_vector']) > 0, 1, -1)
+    # events['Part_hemisphere'] = ak.where(events['Part_p4'].to_Vector3D().dot(events['truthst_vector']) > 0, 1, -1)
+    hemisphere_id = ak.where(events['Part_p4'].to_Vector3D().dot(events['truthst_vector']) > 0, 1, -1)
 
-    # find the p4 of leading charged particle in each hemisphere
+    # find the charge, p4 and pdgId of leading particle in each hemisphere
     idx_all = ak.local_index(events['Part_pdgId'])
+    lead_particle_flags = {1: None, -1: None}
+    lead_particle_charges = {1: None, -1: None}
     for hemisphere in [1, -1]:
-        mask = (events['Part_hemisphere'] == hemisphere) & (events['Part_charge'] != 0)
+        mask = (hemisphere_id == hemisphere) & (events['Part_charge'] != 0)
         p4 = events['Part_p4'][mask]
-        idx_sphere = idx_all[mask]
+        idx_particle = idx_all[mask]
         idx_sorted = ak.argsort(p4.p, axis=1, ascending=False)
-        hemisphere_idx_sorted = idx_sphere[idx_sorted]
-        first_idx = ak.firsts(hemisphere_idx_sorted)
-        flag_is_hemisphere_leading = (idx_all == ak.firsts(hemisphere_idx_sorted))
-        hemisphere_id = 'a' if hemisphere == 1 else 'b'
-        lead_part_exist = ak.any(flag_is_hemisphere_leading, axis=1)
-        events[f'lead_{hemisphere_id}_valid'] = ak.fill_none(lead_part_exist, False)
-        lead_px = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fX'][flag_is_hemisphere_leading]), 0)
-        lead_py = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fY'][flag_is_hemisphere_leading]), 0)
-        lead_pz = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fZ'][flag_is_hemisphere_leading]), 0)
-        lead_E = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fT'][flag_is_hemisphere_leading]), 0)
-        events[f'lead_{hemisphere_id}_p4'] = vector.zip({
+        particle_idx_sorted = idx_particle[idx_sorted]
+        leading_particle_idx = ak.firsts(particle_idx_sorted)
+        flag_is_leading_particle = (idx_all == leading_particle_idx)
+        lead_particle_flags[hemisphere] = flag_is_leading_particle
+        lead_particle_charges[hemisphere] = events['Part_charge'][flag_is_leading_particle][...,0]
+    
+    # redefine hemisphere id based on charge of leading particle in each hemisphere, if exists
+    switch_hemisphere = (lead_particle_charges[1] < 0) & (lead_particle_charges[-1] > 0)
+    events['Part_hemisphere'] = ak.where(switch_hemisphere, -hemisphere_id, hemisphere_id)
+    # now lead_a is the leading charged particle in the hemisphere with positive leading particle, and lead_b is the leading charged particle in the hemisphere with negative leading particle
+    events['is_lead_a'] = lead_particle_flags[1] & (events['Part_charge'] > 0) | lead_particle_flags[-1] & (events['Part_charge'] > 0)
+    events['is_lead_b'] = lead_particle_flags[1] & (events['Part_charge'] < 0) | lead_particle_flags[-1] & (events['Part_charge'] < 0)
+    
+    # store p4, pdgId and other info of leading particle in each hemisphere
+    for hemisphere in ['a', 'b']:
+        lead_flag = events[f'is_lead_{hemisphere}']
+        events[f'lead_{hemisphere}_valid'] = ak.any(lead_flag, axis=1)
+        lead_px = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fX'][lead_flag]), 0)
+        lead_py = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fY'][lead_flag]), 0)
+        lead_pz = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fZ'][lead_flag]), 0)
+        lead_E = ak.fill_none(ak.firsts(events['Part_fourMomentum_fCoordinates_fT'][lead_flag]), 0)
+        events[f'lead_{hemisphere}_p4'] = vector.zip({
             "px": lead_px,
             "py": lead_py,
             "pz": lead_pz,
             "E": lead_E,
         })
-        z0 = events['Trac_impParToVertexZ'][flag_is_hemisphere_leading][:,0]
-        d0 = events['Trac_impParToVertexRPhi'][flag_is_hemisphere_leading][:,0]
-        events[f'lead_{hemisphere_id}_z0'] = ak.fill_none(z0, -999)
-        events[f'lead_{hemisphere_id}_d0'] = ak.fill_none(d0, -999)
+        events[f'lead_{hemisphere}_pdgId'] = ak.fill_none(ak.firsts(events['Part_pdgId'][lead_flag]), 0)
+        events[f'lead_{hemisphere}_charge'] = ak.fill_none(ak.firsts(events['Part_charge'][lead_flag]), 0)
+        events[f'lead_{hemisphere}_hpcTotalShowerEnergy'] = ak.fill_none(ak.firsts(events['Part_hpcTotalShowerEnergy'][lead_flag]), 0)
+        events[f'lead_{hemisphere}_z0'] = ak.fill_none(ak.firsts(events['Trac_impParToVertexZ'][lead_flag]), -999)
+        events[f'lead_{hemisphere}_d0'] = ak.fill_none(ak.firsts(events['Trac_impParToVertexRPhi'][lead_flag]), -999)
+        events[f'lead_{hemisphere}_is_pion'] = ak.any(lead_flag & (abs(events['Part_pdgId']) == 41), axis=1)
 
-        events[f'lead_{hemisphere_id}_hpcTotalShowerEnergy'] = events['Part_hpcTotalShowerEnergy'][flag_is_hemisphere_leading][:,0]
+        # match photons near the leading particle in each hemisphere by dR
+        dR_threshold = 0.3
+        lead_p4 = events[f'lead_{hemisphere}_p4']
+        part_p4 = events['Part_p4']
+        dR_to_lead = lead_p4.deltaR(part_p4)
+        events[f'Part_dR_to_lead_{hemisphere}'] = dR_to_lead
+
+        photon_mask = (events['Part_pdgId'] == 22) & (events['Part_charge'] == 0)
+        hemisphere_id = 1 if hemisphere == 'a' else -1
+        nearby_photon_mask = (dR_to_lead < dR_threshold) & (photon_mask) & (events['Part_hemisphere'] == hemisphere_id)
+        events[f'is_photon_near_lead_{hemisphere}'] = nearby_photon_mask
+        events[f'has_pion_photon_pair_{hemisphere}'] = ak.any(nearby_photon_mask, axis=1) & events[f'lead_{hemisphere}_is_pion'] 
+
 
     pass_filter = events['lead_a_valid'] & events['lead_b_valid'] & pass_filter
     filter_log_dict['leading charged particle in each hemisphere'] = filter_log_dict.get('leading charged particle in each hemisphere', 0) + ak.sum(pass_filter)
@@ -212,10 +233,10 @@ def filter_pilep_events(events: ak.Array, filter_log_dict: dict):
 
     # find leading pion in each hemisphere
     for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-        events[f'is_lead_{hemisphere_id}_e'] = (events['Part_hemisphere'] == hemisphere) & (events['Part_charge'] != 0) & (abs(events['Part_pdgId']) == 2)
-        events[f'is_lead_{hemisphere_id}_mu'] = (events['Part_hemisphere'] == hemisphere) & (events['Part_charge'] != 0) & (abs(events['Part_pdgId']) == 6)
-        events[f'has_lead_{hemisphere_id}_e'] = ak.any(events[f'is_lead_{hemisphere_id}_e'], axis=1)
-        events[f'has_lead_{hemisphere_id}_mu'] = ak.any(events[f'is_lead_{hemisphere_id}_mu'], axis=1)
+        events[f'lead_{hemisphere_id}_is_e'] = (events['Part_hemisphere'] == hemisphere) & (events['Part_charge'] != 0) & (abs(events['Part_pdgId']) == 2)
+        events[f'lead_{hemisphere_id}_is_mu'] = (events['Part_hemisphere'] == hemisphere) & (events['Part_charge'] != 0) & (abs(events['Part_pdgId']) == 6)
+        events[f'has_lead_{hemisphere_id}_e'] = ak.any(events[f'lead_{hemisphere_id}_is_e'], axis=1)
+        events[f'has_lead_{hemisphere_id}_mu'] = ak.any(events[f'lead_{hemisphere_id}_is_mu'], axis=1)
         events[f'has_lead_{hemisphere_id}_lepton'] = events[f'has_lead_{hemisphere_id}_e'] | events[f'has_lead_{hemisphere_id}_mu']
     
     pass_filter = (events['has_lead_a_lepton'] | events['has_lead_b_lepton']) & pass_filter
@@ -233,7 +254,7 @@ def filter_pilep_events(events: ak.Array, filter_log_dict: dict):
     return events, filter_log_dict
 
 
-def filter_event(events: ak.Array, filter_log_dict: dict, input_channel='raw', channels_to_load=[]):
+def filter_event(events: ak.Array, filter_log_dict: dict, input_channel='raw', channels_to_load=[], is_Ztautau=False):
     # redefine Part_p4
     events['Part_p4'] = vector.zip(
         {
@@ -254,6 +275,21 @@ def filter_event(events: ak.Array, filter_log_dict: dict, input_channel='raw', c
                     "E": events[f'lead_{part}_p4'].t,
                 }
             )
+    
+    # define some truth-level variables if not already defined
+    dR_threshold = 0.3
+    if (not 'GenPart_is_final_state_near_tau_a' in events.fields) and is_Ztautau:
+        genpart_p4 = get_all_p4_from_ak_events(events, ak.ones_like(events['GenPart_pdgId'], dtype=bool), 'GenPart_vector')
+        for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+            # -15 - tau+ - a, 15 - tau- - b
+            tau_mask = (events['GenPart_pdgId'] == -15 * hemisphere)
+            tau_p4 = get_p4_from_ak_events(events, tau_mask, 'GenPart_vector')
+            dR_to_tau = tau_p4.deltaR(genpart_p4)
+            events[f'GenPart_is_final_state_near_tau_{hemisphere_id}'] = (dR_to_tau < dR_threshold) & (events['GenPart_status'] == 1)
+            events[f'GenPart_is_photon_near_tau_{hemisphere_id}'] = events[f'GenPart_is_final_state_near_tau_{hemisphere_id}'] & (events['GenPart_pdgId'] == 22)
+            events[f'GenPart_is_pion_near_tau_{hemisphere_id}'] = events[f'GenPart_is_final_state_near_tau_{hemisphere_id}'] & (abs(events['GenPart_pdgId']) == 211)
+            events[f'truth_num_photon_near_tau_{hemisphere_id}'] = ak.sum(events[f'GenPart_is_photon_near_tau_{hemisphere_id}'], axis=1)
+            events[f'truth_num_pion_near_tau_{hemisphere_id}'] = ak.sum(events[f'GenPart_is_pion_near_tau_{hemisphere_id}'], axis=1)
 
     filtered_events_dict = {
         input_channel: events
@@ -282,24 +318,6 @@ def filter_event(events: ak.Array, filter_log_dict: dict, input_channel='raw', c
             log.error("Inclusive tautau events not found in filtered_events_dict. Cannot apply filter_pion_events.")
             return {}, filter_log_dict
         filtered_events, filter_log_dict = filter_pion_events(filtered_events_dict['tautau'], filter_log_dict)
-        # TODO: define the following variables inside filter_pion_events or filter_inclusive_tautau_tight
-        # define is_lead_a/b. In this region, only one charged particle exists in each hemisphere.
-        for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-            filtered_events[f'is_lead_{hemisphere_id}'] = (filtered_events['Part_hemisphere'] == hemisphere) & (filtered_events['Part_charge'] != 0)
-            filtered_events[f'lead_{hemisphere_id}_is_pion'] = ak.any(filtered_events[f'is_lead_{hemisphere_id}'] & (abs(filtered_events['Part_pdgId']) == 41), axis=1)
-
-        # match photon with leading particle in each hemisphere by dR
-        dR_threshold = 0.3
-        photon_mask = (filtered_events['Part_pdgId'] == 21)
-
-        for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-            lead_p4 = filtered_events[f'lead_{hemisphere_id}_p4']
-            part_p4 = filtered_events['Part_p4']
-            dR_to_lead = lead_p4.deltaR(part_p4)
-            nearby_photon_mask = (dR_to_lead < dR_threshold) & (photon_mask) & (filtered_events['Part_hemisphere'] == hemisphere)
-            filtered_events[f'is_photon_near_lead_{hemisphere_id}'] = nearby_photon_mask
-            filtered_events[f'has_pion_photon_pair_{hemisphere_id}'] = ak.any(nearby_photon_mask, axis=1) & filtered_events[f'lead_{hemisphere_id}_is_pion'] 
-
         filtered_events_dict['pion'] = filtered_events
 
     # select pilep channels from pion channel
@@ -326,9 +344,11 @@ def filter_event(events: ak.Array, filter_log_dict: dict, input_channel='raw', c
         if not 'pion' in filtered_events_dict:
             log.error("Pion events not found in filtered_events_dict. Cannot apply filter_pipiLoose_channel.")
             return {}, filter_log_dict
-        log.info("Applying filter_pipiLoose_channel to select pipi channel from pion channel.")
         filtered_events, filter_log_dict = filter_pipiLoose_channel(filtered_events_dict['pion'], filter_log_dict)
         filtered_events_dict['pipi'] = filtered_events
+
+    if (not is_Ztautau) and ('raw' in filtered_events_dict):
+        del filtered_events_dict['raw']
 
     return filtered_events_dict, filter_log_dict
 
@@ -342,6 +362,7 @@ class DataLoader:
         self.norm_factor = config.get("norm_factor", 1.0)
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
+        self.name = self.config.get("name", "")
         self.tree_name = self.config.get("tree_name", "t")
         self.input_files = self.config.get("input_files", [])
         self.region_of_interest = self.config.get("region_of_interest", "pipi")
@@ -349,6 +370,8 @@ class DataLoader:
         self.load_regions = list(set(self.load_regions)) # remove duplicates
         self.is_data = self.config.get("is_data", False)
         self.initial_total_num_events = 0
+
+        self.is_Ztautau = "Ztautau" in self.name
 
         if not self.input_files:
             raise ValueError("Input files must be specified.")
@@ -436,7 +459,7 @@ class DataLoader:
 
             channels_to_load = list(set(self.load_regions) - set(existing_channels))
             log.info(f"Channels to load and filter from {channel_init}: {channels_to_load}")
-            filtered_events, self.filter_results = filter_event(self.data[channel_init], self.filter_results, input_channel=channel_init, channels_to_load=channels_to_load)
+            filtered_events, self.filter_results = filter_event(self.data[channel_init], self.filter_results, input_channel=channel_init, channels_to_load=channels_to_load, is_Ztautau=self.is_Ztautau)
             for key, evt in filtered_events.items():
                 self.data[key] = evt
                 self.data[key]['initial_total_num_events'] = self.initial_total_num_events
@@ -525,7 +548,7 @@ class DataLoader:
 
                     # filter events
                     self.filter_results['initial_total_num_events'] += len(events)
-                    events_pass_filter, self.filter_results = filter_event(events, self.filter_results)
+                    events_pass_filter, self.filter_results = filter_event(events, self.filter_results, is_Ztautau=self.is_Ztautau)
 
                     # record filtered events into self.data
                     for key, evt in events_pass_filter.items():
@@ -649,38 +672,7 @@ class DataLoader:
                 sum_photon_p4 = get_sum_p4_from_ak_events(events, photon_mask)
                 events[f'hemisphere_{hemisphere_id}_visible_p4'] = sum_photon_p4 + events[f'lead_{hemisphere_id}_p4']
 
-            for charge_name, charge in [('positive', 1), ('negative', -1)]:
-                mask_lead_a_match_charge = ak.sum((events['is_lead_a'] * (events['Part_charge'] == charge)), axis=1) > 0
-                mask_lead_b_match_charge = ak.sum((events['is_lead_b'] * (events['Part_charge'] == charge)), axis=1) > 0
-                events[f'lead_{charge_name}_visible_p4'] = vector.zip(
-                    {
-                        "px": (events['lead_a_visible_p4'].x * mask_lead_a_match_charge) + (events['lead_b_visible_p4'].x * mask_lead_b_match_charge),
-                        "py": (events['lead_a_visible_p4'].y * mask_lead_a_match_charge) + (events['lead_b_visible_p4'].y * mask_lead_b_match_charge),
-                        "pz": (events['lead_a_visible_p4'].z * mask_lead_a_match_charge) + (events['lead_b_visible_p4'].z * mask_lead_b_match_charge),
-                        "E": (events['lead_a_visible_p4'].t * mask_lead_a_match_charge) + (events['lead_b_visible_p4'].t * mask_lead_b_match_charge),
-                    }
-                )
-
-                events[f'hemisphere_{charge_name}_visible_p4'] = vector.zip(
-                    {
-                        "px": (events[f'hemisphere_a_visible_p4'].x * mask_lead_a_match_charge) + (events[f'hemisphere_b_visible_p4'].x * mask_lead_b_match_charge),
-                        "py": (events[f'hemisphere_a_visible_p4'].y * mask_lead_a_match_charge) + (events[f'hemisphere_b_visible_p4'].y * mask_lead_b_match_charge),
-                        "pz": (events[f'hemisphere_a_visible_p4'].z * mask_lead_a_match_charge) + (events[f'hemisphere_b_visible_p4'].z * mask_lead_b_match_charge),
-                        "E": (events[f'hemisphere_a_visible_p4'].t * mask_lead_a_match_charge) + (events[f'hemisphere_b_visible_p4'].t * mask_lead_b_match_charge),
-                    }
-                )
-
-            # for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-            #     events[f'lead_{hemisphere_id}_visible_p4'] = events[f'lead_{hemisphere_id}_p4']
-            #     photon_mask = events[f'is_photon_near_lead_{hemisphere_id}'] == 1
-            #     sum_photon_p4 = get_sum_p4_from_ak_events(events, photon_mask)
-            #     events[f'lead_{hemisphere_id}_visible_p4'] = events[f'lead_{hemisphere_id}_visible_p4'] + sum_photon_p4
-            # lead_a_positive_mask = ak.sum(events['is_lead_a'] * events['Part_charge'], axis=1) > 0
-            # lead_b_positive_mask = ak.sum(events['is_lead_b'] * events['Part_charge'], axis=1) > 0
-            # events[f'lead_positive_visible_p4'] = (events['lead_a_visible_p4'] * lead_a_positive_mask) + (events['lead_b_visible_p4'] * lead_b_positive_mask)
-            # events[f'lead_negative_visible_p4'] = (events['lead_a_visible_p4'] * ~lead_a_positive_mask) + (events['lead_b_visible_p4'] * ~lead_b_positive_mask)
-            # events[f'lead_positive_visible_p4'] = (events['lead_a_visible_p4'] * (events['Part_charge'][events['is_lead_a']] > 0)) + (events['lead_b_visible_p4'] * (events['Part_charge'][events['is_lead_b']] > 0))
-            # events[f'lead_negative_visible_p4'] = (events['lead_a_visible_p4'] * (events['Part_charge'][events['is_lead_a']] < 0)) + (events['lead_b_visible_p4'] * (events['Part_charge'][events['is_lead_b']] < 0))
+            ## No need to redefine positive/negative p4 since a/b already corresponds to positive/negative charge
             self.data['pipi'] = events
 
 
