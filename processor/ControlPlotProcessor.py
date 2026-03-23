@@ -142,6 +142,7 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
         flag = ak.ones_like(events['Part_charge'], dtype=bool)
         p4_all = get_all_p4_from_ak_events(events, flag)
         ht = ak.sum(p4_all.pt, axis=-1)
+        ht = ak.to_numpy(ht, allow_missing=False)
         return ht
     bin_edges = np.linspace(0, 100, 101)
     fig, ax, ax_ratio = do_control_plot(
@@ -439,13 +440,33 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
     plt.tight_layout()
     plt.savefig(f"{output_dir}/control_plot_n_leptons.png")
 
+    # plot total charge
+    def get_total_charge(dl):
+        events = dl.data.get(region_name)
+        total_charge = ak.to_numpy(ak.sum(events['Part_charge'], axis=-1), allow_missing=False)
+        return total_charge
+    bin_edges = np.linspace(-2.5, 2.5, 6)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        func_get_variable=get_total_charge,
+        bin_edges=bin_edges,
+        x_label='Total Charge',
+        title='Control Plot: Total Charge',
+        luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_total_charge.png")
+
     # plot hpcNumLayers for lead pion
     def get_lead_pion_hpcNumLayers(dl):
         events = dl.data.get(region_name)
+        if len(events) == 0:
+            return np.array([])
         hpcNumLayers_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
             tmp_events = events[events[f'lead_{hemisphere_id}_is_pion'] == 1]
             lead_pion_hpcNumLayers = ak.to_numpy(tmp_events['Part_hpcNumLayers'][tmp_events[f'is_lead_{hemisphere_id}'] == 1], allow_missing=False)
+            lead_pion_hpcNumLayers = lead_pion_hpcNumLayers.flatten()
             hpcNumLayers_list.append(lead_pion_hpcNumLayers)
         hpcNumLayers_all = np.concatenate(hpcNumLayers_list)
         return hpcNumLayers_all
@@ -464,6 +485,8 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
     # plot pion-photon pair features
     def get_lead_pion_photon_pair_dR(dl):
         events = dl.data.get(region_name)
+        if len(events) == 0:
+            return np.array([])
         dr_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
             tmp_events = events[events[f'has_pion_photon_pair_{hemisphere_id}'] == 1]
@@ -489,6 +512,8 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
 
     def get_num_photon_near_lead_pion(dl):
         events = dl.data.get(region_name)
+        if len(events) == 0:
+            return np.array([])
         num_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
             tmp_events = events[events[f'lead_{hemisphere_id}_is_pion'] == 1] 
@@ -513,6 +538,8 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
     # invariant mass of lead pion and nearby photon
     def get_lead_pion_nearby_photon_pair_mass(dl):
         events = dl.data.get(region_name)
+        if len(events) == 0:
+            return np.array([])
         mass_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
             tmp_events = events[events[f'has_pion_photon_pair_{hemisphere_id}'] == 1]
@@ -577,7 +604,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
     #     plt.savefig(f"{output_dir}/control_plot_pion_{var}.png")
 
 def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_name="pilep", log_scale=True):
-    # make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_name=region_name, log_scale=log_scale)
+    make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_name=region_name, log_scale=log_scale)
 
     # pion and lepton feature
     for part, is_pion in [('pion', 1), ('lepton', 0)]:
@@ -652,6 +679,7 @@ class ControlPlotProcessor(BaseProcessor):
 
     def run(self, dl_dict):
         if 'tautau' in self.regions:
+            print(f"Processing tautau region")
             output_dir_tautau = f"{self.output_dir}/tautau/"
             os.makedirs(output_dir_tautau, exist_ok=True)
             make_control_plots_tautau(
@@ -663,6 +691,7 @@ class ControlPlotProcessor(BaseProcessor):
             )
 
         if 'pion' in self.regions:
+            print(f"Processing pion region")
             output_dir_pion = f"{self.output_dir}/pion/"
             os.makedirs(output_dir_pion, exist_ok=True)
             make_control_plots_pion(
@@ -675,6 +704,7 @@ class ControlPlotProcessor(BaseProcessor):
             )
         
         if 'pipi' in self.regions:
+            print(f"Processing pipi region")
             output_dir_pipi = f"{self.output_dir}/pipi/"
             os.makedirs(output_dir_pipi, exist_ok=True)
             make_control_plots_pion(
@@ -683,13 +713,13 @@ class ControlPlotProcessor(BaseProcessor):
                 normalize=self.normalize,
                 output_dir=output_dir_pipi,
                 region_name="pipi",
-                log_scale=True,
+                log_scale=False,
             )
 
         # pilep regions
         for pilep_region_name in ['pilep', 'piele', 'pimu']:
-            print(f"Processing pilep region: {pilep_region_name}")
             if pilep_region_name in self.regions:
+                print(f"Processing pilep region: {pilep_region_name}")
                 output_dir_pilep = f"{self.output_dir}/{pilep_region_name}/"
                 os.makedirs(output_dir_pilep, exist_ok=True)
                 make_control_plots_pilep(

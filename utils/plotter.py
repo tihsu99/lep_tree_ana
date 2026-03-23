@@ -223,6 +223,7 @@ def do_control_plot(
     hist_data = np.zeros(len(bin_edges)-1)
     for dl_name, dl in dl_dict.items():
         variable_values = func_get_variable(dl)
+        variable_values = np.asarray(variable_values)
         hist, _ = np.histogram(variable_values, bins=bin_edges)
         hist_err2 = hist
         if not dl.is_data:

@@ -11,7 +11,7 @@ def print_and_write_to_file(text, file_path, mode='a'):
         f.write(text + '\n')
 
 def get_color_iterator(n):
-    return iter(plt.cm.tab10.colors * (n // 10 + 1))
+    return iter(plt.cm.tab20.colors * (n // 20 + 1))
 
 def get_p4_from_ak_events(events, flag, prefix='Part_fourMomentum'):
     px = ak.firsts(events[f'{prefix}_fCoordinates_fX'][flag][...,::-1]).to_numpy()
