@@ -111,7 +111,7 @@ def filter_inclusive_tautau_loose(events: ak.Array, filter_log_dict: dict):
         dR_to_lead = lead_p4.deltaR(part_p4)
         events[f'Part_dR_to_lead_{hemisphere}'] = dR_to_lead
 
-        photon_mask = (events['Part_pdgId'] == 22) & (events['Part_charge'] == 0)
+        photon_mask = (events['Part_pdgId'] == 21) & (events['Part_charge'] == 0)
         hemisphere_id = 1 if hemisphere == 'a' else -1
         nearby_photon_mask = (dR_to_lead < dR_threshold) & (photon_mask) & (events['Part_hemisphere'] == hemisphere_id)
         events[f'is_photon_near_lead_{hemisphere}'] = nearby_photon_mask
@@ -657,6 +657,14 @@ class DataLoader:
                             "E": ch_events[f'lead_{part}_p4'].t,
                         }
                     )
+            
+            # redefine is_photon_near_lead_a/b since there was a bug
+            dR_threshold = 0.3
+            if 'is_photon_near_lead_a' in ch_events.fields and 'is_photon_near_lead_b' in ch_events.fields:
+                for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
+                    ch_events[f'is_photon_near_lead_{hemisphere_id}'] = (ch_events['Part_pdgId'] == 21) & (ch_events[f'Part_dR_to_lead_{hemisphere_id}'] < dR_threshold) & (ch_events[f'Part_charge'] == 0)
+                    ch_events[f'has_pion_photon_pair_{hemisphere_id}'] = ak.any(ch_events[f'is_photon_near_lead_{hemisphere_id}'], axis=1) & ch_events[f'lead_{hemisphere_id}_is_pion']
+
         # calculate p4 of visible particles (pi+photon in pipi case)
         if 'pipi' in self.data:
             events = self.data['pipi']
