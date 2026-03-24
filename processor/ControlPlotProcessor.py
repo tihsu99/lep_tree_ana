@@ -357,7 +357,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
     def get_charged_pdgId(dl):
         events = dl.data.get(region_name)
         charged_mask = events['Part_charge'] != 0
-        charged_pdgId = ak.to_numpy(events['Part_pdgId'][charged_mask], allow_missing=False)
+        charged_pdgId = ak.to_numpy(ak.flatten(events['Part_pdgId'][charged_mask]), allow_missing=False)
         charged_pdgId = np.abs(charged_pdgId)  
         # map pdgId for better visualization
         mask_others = np.ones_like(charged_pdgId, dtype=bool)

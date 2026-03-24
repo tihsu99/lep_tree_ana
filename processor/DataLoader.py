@@ -658,93 +658,19 @@ class DataLoader:
                         }
                     )
             
-            # redefine is_photon_near_lead_a/b since there was a bug
-            dR_threshold = 0.3
-            if 'is_photon_near_lead_a' in ch_events.fields and 'is_photon_near_lead_b' in ch_events.fields:
-                for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-                    ch_events[f'is_photon_near_lead_{hemisphere_id}'] = (ch_events['Part_pdgId'] == 21) & (ch_events[f'Part_dR_to_lead_{hemisphere_id}'] < dR_threshold) & (ch_events[f'Part_charge'] == 0)
-                    ch_events[f'has_pion_photon_pair_{hemisphere_id}'] = ak.any(ch_events[f'is_photon_near_lead_{hemisphere_id}'], axis=1) & ch_events[f'lead_{hemisphere_id}_is_pion']
 
-        # calculate p4 of visible particles (pi+photon in pipi case)
-        if 'pipi' in self.data:
-            events = self.data['pipi']
             for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
                 # only consider photons near the leading particles
-                events[f'lead_{hemisphere_id}_visible_p4'] = events[f'lead_{hemisphere_id}_p4']
-                photon_mask = events[f'is_photon_near_lead_{hemisphere_id}'] == 1
-                sum_photon_p4 = get_sum_p4_from_ak_events(events, photon_mask)
-                events[f'lead_{hemisphere_id}_visible_p4'] = events[f'lead_{hemisphere_id}_visible_p4'] + sum_photon_p4
+                ch_events[f'lead_{hemisphere_id}_visible_p4'] = ch_events[f'lead_{hemisphere_id}_p4']
+                photon_mask = ch_events[f'is_photon_near_lead_{hemisphere_id}'] == 1
+                sum_photon_p4 = get_sum_p4_from_ak_events(ch_events, photon_mask)
+                ch_events[f'lead_{hemisphere_id}_visible_p4'] = ch_events[f'lead_{hemisphere_id}_visible_p4'] + sum_photon_p4
 
                 # the whole hemisphere
-                photon_mask = (events[f'Part_hemisphere'] == hemisphere) & (events[f'Part_pdgId'] == 21)
-                sum_photon_p4 = get_sum_p4_from_ak_events(events, photon_mask)
-                events[f'hemisphere_{hemisphere_id}_visible_p4'] = sum_photon_p4 + events[f'lead_{hemisphere_id}_p4']
+                photon_mask = (ch_events[f'Part_hemisphere'] == hemisphere) & (ch_events[f'Part_pdgId'] == 21)
+                sum_photon_p4 = get_sum_p4_from_ak_events(ch_events, photon_mask)
+                ch_events[f'hemisphere_{hemisphere_id}_visible_p4'] = sum_photon_p4 + ch_events[f'lead_{hemisphere_id}_p4']
 
-            ## No need to redefine positive/negative p4 since a/b already corresponds to positive/negative charge
-            self.data['pipi'] = events
-
-
-        # if 'pion' in self.data:
-        #     pion_events = self.data['pion']
-
-        #     # define is_lead_a/b. In this region, only one charged particle exists in each hemisphere.
-        #     for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-        #         pion_events[f'is_lead_{hemisphere_id}'] = (pion_events['Part_hemisphere'] == hemisphere) & (pion_events['Part_charge'] != 0)
-        #         pion_events[f'lead_{hemisphere_id}_is_pion'] = ak.any(pion_events[f'is_lead_{hemisphere_id}'] & (abs(pion_events['Part_pdgId']) == 41), axis=1)
-
-        #     # match photon with leading particle in each hemisphere by dR
-        #     dR_threshold = 0.3
-        #     photon_mask = (pion_events['Part_pdgId'] == 21)
-
-        #     for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-        #         lead_p4 = pion_events[f'lead_{hemisphere_id}_p4']
-        #         part_p4 = pion_events['Part_p4']
-        #         dR_to_lead = lead_p4.deltaR(part_p4)
-        #         nearby_photon_mask = (dR_to_lead < dR_threshold) & (photon_mask) & (pion_events['Part_hemisphere'] == hemisphere)
-        #         pion_events[f'is_photon_near_lead_{hemisphere_id}'] = nearby_photon_mask
-        #         pion_events[f'has_pion_photon_pair_{hemisphere_id}'] = ak.any(nearby_photon_mask, axis=1) & pion_events[f'lead_{hemisphere_id}_is_pion'] 
-
-        # ##################################################################
-        # # You may temporarily define some new regions or variables here.
-        # ##################################################################
-
-        # # define pilep region inside pion channel: events with at least one leading lepton (e or mu) in either hemisphere
-        # if 'pion' in self.data:
-        #     pilep_events = self.data['pion']
-
-        #     pass_filter = ak.ones_like(pilep_events['evtNumber'], dtype=bool)
-            
-        #     # find leading lepton in each hemisphere
-        #     for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-        #         pilep_events[f'is_lead_{hemisphere_id}_e'] = (pilep_events['Part_hemisphere'] == hemisphere) & (pilep_events['Part_charge'] != 0) & (abs(pilep_events['Part_pdgId']) == 2)
-        #         pilep_events[f'is_lead_{hemisphere_id}_mu'] = (pilep_events['Part_hemisphere'] == hemisphere) & (pilep_events['Part_charge'] != 0) & (abs(pilep_events['Part_pdgId']) == 6)
-        #         pilep_events[f'has_lead_{hemisphere_id}_e'] = ak.any(pilep_events[f'is_lead_{hemisphere_id}_e'], axis=1)
-        #         pilep_events[f'has_lead_{hemisphere_id}_mu'] = ak.any(pilep_events[f'is_lead_{hemisphere_id}_mu'], axis=1)
-        #         pilep_events[f'has_lead_{hemisphere_id}_lepton'] = pilep_events[f'has_lead_{hemisphere_id}_e'] | pilep_events[f'has_lead_{hemisphere_id}_mu']
-            
-        #     pass_filter = (pilep_events['has_lead_a_lepton'] | pilep_events['has_lead_b_lepton']) & pass_filter
-        #     print(f"Filter efficiency for pilep region: {ak.sum(pass_filter) / len(pilep_events):.4f}")
-
-        #     # number of photons near leading pion == 0
-        #     pass_filter = ( (pilep_events['lead_a_is_pion'] * ak.sum(pilep_events['is_photon_near_lead_a'], axis=1)) + (pilep_events['lead_b_is_pion'] * ak.sum(pilep_events['is_photon_near_lead_b'], axis=1)) == 0 ) & pass_filter
-        #     print(f"Filter efficiency for pilep region after photon near leading pion cut: {ak.sum(pass_filter) / len(pilep_events):.4f}")
-
-        #     # # number of photons <= 1
-        #     # pass_filter = (ak.sum((pilep_events['Part_pdgId'] == 21), axis=1) <= 1) & pass_filter
-        #     # print(f"Filter efficiency for pilep region after photon multiplicity cut: {ak.sum(pass_filter) / len(pilep_events):.4f}")
-
-        #     pilep_events = pilep_events[pass_filter]
-        #     self.data['pilep'] = pilep_events
-
-        #     # piele region: events with at least one leading electron in either hemisphere
-        #     piele_events = pilep_events[pilep_events['has_lead_a_e'] | pilep_events['has_lead_b_e']]
-        #     print(f"Filter efficiency for piele region: {len(piele_events) / len(pilep_events):.4f}")
-        #     self.data['piele'] = piele_events
-
-        #     # pimu region: events with at least one leading muon in either hemisphere
-        #     pimu_events = pilep_events[pilep_events['has_lead_a_mu'] | pilep_events['has_lead_b_mu']]
-        #     print(f"Filter efficiency for pimu region: {len(pimu_events) / len(pilep_events):.4f}")
-        #     self.data['pimu'] = pimu_events
 
 
     def finalize(self):
