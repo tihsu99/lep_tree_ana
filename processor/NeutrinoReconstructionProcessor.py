@@ -11,6 +11,169 @@ from utils.common_functions import get_p4_from_ak_events, get_color_iterator, ge
 from utils.plotter import plot_y_vs_x
 
 
+def evaluate_reconstruction(events, dl_name, output_dir):
+    """
+        Evaluate the neutrino reconstruction performance by comparing the reconstructed neutrino 4-momenta to the truth neutrino 4-momenta for events passing the selection.
+            - events: ak.Array of events that contain the following fields:
+                - GenPart_pdgId: need to have +-15 for truth tau
+                - lead_a/b_visible_p4, lead_a/b_missing_p4: for reconstructed visible and missing 4-momenta
+    """
+    def get_p4(events, prefix):
+        return vector.zip({
+            "px": events[f'{prefix}_p4'].x,
+            "py": events[f'{prefix}_p4'].y,
+            "pz": events[f'{prefix}_p4'].z,
+            "E": events[f'{prefix}_p4'].t,
+        })
+
+    tau_p4 = get_p4_from_ak_events(events, (events['GenPart_pdgId'] == 15), prefix='GenPart_vector')
+    antitau_p4 = get_p4_from_ak_events(events, (events['GenPart_pdgId'] == -15), prefix='GenPart_vector')
+    # get reconstructed vis and mis p4
+    reco_vis_negative_p4 = get_p4(events, 'lead_b_visible')
+    reco_vis_positive_p4 = get_p4(events, 'lead_a_visible')
+    reco_mis_negativep4_array = get_p4(events, 'lead_b_missing')
+    reco_mis_positivep4_array = get_p4(events, 'lead_a_missing')
+
+    # compute truth missing p4 by subtracting visible from tau p4
+    miss_positive_p4 = antitau_p4 - reco_vis_positive_p4
+    miss_negative_p4 = tau_p4 - reco_vis_negative_p4
+
+
+
+    # plot comparison of reconstructed vs truth missing objects
+    fig_scatter, axes_scatter = plt.subplots(4, 2, figsize=(12, 5*4), dpi=300)
+    fig_diff, axes_diff = plt.subplots(4, 2, figsize=(12, 5*4), dpi=300)
+    fig_diff_rel, axes_diff_rel = plt.subplots(4, 2, figsize=(12, 5*4), dpi=300)
+    fig_distribution, axes_distribution = plt.subplots(4, 2, figsize=(12, 5*4), dpi=300)
+    for i, var in enumerate(['px', 'py', 'pz', 'E']):
+        plot_range = [-cme/2, cme/2]
+        if var == 'E':
+            plot_range = [0, cme/2]
+        #################
+        # Neutrino
+        #################
+        # Neutrino Scatter Plot
+        ax_nu = axes_scatter[i, 0]
+        truth_ary = getattr(miss_negative_p4, var)
+        reco_ary = getattr(reco_mis_negativep4_array, var)
+        ax_nu.scatter(ak.to_numpy(truth_ary), ak.to_numpy(reco_ary), alpha=0.8, label=f'Reconstructed {var}', s=3)
+        ax_nu.plot(plot_range, plot_range, 'r--', label='Ideal')
+        ax_nu.set_xlabel(f'Truth Neutrino {var} (GeV)')
+        ax_nu.set_ylabel(f'Reconstructed Neutrino {var} (GeV)')
+        ax_nu.set_title(f'Neutrino {var} Reconstruction for {dl_name}')
+        ax_nu.legend()
+
+        # Neutrino Difference Plot
+        ax_reco_mis_negativediff = axes_diff[i, 0]
+        delta_ary = ak.to_numpy(reco_ary - truth_ary)
+        plot_y_vs_x(x=ak.to_numpy(truth_ary), y=delta_ary, ax=ax_reco_mis_negativediff, band='68')
+        ax_reco_mis_negativediff.set_xlabel(f'Truth Neutrino {var} [GeV]')
+        ax_reco_mis_negativediff.set_ylabel(f'Error of Reconstruction')
+        ax_reco_mis_negativediff.set_title(f'Neutrino {var} Reconstruction Error vs Truth for {dl_name}')
+        ax_reco_mis_negativediff.set_ylim(-3, 3)
+
+        # Neutrino Relative Difference Plot
+        rel_err_ary = (delta_ary) / ak.to_numpy(truth_ary)
+        ax_reco_mis_negativediff_rel = axes_diff_rel[i, 0]
+        plot_y_vs_x(x=ak.to_numpy(truth_ary), y=rel_err_ary, ax=ax_reco_mis_negativediff_rel, band='68')
+        ax_reco_mis_negativediff_rel.set_xlabel(f'Truth Neutrino {var} [GeV]')
+        ax_reco_mis_negativediff_rel.set_ylabel(f'Relative Error of Reconstruction')
+        ax_reco_mis_negativediff_rel.set_title(f'Neutrino {var} Relative Reconstruction Error vs Truth for {dl_name}')
+        ax_reco_mis_negativediff_rel.set_ylim(-0.1, 0.1)
+
+        # Neutrino Distribution Plot
+        ax_reco_mis_negativedist = axes_distribution[i, 0]
+        ax_reco_mis_negativedist.hist(ak.to_numpy(truth_ary), bins=30, range=plot_range, label='Truth', density=True, histtype='step', linewidth=2)
+        ax_reco_mis_negativedist.hist(ak.to_numpy(reco_ary), bins=30, range=plot_range, label='Reconstructed', density=True, histtype='step', linewidth=2)
+        ax_reco_mis_negativedist.set_xlabel(f'Neutrino {var} (GeV)')
+        ax_reco_mis_negativedist.set_ylabel('Normalized Counts')
+        ax_reco_mis_negativedist.set_title(f'Neutrino {var} Distribution for {dl_name}')
+        ax_reco_mis_negativedist.legend()
+
+
+        #################
+        # Anti-Neutrino
+        #################
+        # Anti-Neutrino Scatter Plot
+        ax_anti_nu = axes_scatter[i, 1]
+        truth_ary_anti = getattr(miss_positive_p4, var)
+        reco_ary_anti = getattr(reco_mis_positivep4_array, var)
+        ax_anti_nu.scatter(ak.to_numpy(truth_ary_anti), ak.to_numpy(reco_ary_anti), alpha=0.8, label=f'Reconstructed {var}', s=3)
+        ax_anti_nu.plot(plot_range, plot_range, 'r--', label='Ideal')
+        ax_anti_nu.set_xlabel(f'Truth Anti-Neutrino {var} (GeV)')
+        ax_anti_nu.set_ylabel(f'Reconstructed Anti-Neutrino {var} (GeV)')
+        ax_anti_nu.set_title(f'Anti-Neutrino {var} Reconstruction for {dl_name}')
+        ax_anti_nu.legend()
+        plt.tight_layout()
+
+        # Anti-Neutrino Difference Plot
+        ax_reco_mis_positivediff = axes_diff[i, 1]
+        delta_ary_anti = reco_ary_anti - truth_ary_anti
+        plot_y_vs_x(x=ak.to_numpy(truth_ary_anti), y=delta_ary_anti, ax=ax_reco_mis_positivediff, band='68')
+        ax_reco_mis_positivediff.set_xlabel(f'Truth Anti-Neutrino {var} [GeV]')
+        ax_reco_mis_positivediff.set_ylabel(f'Error of Reconstruction')
+        ax_reco_mis_positivediff.set_title(f'Anti-Neutrino {var} Reconstruction Error vs Truth for {dl_name}')
+        ax_reco_mis_positivediff.set_ylim(-3, 3)
+        plt.tight_layout()
+
+        # Anti-Neutrino Relative Difference Plot
+        rel_err_ary_anti = ak.to_numpy(delta_ary_anti) / ak.to_numpy(truth_ary_anti)
+        ax_reco_mis_positivediff_rel = axes_diff_rel[i, 1]
+        plot_y_vs_x(x=ak.to_numpy(truth_ary_anti), y=rel_err_ary_anti, ax=ax_reco_mis_positivediff_rel, band='68')
+        ax_reco_mis_positivediff_rel.set_xlabel(f'Truth Anti-Neutrino {var} [GeV]')
+        ax_reco_mis_positivediff_rel.set_ylabel(f'Relative Error of Reconstruction')
+        ax_reco_mis_positivediff_rel.set_title(f'Anti-Neutrino {var} Relative Reconstruction Error vs Truth for {dl_name}')
+        ax_reco_mis_positivediff_rel.set_ylim(-0.1, 0.1)
+        plt.tight_layout()
+
+        # Anti-Neutrino Distribution Plot
+        ax_reco_mis_positivedist = axes_distribution[i, 1]
+        ax_reco_mis_positivedist.hist(ak.to_numpy(truth_ary_anti), bins=30, range=plot_range, label='Truth', density=True, histtype='step', linewidth=2)
+        ax_reco_mis_positivedist.hist(ak.to_numpy(reco_ary_anti), bins=30, range=plot_range, label='Reconstructed', density=True, histtype='step', linewidth=2)
+        ax_reco_mis_positivedist.set_xlabel(f'Anti-Neutrino {var} (GeV)')
+        ax_reco_mis_positivedist.set_ylabel('Normalized Counts')
+        ax_reco_mis_positivedist.set_title(f'Anti-Neutrino {var} Distribution for {dl_name}')
+        ax_reco_mis_positivedist.legend()
+        plt.tight_layout()
+
+    fig_scatter.savefig(f"{output_dir}/{dl_name}_neutrino_momentum_reconstruction_scatter.png")
+    plt.close(fig_scatter)
+    fig_diff.savefig(f"{output_dir}/{dl_name}_neutrino_momentum_reconstruction_difference.png")
+    plt.close(fig_diff)
+    fig_diff_rel.savefig(f"{output_dir}/{dl_name}_neutrino_momentum_reconstruction_relative_difference.png")
+    plt.close(fig_diff_rel)
+    fig_distribution.savefig(f"{output_dir}/{dl_name}_neutrino_momentum_reconstruction_distribution.png")
+    plt.close(fig_distribution)
+
+    # plot dR between reconstructed tau+ and tau-
+    tau_plus_p4 = reco_vis_positive_p4 + reco_mis_positivep4_array
+    tau_minus_p4 = reco_vis_negative_p4 + reco_mis_negativep4_array
+    dr_tau_tau = tau_plus_p4.deltaR(tau_minus_p4)
+    fig, ax = plt.subplots(dpi=300)
+    ax.hist(ak.to_numpy(dr_tau_tau), bins=50, range=(0, 5), histtype='step', density=True)
+    ax.set_xlabel('Delta R between Reconstructed Tau+ and Tau-')
+    ax.set_ylabel('Normalized Counts')
+    ax.set_title(f'Delta R Distribution for {dl_name}')
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, f'{dl_name}_deltaR_tau_tau.png'))
+    plt.close(fig)
+
+    # plot dR between reconstructed neutrino and visible tau
+    dr_reco_mis_negativevis = reco_mis_negativep4_array.deltaR(reco_vis_negative_p4)
+    dr_reco_mis_positivevis = reco_mis_positivep4_array.deltaR(reco_vis_positive_p4)
+    fig, ax = plt.subplots(dpi=300)
+    bins = np.linspace(0, 0.5, 101)
+    ax.hist(ak.to_numpy(dr_reco_mis_negativevis), bins=bins, histtype='step', density=True, label='Neutrino vs Visible Tau-')
+    ax.hist(ak.to_numpy(dr_reco_mis_positivevis), bins=bins, histtype='step', density=True, label='Anti-Neutrino vs Visible Tau+')
+    ax.set_xlabel('Delta R between Reconstructed Neutrino and Visible Tau')
+    ax.set_ylabel('Normalized Counts')
+    ax.set_title(f'Delta R Distribution for {dl_name}')
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, f'{dl_name}_deltaR_reco_mis_negativevis.png'))
+    plt.close(fig)
+
+
 def _det3(a11, a12, a13, a21, a22, a23, a31, a32, a33):
     return (
         a11 * (a22 * a33 - a23 * a32)
@@ -373,296 +536,49 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                 dl = dl_dict[dl_name]
                 cur_output_dir = f"{self.output_dir}/{region_name}/"
                 output_file = f"{cur_output_dir}/{dl_name}_pipi_reconstructed_neutrinos.parquet"
-                solution_loaded = False
-                # if the parquet is already there, load it to data
-                if os.path.exists(output_file):
-                    events_of_interest = ak.from_parquet(output_file)
-                    dl.data[region_name] = events_of_interest
-                    print(f"Loaded reconstructed neutrino data from {output_file} for {dl_name}")
-
-                    events = events_of_interest
-                    for charge_name, charge in [('a', 1), ('b', -1)]:
-                        events[f'lead_{charge_name}_visible_p4'] = vector.zip(
-                            {
-                                "px": events[f"lead_{charge_name}_visible_p4"].x,
-                                "py": events[f"lead_{charge_name}_visible_p4"].y,
-                                "pz": events[f"lead_{charge_name}_visible_p4"].z,
-                                "E": events[f"lead_{charge_name}_visible_p4"].t,
-                            }
-                        )
-
-                        events[f'hemisphere_{charge_name}_visible_p4'] = vector.zip(
-                            {
-                                "px": events[f"hemisphere_{charge_name}_visible_p4"].x,
-                                "py": events[f"hemisphere_{charge_name}_visible_p4"].y,
-                                "pz": events[f"hemisphere_{charge_name}_visible_p4"].z,
-                                "E": events[f"hemisphere_{charge_name}_visible_p4"].t,
-                            }
-                        )
-
-                    # continue
-                    solution_loaded = True
 
                 if not os.path.exists(cur_output_dir):
                     os.makedirs(cur_output_dir, exist_ok=True)
                 if region_name not in dl.data:
                     raise ValueError(f"Region {region_name} not found in dataloader {dl_name}. Available regions: {list(dl.data.keys())}")
+
                 events = dl.data.get(region_name)
-                print(f"Number of events in {dl_name} before neutrino reconstruction: {len(events)}")
-
-
-                # ############## for testing only ##############
-                # pass_filter = np.ones(len(events), dtype=bool)
-                # num_events_before = len(events)
-                # for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-                #     num_photons = ak.sum(events[f'is_photon_near_lead_{hemisphere_id}'], axis=1)
-                #     pass_filter = (num_photons == 2) & pass_filter
-                # events = events[pass_filter]
-                # print(f"Number of events in {dl_name} before and after photon filter: {num_events_before} -> {len(events)}")
-                # ############## for testing only ##############
-
-
-                # Get truth neutrino p4
-                events_of_interest = events
-                # events_of_interest = events[:500]
-                flag_truth_nu = (events_of_interest['GenPart_pdgId'] == 16)
-                flag_truth_anti_nu = (events_of_interest['GenPart_pdgId'] == -16)
-                truth_nu_all_p4 = get_p4_from_ak_events(events_of_interest, flag_truth_nu, prefix='GenPart_vector')
-                truth_anti_nu_all_p4 = get_p4_from_ak_events(events_of_interest, flag_truth_anti_nu, prefix='GenPart_vector')
-
-                truth_nu_p4 = truth_nu_all_p4
-                truth_anti_nu_p4 = truth_anti_nu_all_p4
+                print(f"Processing {dl_name} for region {region_name} with {len(events)} events")
 
                 # Get visible tau p4
-                reco_vis_positive_p4 = events_of_interest['lead_a_visible_p4']
-                reco_vis_negative_p4 = events_of_interest['lead_b_visible_p4']
-
-                # reco_vis_positive_p4 = events_of_interest['hemisphere_a_visible_p4']
-                # reco_vis_negative_p4 = events_of_interest['hemisphere_b_visible_p4']
+                reco_vis_positive_p4 = events['lead_a_visible_p4']
+                reco_vis_negative_p4 = events['lead_b_visible_p4']
 
                 # Reconstruct neutrinos
-                nu_p4_list = {'px': [], 'py': [], 'pz': [], 'E': []}
-                anti_nu_p4_list = {'px': [], 'py': [], 'pz': [], 'E': []}
-                flags_valid = []
+                # reco_mis_negativep4_list = {'px': [], 'py': [], 'pz': [], 'E': []}
+                # reco_mis_positivep4_list = {'px': [], 'py': [], 'pz': [], 'E': []}
+                # flags_valid = []
 
-                if not solution_loaded:
-                    # for i in tqdm.tqdm(range(len(events_of_interest)), desc=f"Reconstructing neutrinos for {dl_name}"):
-                    #     nu_p4, anti_nu_p4, flag_valid = calculate_neutrino_p4(
-                    #         tau1_vis_p4=reco_vis_negative_p4[i],
-                    #         tau2_vis_p4=reco_vis_positive_p4[i],
-                    #     )
-                    #     nu_p4_list['px'].append(nu_p4.px)
-                    #     nu_p4_list['py'].append(nu_p4.py)
-                    #     nu_p4_list['pz'].append(nu_p4.pz)
-                    #     nu_p4_list['E'].append(nu_p4.E)
-                    #     anti_nu_p4_list['px'].append(anti_nu_p4.px)
-                    #     anti_nu_p4_list['py'].append(anti_nu_p4.py)
-                    #     anti_nu_p4_list['pz'].append(anti_nu_p4.pz)
-                    #     anti_nu_p4_list['E'].append(anti_nu_p4.E)
-                    #     flags_valid.append(flag_valid)
-                    # nu_p4_array = vector.zip(nu_p4_list)
-                    # anti_nu_p4_array = vector.zip(anti_nu_p4_list)
-                    # flags_valid_array = np.array(flags_valid)
-                    zero_mass_grid = np.zeros((len(events_of_interest), 1))
-                    nu_p4_array, anti_nu_p4_array, flags_valid_array = compute_neutrino_momenta(
-                        vis1_p4=reco_vis_negative_p4,
-                        vis2_p4=reco_vis_positive_p4,
-                        m_miss1_grid=zero_mass_grid,
-                        m_miss2_grid=zero_mass_grid,
-                    )
-                    # reshape from (N,1) to (N,)
-                    nu_p4_array = ak.firsts(nu_p4_array)
-                    anti_nu_p4_array = ak.firsts(anti_nu_p4_array)
-                    flags_valid_array = flags_valid_array[:, 0]
+                zero_mass_grid = np.zeros((len(events), 1))
+                reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
+                    vis1_p4=reco_vis_negative_p4,
+                    vis2_p4=reco_vis_positive_p4,
+                    m_miss1_grid=zero_mass_grid,
+                    m_miss2_grid=zero_mass_grid,
+                )
+                # reshape from (N,1) to (N,)
+                reco_mis_negativep4_array = ak.firsts(reco_mis_negativep4_array)
+                reco_mis_positivep4_array = ak.firsts(reco_mis_positivep4_array)
+                flags_valid_array = flags_valid_array[:, 0]
 
-                    # sum p4 of vis+neutrino system
-                    # sum_p4 = nu_p4_array + anti_nu_p4_array +  events_of_interest['lead_a_visible_p4'] + events_of_interest['lead_b_visible_p4']
-                    # semitruth_sum_p4 = truth_nu_p4 + truth_anti_nu_p4 + events_of_interest['lead_a_visible_p4'] + events_of_interest['lead_b_visible_p4']
-                    sum_p4 = nu_p4_array + anti_nu_p4_array +  events_of_interest['hemisphere_a_visible_p4'] + events_of_interest['hemisphere_b_visible_p4']
-                    semitruth_sum_p4 = truth_nu_p4 + truth_anti_nu_p4 + events_of_interest['hemisphere_a_visible_p4'] + events_of_interest['hemisphere_b_visible_p4']
-
-                    for k in nu_p4_list.keys():
-                        events_of_interest[f'nu_{k}'] = nu_p4_list[k]
-                        events_of_interest[f'anti_nu_{k}'] = anti_nu_p4_list[k]
-                        events_of_interest[f'sum_{k}'] = getattr(sum_p4, k)
-                        events_of_interest[f'semitruth_sum_{k}'] = getattr(semitruth_sum_p4, k)
-                        events_of_interest['flags_valid'] = flags_valid_array
-
-                    events_of_interest['mass_reconstructed'] = sum_p4.mass
-                    events_of_interest['mass_semitruth'] = semitruth_sum_p4.mass
-
-                    ak.to_parquet(events_of_interest, output_file, compression='snappy')
-                    dl.data[region_name] = events_of_interest
-                    print(f"Saved reconstructed neutrino data to {output_file} for {dl_name}")
-                else:
-                    nu_p4_array = vector.zip({
-                        'px': events_of_interest['nu_px'],
-                        'py': events_of_interest['nu_py'],
-                        'pz': events_of_interest['nu_pz'],
-                        'E': events_of_interest['nu_E'],
-                    })
-                    anti_nu_p4_array = vector.zip({
-                        'px': events_of_interest['anti_nu_px'],
-                        'py': events_of_interest['anti_nu_py'],
-                        'pz': events_of_interest['anti_nu_pz'],
-                        'E': events_of_interest['anti_nu_E'],
-                    })
-
-
-
-                # plot comparison of reconstructed vs truth neutrinos
-                fig_scatter, axes_scatter = plt.subplots(4, 2, figsize=(12, 5*4), dpi=300)
-                fig_diff, axes_diff = plt.subplots(4, 2, figsize=(12, 5*4), dpi=300)
-                fig_diff_rel, axes_diff_rel = plt.subplots(4, 2, figsize=(12, 5*4), dpi=300)
-                fig_distribution, axes_distribution = plt.subplots(4, 2, figsize=(12, 5*4), dpi=300)
-                for i, var in enumerate(['px', 'py', 'pz', 'E']):
-                    plot_range = [-cme/2, cme/2]
-                    if var == 'E':
-                        plot_range = [0, cme/2]
-                    #################
-                    # Neutrino
-                    #################
-                    # Neutrino Scatter Plot
-                    ax_nu = axes_scatter[i, 0]
-                    truth_ary = getattr(truth_nu_p4, var)
-                    reco_ary = getattr(nu_p4_array, var)
-                    ax_nu.scatter(ak.to_numpy(truth_ary), ak.to_numpy(reco_ary), alpha=0.8, label=f'Reconstructed {var}', s=3)
-                    ax_nu.plot(plot_range, plot_range, 'r--', label='Ideal')
-                    ax_nu.set_xlabel(f'Truth Neutrino {var} (GeV)')
-                    ax_nu.set_ylabel(f'Reconstructed Neutrino {var} (GeV)')
-                    ax_nu.set_title(f'Neutrino {var} Reconstruction for {dl_name}')
-                    ax_nu.legend()
-
-                    # Neutrino Difference Plot
-                    ax_nu_diff = axes_diff[i, 0]
-                    delta_ary = ak.to_numpy(reco_ary - truth_ary)
-                    plot_y_vs_x(x=ak.to_numpy(truth_ary), y=delta_ary, ax=ax_nu_diff, band='68')
-                    ax_nu_diff.set_xlabel(f'Truth Neutrino {var} [GeV]')
-                    ax_nu_diff.set_ylabel(f'Error of Reconstruction')
-                    ax_nu_diff.set_title(f'Neutrino {var} Reconstruction Error vs Truth for {dl_name}')
-                    ax_nu_diff.set_ylim(-3, 3)
-
-                    # Neutrino Relative Difference Plot
-                    rel_err_ary = (delta_ary) / ak.to_numpy(truth_ary)
-                    ax_nu_diff_rel = axes_diff_rel[i, 0]
-                    plot_y_vs_x(x=ak.to_numpy(truth_ary), y=rel_err_ary, ax=ax_nu_diff_rel, band='68')
-                    ax_nu_diff_rel.set_xlabel(f'Truth Neutrino {var} [GeV]')
-                    ax_nu_diff_rel.set_ylabel(f'Relative Error of Reconstruction')
-                    ax_nu_diff_rel.set_title(f'Neutrino {var} Relative Reconstruction Error vs Truth for {dl_name}')
-                    ax_nu_diff_rel.set_ylim(-0.1, 0.1)
-
-                    # Neutrino Distribution Plot
-                    ax_nu_dist = axes_distribution[i, 0]
-                    ax_nu_dist.hist(ak.to_numpy(truth_ary), bins=30, range=plot_range, label='Truth', density=True, histtype='step', linewidth=2)
-                    ax_nu_dist.hist(ak.to_numpy(reco_ary), bins=30, range=plot_range, label='Reconstructed', density=True, histtype='step', linewidth=2)
-                    ax_nu_dist.set_xlabel(f'Neutrino {var} (GeV)')
-                    ax_nu_dist.set_ylabel('Normalized Counts')
-                    ax_nu_dist.set_title(f'Neutrino {var} Distribution for {dl_name}')
-                    ax_nu_dist.legend()
-
-
-                    #################
-                    # Anti-Neutrino
-                    #################
-                    # Anti-Neutrino Scatter Plot
-                    ax_anti_nu = axes_scatter[i, 1]
-                    truth_ary_anti = getattr(truth_anti_nu_p4, var)
-                    reco_ary_anti = getattr(anti_nu_p4_array, var)
-                    ax_anti_nu.scatter(ak.to_numpy(truth_ary_anti), ak.to_numpy(reco_ary_anti), alpha=0.8, label=f'Reconstructed {var}', s=3)
-                    ax_anti_nu.plot(plot_range, plot_range, 'r--', label='Ideal')
-                    ax_anti_nu.set_xlabel(f'Truth Anti-Neutrino {var} (GeV)')
-                    ax_anti_nu.set_ylabel(f'Reconstructed Anti-Neutrino {var} (GeV)')
-                    ax_anti_nu.set_title(f'Anti-Neutrino {var} Reconstruction for {dl_name}')
-                    ax_anti_nu.legend()
-                    plt.tight_layout()
-
-                    # Anti-Neutrino Difference Plot
-                    ax_anti_nu_diff = axes_diff[i, 1]
-                    delta_ary_anti = reco_ary_anti - truth_ary_anti
-                    plot_y_vs_x(x=ak.to_numpy(truth_ary_anti), y=delta_ary_anti, ax=ax_anti_nu_diff, band='68')
-                    ax_anti_nu_diff.set_xlabel(f'Truth Anti-Neutrino {var} [GeV]')
-                    ax_anti_nu_diff.set_ylabel(f'Error of Reconstruction')
-                    ax_anti_nu_diff.set_title(f'Anti-Neutrino {var} Reconstruction Error vs Truth for {dl_name}')
-                    ax_anti_nu_diff.set_ylim(-3, 3)
-                    plt.tight_layout()
-
-                    # Anti-Neutrino Relative Difference Plot
-                    rel_err_ary_anti = ak.to_numpy(delta_ary_anti) / ak.to_numpy(truth_ary_anti)
-                    ax_anti_nu_diff_rel = axes_diff_rel[i, 1]
-                    plot_y_vs_x(x=ak.to_numpy(truth_ary_anti), y=rel_err_ary_anti, ax=ax_anti_nu_diff_rel, band='68')
-                    ax_anti_nu_diff_rel.set_xlabel(f'Truth Anti-Neutrino {var} [GeV]')
-                    ax_anti_nu_diff_rel.set_ylabel(f'Relative Error of Reconstruction')
-                    ax_anti_nu_diff_rel.set_title(f'Anti-Neutrino {var} Relative Reconstruction Error vs Truth for {dl_name}')
-                    ax_anti_nu_diff_rel.set_ylim(-0.1, 0.1)
-                    plt.tight_layout()
-
-                    # Anti-Neutrino Distribution Plot
-                    ax_anti_nu_dist = axes_distribution[i, 1]
-                    ax_anti_nu_dist.hist(ak.to_numpy(truth_ary_anti), bins=30, range=plot_range, label='Truth', density=True, histtype='step', linewidth=2)
-                    ax_anti_nu_dist.hist(ak.to_numpy(reco_ary_anti), bins=30, range=plot_range, label='Reconstructed', density=True, histtype='step', linewidth=2)
-                    ax_anti_nu_dist.set_xlabel(f'Anti-Neutrino {var} (GeV)')
-                    ax_anti_nu_dist.set_ylabel('Normalized Counts')
-                    ax_anti_nu_dist.set_title(f'Anti-Neutrino {var} Distribution for {dl_name}')
-                    ax_anti_nu_dist.legend()
-                    plt.tight_layout()
-
-                fig_scatter.savefig(f"{cur_output_dir}/{dl_name}_neutrino_momentum_reconstruction_scatter.png")
-                plt.close(fig_scatter)
-                fig_diff.savefig(f"{cur_output_dir}/{dl_name}_neutrino_momentum_reconstruction_difference.png")
-                plt.close(fig_diff)
-                fig_diff_rel.savefig(f"{cur_output_dir}/{dl_name}_neutrino_momentum_reconstruction_relative_difference.png")
-                plt.close(fig_diff_rel)
-                fig_distribution.savefig(f"{cur_output_dir}/{dl_name}_neutrino_momentum_reconstruction_distribution.png")
-                plt.close(fig_distribution)
-
-                # plot invariant mass of vis+recon_neutrino system
-                recon_mass = ak.to_numpy(events_of_interest['mass_reconstructed'])
-                flags_valid = ak.to_numpy(events_of_interest['flags_valid']>0)
-                recon_mass[~flags_valid] = 0.1
-                semitrue_mass = ak.to_numpy(events_of_interest['mass_semitruth'])
+                events[f'lead_a_missing_p4'] = reco_mis_positivep4_array
+                events[f'lead_b_missing_p4'] = reco_mis_negativep4_array
+                events['flags_valid'] = flags_valid_array
                 
-                fig, ax = plt.subplots(dpi=300)
-                bins = np.linspace(0, 120, 121)
-                ax.hist(recon_mass, bins=bins, histtype='step', density=False, label='Reconstructed', linewidth=1.5)
-                ax.hist(semitrue_mass, bins=bins, histtype='step', density=False, label='Semi-Truth', linewidth=1.5)
-                ax.set_xlabel('Invariant Mass (GeV)')
-                ax.set_ylabel('Entries')
-                ax.set_title(f'Invariant Mass Distribution for {dl_name}')
-                ax.legend()
-                fig.tight_layout()
-                fig.savefig(os.path.join(cur_output_dir, f'{dl_name}_invariant_mass.png'))
-                plt.close(fig)
+                ak.to_parquet(events, output_file, compression='snappy')
+                dl.data[region_name] = events
+                print(f"Saved reconstructed neutrino data to {output_file} for {dl_name}")
 
-                # plot dR between reconstructed tau+ and tau-
-                tau_plus_p4 = reco_vis_positive_p4 + anti_nu_p4_array
-                tau_minus_p4 = reco_vis_negative_p4 + nu_p4_array
-                dr_tau_tau = tau_plus_p4.deltaR(tau_minus_p4)
-                fig, ax = plt.subplots(dpi=300)
-                ax.hist(ak.to_numpy(dr_tau_tau), bins=50, range=(0, 5), histtype='step', density=True)
-                ax.set_xlabel('Delta R between Reconstructed Tau+ and Tau-')
-                ax.set_ylabel('Normalized Counts')
-                ax.set_title(f'Delta R Distribution for {dl_name}')
-                fig.tight_layout()
-                fig.savefig(os.path.join(cur_output_dir, f'{dl_name}_deltaR_tau_tau.png'))
-                plt.close(fig)
+                if 'ztautau' in dl_name.lower():
+                    output_dir_for_plots = f"{cur_output_dir}/plots/"
+                    os.makedirs(output_dir_for_plots, exist_ok=True)
+                    evaluate_reconstruction(events, dl_name, output_dir_for_plots)
 
-                # plot dR between reconstructed neutrino and visible tau
-                dr_nu_vis = nu_p4_array.deltaR(reco_vis_negative_p4)
-                dr_anti_nu_vis = anti_nu_p4_array.deltaR(reco_vis_positive_p4)
-                fig, ax = plt.subplots(dpi=300)
-                bins = np.linspace(0, 0.5, 101)
-                ax.hist(ak.to_numpy(dr_nu_vis), bins=bins, histtype='step', density=True, label='Neutrino vs Visible Tau-')
-                ax.hist(ak.to_numpy(dr_anti_nu_vis), bins=bins, histtype='step', density=True, label='Anti-Neutrino vs Visible Tau+')
-                ax.set_xlabel('Delta R between Reconstructed Neutrino and Visible Tau')
-                ax.set_ylabel('Normalized Counts')
-                ax.set_title(f'Delta R Distribution for {dl_name}')
-                ax.legend()
-                fig.tight_layout()
-                fig.savefig(os.path.join(cur_output_dir, f'{dl_name}_deltaR_nu_vis.png'))
-                plt.close(fig)
-
-
-                    
 
 
     def finalize(self):
