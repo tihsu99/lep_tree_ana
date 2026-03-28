@@ -9,6 +9,63 @@ import awkward as ak
 import tqdm
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme, m_tau
 from utils.plotter import plot_y_vs_x
+from quantum.observables_builder import build_observables, get_observable_names
+
+def evaluate_observables(events, dl_name, output_dir):
+    # Compare the distributions of the observables built from reconstructed neutrino momenta to those built from truth neutrino momenta
+    observables = get_observable_names()
+    num_observables = len(observables)
+    n_rows = int(np.ceil(num_observables / 3))
+
+    fig_distribution, axes_distribution = plt.subplots(n_rows, 3, figsize=(12, 5*n_rows), dpi=300)
+    fig_scatter, axes_scatter = plt.subplots(n_rows, 3, figsize=(12, 5*n_rows), dpi=300)
+
+    for i, obs_name in enumerate(observables):
+        # get observable values for truth and reco neutrino momenta
+        obs_reco = events[f'{obs_name}']
+        obs_truth = events[f'truth_{obs_name}']
+
+        # Distribution plot
+        ax_dist = axes_distribution[i//3, i%3]
+        ax_dist.hist(ak.to_numpy(obs_truth), bins=50, range=(-1, 1), histtype='step', density=True, label='Truth', linewidth=2)
+        ax_dist.hist(ak.to_numpy(obs_reco), bins=50, range=(-1, 1), histtype='step', density=True, label='Reconstructed', linewidth=2)
+        ax_dist.set_xlabel(obs_name)
+        ax_dist.set_ylabel('Density')
+        ax_dist.set_title(f'{obs_name} Distribution for {dl_name}')
+        ax_dist.legend()
+
+        # Scatter plot
+        ax_scatter = axes_scatter[i//3, i%3]
+        ax_scatter.scatter(ak.to_numpy(obs_truth), ak.to_numpy(obs_reco), alpha=0.8, s=3)
+        ax_scatter.plot([-1, 1], [-1, 1], 'r--')
+        ax_scatter.set_xlabel(f'Truth {obs_name}')
+        ax_scatter.set_ylabel(f'Reconstructed {obs_name}')
+        ax_scatter.set_title(f'{obs_name} Reconstruction for {dl_name}')
+
+    fig_distribution.tight_layout()
+    fig_distribution.savefig(f"{output_dir}/{dl_name}_observables_distribution.png")
+    plt.close(fig_distribution)
+    fig_scatter.tight_layout()
+    fig_scatter.savefig(f"{output_dir}/{dl_name}_observables_scatter.png")
+    plt.close(fig_scatter)
+
+    # plot correlation between A and B observables
+    for is_truth in [False, True]:
+        fig_corr, axes_corr = plt.subplots(3, 3, figsize=(15, 15), dpi=300)
+        for i, axis_a in enumerate(['n', 'r', 'k']):
+            for j, axis_b in enumerate(['n', 'r', 'k']):
+                obs_a_name = f'{"truth_" if is_truth else ""}cos_theta_A_{axis_a}'
+                obs_b_name = f'{"truth_" if is_truth else ""}cos_theta_B_{axis_b}'
+                obs_a = events[obs_a_name]
+                obs_b = events[obs_b_name]
+                ax_corr = axes_corr[i, j]
+                ax_corr.scatter(ak.to_numpy(obs_a), ak.to_numpy(obs_b), alpha=0.8, s=3)
+                ax_corr.set_xlabel(obs_a_name)
+                ax_corr.set_ylabel(obs_b_name)
+                ax_corr.set_title(f'Correlation between {obs_a_name} and {obs_b_name} for {dl_name}')
+        fig_corr.tight_layout()
+        fig_corr.savefig(f"{output_dir}/{dl_name}_{'truth_' if is_truth else ''}observables_correlation.png")
+        plt.close(fig_corr)
 
 
 def evaluate_reconstruction(events, dl_name, output_dir):
@@ -517,9 +574,6 @@ def compute_neutrino_momenta(
 
 class NeutrinoReconstructionProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
-        """
-        Processor to make control plots for data/MC comparison.
-        """
         super().__init__(config)
         self.config = config
         self.output_dir_name = self.config.get('output_dir_name', 'neutrino_reconstruction')
@@ -537,48 +591,70 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                 cur_output_dir = f"{self.output_dir}/{region_name}/"
                 output_file = f"{cur_output_dir}/{dl_name}_pipi_reconstructed_neutrinos.parquet"
 
-                if not os.path.exists(cur_output_dir):
-                    os.makedirs(cur_output_dir, exist_ok=True)
-                if region_name not in dl.data:
-                    raise ValueError(f"Region {region_name} not found in dataloader {dl_name}. Available regions: {list(dl.data.keys())}")
+                if os.path.exists(output_file):
+                    events = ak.from_parquet(output_file)
 
-                events = dl.data.get(region_name)
-                print(f"Processing {dl_name} for region {region_name} with {len(events)} events")
+                else:
+                    if not os.path.exists(cur_output_dir):
+                        os.makedirs(cur_output_dir, exist_ok=True)
+                    if region_name not in dl.data:
+                        raise ValueError(f"Region {region_name} not found in dataloader {dl_name}. Available regions: {list(dl.data.keys())}")
 
-                # Get visible tau p4
-                reco_vis_positive_p4 = events['lead_a_visible_p4']
-                reco_vis_negative_p4 = events['lead_b_visible_p4']
+                    events = dl.data.get(region_name)
+                    print(f"Processing {dl_name} for region {region_name} with {len(events)} events")
 
-                # Reconstruct neutrinos
-                # reco_mis_negativep4_list = {'px': [], 'py': [], 'pz': [], 'E': []}
-                # reco_mis_positivep4_list = {'px': [], 'py': [], 'pz': [], 'E': []}
-                # flags_valid = []
+                    # Get visible tau p4
+                    reco_vis_positive_p4 = events['lead_a_visible_p4']
+                    reco_vis_negative_p4 = events['lead_b_visible_p4']
 
-                zero_mass_grid = np.zeros((len(events), 1))
-                reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
-                    vis1_p4=reco_vis_negative_p4,
-                    vis2_p4=reco_vis_positive_p4,
-                    m_miss1_grid=zero_mass_grid,
-                    m_miss2_grid=zero_mass_grid,
-                )
-                # reshape from (N,1) to (N,)
-                reco_mis_negativep4_array = ak.firsts(reco_mis_negativep4_array)
-                reco_mis_positivep4_array = ak.firsts(reco_mis_positivep4_array)
-                flags_valid_array = flags_valid_array[:, 0]
+                    zero_mass_grid = np.zeros((len(events), 1))
+                    reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
+                        vis1_p4=reco_vis_negative_p4,
+                        vis2_p4=reco_vis_positive_p4,
+                        m_miss1_grid=zero_mass_grid,
+                        m_miss2_grid=zero_mass_grid,
+                    )
+                    # reshape from (N,1) to (N,)
+                    reco_mis_negativep4_array = ak.firsts(reco_mis_negativep4_array)
+                    reco_mis_positivep4_array = ak.firsts(reco_mis_positivep4_array)
+                    flags_valid_array = flags_valid_array[:, 0]
 
-                events[f'lead_a_missing_p4'] = reco_mis_positivep4_array
-                events[f'lead_b_missing_p4'] = reco_mis_negativep4_array
-                events['flags_valid'] = flags_valid_array
-                
-                ak.to_parquet(events, output_file, compression='snappy')
+                    events[f'lead_a_missing_p4'] = reco_mis_positivep4_array
+                    events[f'lead_b_missing_p4'] = reco_mis_negativep4_array
+                    events['flags_valid'] = flags_valid_array
+
+                    for key in ['a', 'b']:
+                        events[f'reco_tau_{key}_p4'] = events[f'lead_{key}_visible_p4'] + events[f'lead_{key}_missing_p4']
+
+                    # derive the observables for QI study
+                    observables = build_observables(tau_a_p4=events['reco_tau_a_p4'], tau_b_p4=events['reco_tau_b_p4'], vis_a_p4=events['lead_a_visible_p4'], vis_b_p4=events['lead_b_visible_p4'])
+                    for obs_name, obs_values in observables.items():
+                        events[obs_name] = obs_values
+
+                    if 'ztautau' in dl_name.lower():
+                        output_dir_for_plots = f"{cur_output_dir}/plots/"
+                        os.makedirs(output_dir_for_plots, exist_ok=True)
+                        evaluate_reconstruction(events, dl_name, output_dir_for_plots)
+
+                        # build truth observables for these events
+                        pdgId = events['GenPart_pdgId']
+                        tau_a_p4 = get_p4_from_ak_events(events, (pdgId == -15), prefix='GenPart_vector')
+                        vis_a_p4 = tau_a_p4 - get_p4_from_ak_events(events, (pdgId==-16), prefix='GenPart_vector')
+                        tau_b_p4 = get_p4_from_ak_events(events, (pdgId == 15), prefix='GenPart_vector')
+                        vis_b_p4 = tau_b_p4 - get_p4_from_ak_events(events, (pdgId==16), prefix='GenPart_vector')
+                        truth_observables = build_observables(tau_a_p4=tau_a_p4, tau_b_p4=tau_b_p4, vis_a_p4=vis_a_p4, vis_b_p4=vis_b_p4)
+                        for obs_name, obs_values in truth_observables.items():
+                            events[f'truth_{obs_name}'] = obs_values
+
+                        # compare truth vs reconstructed observables
+                        output_dir_for_comparison_plots = f"{cur_output_dir}/QI_observables/"
+                        os.makedirs(output_dir_for_comparison_plots, exist_ok=True)
+                        valid_events = events[events['flags_valid'] > 0]
+                        evaluate_observables(valid_events, dl_name, output_dir_for_comparison_plots)
+
+                    ak.to_parquet(events, output_file, compression='snappy')
+                    print(f"Saved reconstructed neutrino data to {output_file} for {dl_name}")
                 dl.data[region_name] = events
-                print(f"Saved reconstructed neutrino data to {output_file} for {dl_name}")
-
-                if 'ztautau' in dl_name.lower():
-                    output_dir_for_plots = f"{cur_output_dir}/plots/"
-                    os.makedirs(output_dir_for_plots, exist_ok=True)
-                    evaluate_reconstruction(events, dl_name, output_dir_for_plots)
-
 
 
     def finalize(self):
