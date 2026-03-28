@@ -623,7 +623,7 @@ def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_
         plt.savefig(f"{output_dir}/control_plot_lead_{part}_hpcNumLayers.png")
 
 
-def plot_quantum_observables(dl_dict, luminosity, normalize, output_dir, region_name="pipi", log_scale=False, blind=True):
+def plot_quantum_observables(dl_dict, luminosity, normalize, output_dir, region_name="hadhad", log_scale=False, blind=True):
     observables = get_observable_names()
     for obs in observables:
         assert all([obs in dl_dict[dl_name].data[region_name].fields for dl_name in dl_dict.keys()]), f"Observable {obs} not found in all datasets for region {region_name}"
@@ -662,23 +662,23 @@ class ControlPlotProcessor(BaseProcessor):
         os.makedirs(self.output_dir, exist_ok=True)
         self.luminosity = config.get('luminosity', None) 
         self.normalize = (self.luminosity is None)
-        self.regions = config.get('regions', ['pipi'])
+        self.regions = config.get('regions', ['hadhad'])
         self.verbosity = config.get('verbosity', 1)
         # self.normalize = True
 
     def run(self, dl_dict):
-        # plot QI observables for pipi region: verbose level 0
+        # plot QI observables for hadhad region: verbose level 0
         if self.verbosity >= 0:
-            if 'pipi' in self.regions:
-                print(f"Processing pipi region: plotting quantum observables")
-                output_dir_pipi = f"{self.output_dir}/pipi/"
-                os.makedirs(output_dir_pipi, exist_ok=True)
+            if 'hadhad' in self.regions:
+                print(f"Processing hadhad region: plotting quantum observables")
+                output_dir_hadhad = f"{self.output_dir}/hadhad/"
+                os.makedirs(output_dir_hadhad, exist_ok=True)
                 plot_quantum_observables(
                     dl_dict,
                     luminosity=self.luminosity,
                     normalize=self.normalize,
-                    output_dir=output_dir_pipi,
-                    region_name="pipi",
+                    output_dir=output_dir_hadhad,
+                    region_name="hadhad",
                     log_scale=False,
                 )
 
@@ -709,16 +709,16 @@ class ControlPlotProcessor(BaseProcessor):
                     log_scale=False,
                 )
             
-            if 'pipi' in self.regions:
-                print(f"Processing pipi region")
-                output_dir_pipi = f"{self.output_dir}/pipi/"
-                os.makedirs(output_dir_pipi, exist_ok=True)
+            if 'hadhad' in self.regions:
+                print(f"Processing hadhad region")
+                output_dir_hadhad = f"{self.output_dir}/hadhad/"
+                os.makedirs(output_dir_hadhad, exist_ok=True)
                 make_control_plots_pion(
                     dl_dict,
                     luminosity=self.luminosity,
                     normalize=self.normalize,
-                    output_dir=output_dir_pipi,
-                    region_name="pipi",
+                    output_dir=output_dir_hadhad,
+                    region_name="hadhad",
                     log_scale=False,
                 )
 

@@ -1,12 +1,39 @@
-default_output_dir: "./output/251108_Ztautau_pipm/"
+GlobalConfigs:
+  default_output_dir: "./20260323-pipi"
+  region_of_interest: &RegionName "hadhad"
+  # region_of_interest: &RegionName "tautau"
+  load_regions:
+    - *RegionName
+    - "tautau"
+  luminosity: &Luminosity 46.3 # pb^-1
+  signal_categories:
+    Ztautau_pipi: [11]
+    Ztautau_pirho: [12, 21]
+    Ztautau_rhorho: [22]
+    Ztautau_pilep: [13, 31, 14, 41]
+    Ztautau_rholep: [23, 24, 42, 32]
 
-DataLoader:
-  tree_name: "t"
-  region_of_interest: "pipi"
-  is_data: false
-  input_files:
-    - "/eos/home-c/cmo/project/ZtautauLep/simulation/run/251108_Ztautau_pipm/simana_job_*_ttree_pipi.root"
+DataLoaders:
+  Ztautau:
+    name: "Ztautau"
+    tree_name: "t"
+    is_data: false
+    is_signal: false
+    norm_factor: 1458.9 # pb
+    input_files:
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_tautau_v3/simana_*_ttree.root"
 
 Processors:
-  PlotProcessor: None
-  TemporaryProcessor: None
+  NeutrinoReconstructionProcessor:
+    output_dir_name: "neutrino_reco"
+    regions:
+      - "tautau"
+      - *RegionName
+    # dl_to_load:
+    #   - Ztautau_pipi
+    #   - Ztautau_pirho
+    #   - Ztautau_rhorho
+    #   - Ztautau_pilep
+    #   - Ztautau_rholep
+    #   # - Ztautau_leplep
+    #   - Ztautau_others
