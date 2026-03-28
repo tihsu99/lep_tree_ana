@@ -195,6 +195,7 @@ def do_control_plot(
     luminosity=None,
     normalize=True,
     log_scale=True,
+    blind=False,
 ):
     """
     Create a control plot comparing data and MC.
@@ -234,7 +235,7 @@ def do_control_plot(
             sum_MC_yields += np.sum(hist)
             hists_MC[dl_name] = hist
             hist_MC_err2[dl_name] = hist_err2
-        else:
+        elif dl.is_data and (not blind):
             hist_data += hist
 
     return do_control_plot_from_hists(

@@ -7,6 +7,7 @@ import vector
 import awkward as ak
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme
 from utils.plotter import do_control_plot
+from quantum.observables_builder import get_observable_names
 
     
 
@@ -566,43 +567,6 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
     plt.savefig(f"{output_dir}/control_plot_lead_pion_nearby_photon_pair_mass.png")
 
 
-
-    # # pion features
-    # for var in [
-    #         "impParToVertexRPhi", "impParToVertexZ", 
-    #         "impParRPhi", "impParZ",
-    #         "hpcTotalShowerEnergy", "hpcShowerEnergy", 
-    #         "hacTotalShowerEnergy", "hacShowerEnergy",
-    #         ]:
-    #     prefix = 'Part_'
-    #     if var.startswith('impPar'):
-    #         prefix = 'Trac_'
-    #     def get_pion_var(dl, var=var):
-    #         events = dl.data.get(region_name)
-    #         pion_mask = np.abs(events['Part_pdgId']) == 41
-    #         pion_var = ak.flatten(events[f'{prefix}{var}'][pion_mask], axis=1)
-    #         pion_var = ak.to_numpy(pion_var, allow_missing=False)
-    #         return pion_var
-
-    #     if "Ztautau_pirho" in dl_dict:
-    #         bin_max, bin_min = np.percentile(get_pion_var(dl_dict['Ztautau_pirho']), [95, 5])
-    #     else:
-    #         dl = dl_dict.values()[0]
-    #         bin_max, bin_min = np.percentile(get_pion_var(dl), [95, 5])
-    #     bin_edges = np.linspace(bin_min, bin_max, 101)
-
-    #     fig, ax, ax_ratio = do_control_plot(
-    #         dl_dict,
-    #         func_get_variable=get_pion_var,
-    #         bin_edges=bin_edges,
-    #         x_label=f'Pion {var}',
-    #         title=f'Control Plot: Pion {var}',
-    #         luminosity=luminosity, normalize=normalize,
-    #         log_scale=log_scale,
-    #     )
-    #     plt.tight_layout()
-    #     plt.savefig(f"{output_dir}/control_plot_pion_{var}.png")
-
 def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_name="pilep", log_scale=True):
     make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_name=region_name, log_scale=log_scale)
 
@@ -659,6 +623,30 @@ def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_
         plt.savefig(f"{output_dir}/control_plot_lead_{part}_hpcNumLayers.png")
 
 
+def plot_quantum_observables(dl_dict, luminosity, normalize, output_dir, region_name="pipi", log_scale=False, blind=True):
+    observables = get_observable_names()
+    for obs in observables:
+        assert all([obs in dl_dict[dl_name].data[region_name].fields for dl_name in dl_dict.keys()]), f"Observable {obs} not found in all datasets for region {region_name}"
+        def get_obs(dl, obs=obs):
+            events = dl.data.get(region_name)
+            obs_values = ak.to_numpy(events[obs], allow_missing=False)
+            obs_values = obs_values[obs_values != 0]
+            return obs_values
+        bin_edges = np.linspace(-1, 1, 101)
+        fig, ax, ax_ratio = do_control_plot(
+            dl_dict,
+            func_get_variable=get_obs,
+            bin_edges=bin_edges,
+            x_label=f'{obs}',
+            title=f'Control Plot: {obs}',
+            luminosity=luminosity, normalize=normalize,
+            log_scale=log_scale,
+            blind=blind,
+        )
+        plt.tight_layout()
+        plt.savefig(f"{output_dir}/control_plot_{obs}.png")
+
+
 class ControlPlotProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
         """
@@ -675,14 +663,32 @@ class ControlPlotProcessor(BaseProcessor):
         self.luminosity = config.get('luminosity', None) 
         self.normalize = (self.luminosity is None)
         self.regions = config.get('regions', ['pipi'])
+        self.verbosity = config.get('verbosity', 1)
         # self.normalize = True
 
     def run(self, dl_dict):
-        if 'tautau' in self.regions:
-            print(f"Processing tautau region")
-            output_dir_tautau = f"{self.output_dir}/tautau/"
-            os.makedirs(output_dir_tautau, exist_ok=True)
-            make_control_plots_tautau(
+        # plot QI observables for pipi region: verbose level 0
+        if self.verbosity >= 0:
+            if 'pipi' in self.regions:
+                print(f"Processing pipi region: plotting quantum observables")
+                output_dir_pipi = f"{self.output_dir}/pipi/"
+                os.makedirs(output_dir_pipi, exist_ok=True)
+                plot_quantum_observables(
+                    dl_dict,
+                    luminosity=self.luminosity,
+                    normalize=self.normalize,
+                    output_dir=output_dir_pipi,
+                    region_name="pipi",
+                    log_scale=False,
+                )
+
+        # common control plots: verbose level 1
+        if self.verbosity >= 1:
+            if 'tautau' in self.regions:
+                print(f"Processing tautau region")
+                output_dir_tautau = f"{self.output_dir}/tautau/"
+                os.makedirs(output_dir_tautau, exist_ok=True)
+                make_control_plots_tautau(
                 dl_dict,
                 luminosity=self.luminosity,
                 normalize=self.normalize,
@@ -690,46 +696,46 @@ class ControlPlotProcessor(BaseProcessor):
                 region_name="tautau",
             )
 
-        if 'pion' in self.regions:
-            print(f"Processing pion region")
-            output_dir_pion = f"{self.output_dir}/pion/"
-            os.makedirs(output_dir_pion, exist_ok=True)
-            make_control_plots_pion(
-                dl_dict,
-                luminosity=self.luminosity,
-                normalize=self.normalize,
-                output_dir=output_dir_pion,
-                region_name="pion",
-                log_scale=False,
-            )
-        
-        if 'pipi' in self.regions:
-            print(f"Processing pipi region")
-            output_dir_pipi = f"{self.output_dir}/pipi/"
-            os.makedirs(output_dir_pipi, exist_ok=True)
-            make_control_plots_pion(
-                dl_dict,
-                luminosity=self.luminosity,
-                normalize=self.normalize,
-                output_dir=output_dir_pipi,
-                region_name="pipi",
-                log_scale=False,
-            )
-
-        # pilep regions
-        for pilep_region_name in ['pilep', 'piele', 'pimu']:
-            if pilep_region_name in self.regions:
-                print(f"Processing pilep region: {pilep_region_name}")
-                output_dir_pilep = f"{self.output_dir}/{pilep_region_name}/"
-                os.makedirs(output_dir_pilep, exist_ok=True)
-                make_control_plots_pilep(
+            if 'pion' in self.regions:
+                print(f"Processing pion region")
+                output_dir_pion = f"{self.output_dir}/pion/"
+                os.makedirs(output_dir_pion, exist_ok=True)
+                make_control_plots_pion(
                     dl_dict,
                     luminosity=self.luminosity,
                     normalize=self.normalize,
-                    output_dir=output_dir_pilep,
-                    region_name=pilep_region_name,
+                    output_dir=output_dir_pion,
+                    region_name="pion",
                     log_scale=False,
                 )
+            
+            if 'pipi' in self.regions:
+                print(f"Processing pipi region")
+                output_dir_pipi = f"{self.output_dir}/pipi/"
+                os.makedirs(output_dir_pipi, exist_ok=True)
+                make_control_plots_pion(
+                    dl_dict,
+                    luminosity=self.luminosity,
+                    normalize=self.normalize,
+                    output_dir=output_dir_pipi,
+                    region_name="pipi",
+                    log_scale=False,
+                )
+
+            # pilep regions
+            for pilep_region_name in ['pilep', 'piele', 'pimu']:
+                if pilep_region_name in self.regions:
+                    print(f"Processing pilep region: {pilep_region_name}")
+                    output_dir_pilep = f"{self.output_dir}/{pilep_region_name}/"
+                    os.makedirs(output_dir_pilep, exist_ok=True)
+                    make_control_plots_pilep(
+                        dl_dict,
+                        luminosity=self.luminosity,
+                        normalize=self.normalize,
+                        output_dir=output_dir_pilep,
+                        region_name=pilep_region_name,
+                        log_scale=False,
+                    )
 
 
 
