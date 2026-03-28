@@ -12,9 +12,8 @@ from utils.common_functions import get_p4_from_ak_events, get_color_iterator, ge
 
 log = logging.getLogger(__name__)
 
-
-def filter_pipiLoose_channel(events: ak.Array, filter_log_dict: dict):
-    filter_log_dict['pipiLoose channel initial'] = filter_log_dict.get('pipiLoose channel initial', 0) + len(events)
+def filter_hadhad_region(events: ak.Array, filter_log_dict: dict):
+    filter_log_dict['hadhad region initial'] = filter_log_dict.get('hadhad region initial', 0) + len(events)
 
     recpart_pdgid = events['Part_pdgId']
     recpart_abspdgid = abs(recpart_pdgid)
@@ -35,9 +34,9 @@ def filter_pipiLoose_channel(events: ak.Array, filter_log_dict: dict):
         pass_filter = (num_photons <= 3) & pass_filter
     filter_log_dict[f'number of photons near leading pion <= 3 in hemisphere {hemisphere_id}'] = filter_log_dict.get(f'number of photons near leading pion <= 3 in hemisphere {hemisphere_id}', 0) + ak.sum(pass_filter)
 
-    events_pipiLoose = events[pass_filter]
+    events_hadhad = events[pass_filter]
 
-    return events_pipiLoose, filter_log_dict
+    return events_hadhad, filter_log_dict
 
 def filter_inclusive_tautau_loose(events: ak.Array, filter_log_dict: dict):
     filter_log_dict['inclusive tautau initial'] = filter_log_dict.get('inclusive tautau initial', 0) + len(events)
@@ -199,7 +198,7 @@ def filter_inclusive_tautau_tight(events: ak.Array, filter_log_dict: dict):
 
         
 def filter_pion_events(events: ak.Array, filter_log_dict: dict):
-    filter_log_dict['pion channel initial'] = filter_log_dict.get('pion channel initial', 0) + len(events)
+    filter_log_dict['pion region initial'] = filter_log_dict.get('pion region initial', 0) + len(events)
     pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
 
     # thrust within range
@@ -228,7 +227,7 @@ def filter_pion_events(events: ak.Array, filter_log_dict: dict):
     return events, filter_log_dict
 
 def filter_pilep_events(events: ak.Array, filter_log_dict: dict):
-    filter_log_dict['pilep channel initial'] = filter_log_dict.get('pilep channel initial', 0) + len(events)
+    filter_log_dict['pilep region initial'] = filter_log_dict.get('pilep region initial', 0) + len(events)
     pass_filter = ak.ones_like(events['evtNumber'], dtype=bool)
 
     # find leading pion in each hemisphere
@@ -254,7 +253,7 @@ def filter_pilep_events(events: ak.Array, filter_log_dict: dict):
     return events, filter_log_dict
 
 
-def filter_event(events: ak.Array, filter_log_dict: dict, input_channel='raw', channels_to_load=[], is_Ztautau=False):
+def filter_event(events: ak.Array, filter_log_dict: dict, input_region='raw', regions_to_load=[], is_Ztautau=False):
     # redefine Part_p4
     events['Part_p4'] = vector.zip(
         {
@@ -292,12 +291,12 @@ def filter_event(events: ak.Array, filter_log_dict: dict, input_channel='raw', c
             events[f'truth_num_pion_near_tau_{hemisphere_id}'] = ak.sum(events[f'GenPart_is_pion_near_tau_{hemisphere_id}'], axis=1)
 
     filtered_events_dict = {
-        input_channel: events
+        input_region: events
     }
 
-    load_all = (len(channels_to_load) == 0)
+    load_all = (len(regions_to_load) == 0)
     # select inclusive tautau loose from raw events.
-    if load_all or ('inclusive_tautau_loose' in channels_to_load): 
+    if load_all or ('inclusive_tautau_loose' in regions_to_load): 
         if not 'raw' in filtered_events_dict:
             log.error("Raw events not found in filtered_events_dict. Cannot apply filter_inclusive_tautau_loose.")
             return {}, filter_log_dict
@@ -305,30 +304,30 @@ def filter_event(events: ak.Array, filter_log_dict: dict, input_channel='raw', c
         filtered_events_dict['inclusive_tautau_loose'] = filtered_events
 
     # select inclusive tautau tight from inclusive tautau loose
-    if load_all or ('tautau' in channels_to_load):
+    if load_all or ('tautau' in regions_to_load):
         if not 'inclusive_tautau_loose' in filtered_events_dict:
             log.error("Inclusive tautau loose events not found in filtered_events_dict. Cannot apply filter_inclusive_tautau_tight.")
             return {}, filter_log_dict
         filtered_events, filter_log_dict = filter_inclusive_tautau_tight(filtered_events_dict['inclusive_tautau_loose'], filter_log_dict)
         filtered_events_dict['tautau'] = filtered_events
 
-    # select pion channel from inclusive tautau channel. 
-    if load_all or ('pion' in channels_to_load):
+    # select pion region from inclusive tautau region. 
+    if load_all or ('pion' in regions_to_load):
         if not 'tautau' in filtered_events_dict:
             log.error("Inclusive tautau events not found in filtered_events_dict. Cannot apply filter_pion_events.")
             return {}, filter_log_dict
         filtered_events, filter_log_dict = filter_pion_events(filtered_events_dict['tautau'], filter_log_dict)
         filtered_events_dict['pion'] = filtered_events
 
-    # select pilep channels from pion channel
-    if load_all or ('pilep' in channels_to_load):
+    # select pilep regions from pion region
+    if load_all or ('pilep' in regions_to_load):
         if not 'pion' in filtered_events_dict:
             log.error("Pion events not found in filtered_events_dict. Cannot apply filter_pilep_events.")
             return {}, filter_log_dict
         filtered_events, filter_log_dict = filter_pilep_events(filtered_events_dict['pion'], filter_log_dict)
         filtered_events_dict['pilep'] = filtered_events
 
-        # further define piele and pimu regions inside pilep channel
+        # further define piele and pimu regions inside pilep region
         # piele region: events with at least one leading electron in either hemisphere
         pilep_events = filtered_events_dict['pilep']
         piele_events = pilep_events[pilep_events['has_lead_a_e'] | pilep_events['has_lead_b_e']]
@@ -340,12 +339,12 @@ def filter_event(events: ak.Array, filter_log_dict: dict, input_channel='raw', c
         filter_log_dict['pimu region'] = filter_log_dict.get('pimu region', 0) + len(pimu_events)
         filtered_events_dict['pimu'] = pimu_events
 
-    if load_all or ('pipi' in channels_to_load):
+    if load_all or ('hadhad' in regions_to_load):
         if not 'pion' in filtered_events_dict:
-            log.error("Pion events not found in filtered_events_dict. Cannot apply filter_pipiLoose_channel.")
+            log.error("Pion events not found in filtered_events_dict. Cannot apply filter_hadhad_region.")
             return {}, filter_log_dict
-        filtered_events, filter_log_dict = filter_pipiLoose_channel(filtered_events_dict['pion'], filter_log_dict)
-        filtered_events_dict['pipi'] = filtered_events
+        filtered_events, filter_log_dict = filter_hadhad_region(filtered_events_dict['pion'], filter_log_dict)
+        filtered_events_dict['hadhad'] = filtered_events
 
     if (not is_Ztautau) and ('raw' in filtered_events_dict):
         del filtered_events_dict['raw']
@@ -425,14 +424,15 @@ class DataLoader:
 
     def load_data(self) -> pd.DataFrame:
         # if filtered___tautau_loose is already loaded, start from there
-        channel_init = "inclusive_tautau_loose"
-        # only load cutflow log before the "channel_init_cutflow_name"
-        channel_init_cutflow_name = "inclusive tautau tight initial"
+        region_init = "inclusive_tautau_loose"
+        # only load cutflow log before the "region_init_cutflow_name"
+        # region_init_cutflow_name = "inclusive tautau tight initial"
+        region_init_cutflow_name = "isolation angle > 160 degree"
 
-        if os.path.exists(self.output_dir + f"/filtered___{channel_init}.parquet"):
-            log.info(f"Loading existing raw data from {self.output_dir}/filtered___{channel_init}.parquet")
-            self.data[channel_init] = ak.from_parquet(self.output_dir + f"/filtered___{channel_init}.parquet")
-            self.initial_total_num_events = self.data[channel_init]['initial_total_num_events'][0]
+        if os.path.exists(self.output_dir + f"/filtered___{region_init}.parquet"):
+            log.info(f"Loading existing raw data from {self.output_dir}/filtered___{region_init}.parquet")
+            self.data[region_init] = ak.from_parquet(self.output_dir + f"/filtered___{region_init}.parquet")
+            self.initial_total_num_events = self.data[region_init]['initial_total_num_events'][0]
             # load existing cutflow log if exists
             if os.path.exists(self.output_dir + "/cutflow.txt"):
                 log.info(f"Loading existing cutflow log from {self.output_dir}/cutflow.txt")
@@ -442,24 +442,26 @@ class DataLoader:
                         parts = line.split()
                         if len(parts) >= 4:
                             cut_name = ' '.join(parts[:-3]) 
-                            if cut_name != channel_init_cutflow_name:
+                            if cut_name != region_init_cutflow_name:
                                 num_events = int(parts[-3])
                                 self.filter_results[cut_name] = num_events
+                            else:
+                                break
             else:
                 log.warning(f"Cutflow log does not exist. Will create new cutflow log after filtering.")
                 self.filter_results['initial_total_num_events'] = self.initial_total_num_events
 
-            # skip existing channels
-            existing_channels = []
+            # skip existing regions
+            existing_regions = []
             for existing_files in glob.glob(self.output_dir + f"/filtered___*.parquet"):
-                existing_channel = os.path.basename(existing_files).split("___")[1].split(".parquet")[0]
-                existing_channels.append(existing_channel)
-                if existing_channel != channel_init and existing_channel in self.load_regions:
-                    self.data[existing_channel] = ak.from_parquet(existing_files)
+                existing_region = os.path.basename(existing_files).split("___")[1].split(".parquet")[0]
+                existing_regions.append(existing_region)
+                if existing_region != region_init and existing_region in self.load_regions:
+                    self.data[existing_region] = ak.from_parquet(existing_files)
 
-            channels_to_load = list(set(self.load_regions) - set(existing_channels))
-            log.info(f"Channels to load and filter from {channel_init}: {channels_to_load}")
-            filtered_events, self.filter_results = filter_event(self.data[channel_init], self.filter_results, input_channel=channel_init, channels_to_load=channels_to_load, is_Ztautau=self.is_Ztautau)
+            regions_to_load = list(set(self.load_regions) - set(existing_regions))
+            log.info(f"regions to load and filter from {region_init}: {regions_to_load}")
+            filtered_events, self.filter_results = filter_event(self.data[region_init], self.filter_results, input_region=region_init, regions_to_load=regions_to_load, is_Ztautau=self.is_Ztautau)
             for key, evt in filtered_events.items():
                 self.data[key] = evt
                 self.data[key]['initial_total_num_events'] = self.initial_total_num_events
@@ -629,14 +631,14 @@ class DataLoader:
         output_file_prefix = self.output_dir + "/filtered"
         for key, evt in self.data.items():
             output_file = output_file_prefix + f"___{key}.parquet"
-            log.info(f"Saving data for channel {key} to {output_file}.")
+            log.info(f"Saving data for region {key} to {output_file}.")
             ak.to_parquet(evt, output_file, compression='snappy')
 
             log.info(f"Data saved to {output_file}.")
 
 
     def postprocess(self):
-        # redefine Part_p4 for all channels
+        # redefine Part_p4 for all regions
         for ch, ch_events in self.data.items():
             ch_events['Part_p4'] = vector.zip(
                 {
