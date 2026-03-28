@@ -58,12 +58,14 @@ if __name__ == "__main__":
         dl.postprocess()
         data_loaders[key] = dl
 
-    data_loaders = {
-        'data94': data_loaders['data94'],
-        'Zqq': data_loaders['Zqq'],
-        'Zll': data_loaders['Zll'],
-        'Ztautau': data_loaders['Ztautau'],
-    }
+    ordered_loaders = {}
+    for key in ['data94', 'Zqq', 'Zll', 'Ztautau']:
+        if key not in data_loaders:
+            log.warning(f"Data loader for {key} not found in config, skipping.")
+        else:
+            log.info(f"Data loader for {key} loaded with {len(data_loaders[key].data)} regions.")
+            ordered_loaders[key] = data_loaders[key]
+    data_loaders = ordered_loaders
 
     # split signal categories from Ztautau data loader if specified
     if global_configs.get("signal_categories", None) is not None:
