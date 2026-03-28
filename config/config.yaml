@@ -1,5 +1,5 @@
 GlobalConfigs:
-  default_output_dir: "./20260328-pipi"
+  default_output_dir: "./20260328-hadhad"
   region_of_interest: &RegionName "hadhad"
   load_regions:
     - *RegionName
