@@ -108,7 +108,6 @@ def do_control_plot_from_hists(
     - ax: matplotlib Axes object with the plot.
     - ax_ratio: matplotlib Axes object with the ratio plot.
     """
-    print("Control Plot from Histograms:", title)
     fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 6), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
 
     num_bins = len(bin_edges) - 1
@@ -164,17 +163,7 @@ def do_control_plot_from_hists(
     ax_ratio.set_xlabel(x_label)
     ax_ratio.set_ylabel('Data / MC')
     ax_ratio.set_ylim(0.5, 1.5)
-    # ax_ratio.set_xlim(bin_edges[0], bin_edges[-1])
     ax_ratio.axhline(1, color='gray', linestyle=':')
-    sum_MC_yields = 0
-    for sample_name in hist_MC_dict.keys():
-        hist = hist_MC_dict.get(sample_name, np.zeros(len(bin_edges)-1))
-        sum_MC_yields += np.sum(hist)
-        print(f"{sample_name} yield: {np.sum(hist)}")
-    print(f"Sum MC yield: {sum_MC_yields}")
-    print(f"Total Data yield: {data_yields}")
-    print(f"Data/MC yield ratio: {data_yields/sum_MC_yields if sum_MC_yields>0 else 'N/A'}")
-    print()
     if log_scale:
         ax.set_yscale('log')
         ax.set_ylim(bottom=1)
@@ -188,6 +177,7 @@ def do_control_plot_from_hists(
 
 def do_control_plot(
     dl_dict,
+    region_name,
     func_get_variable,
     bin_edges,
     x_label="X-axis",
@@ -211,7 +201,6 @@ def do_control_plot(
     - ax_ratio: matplotlib Axes object with the ratio plot.
     """
     print("Control Plot:", title)
-    # fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 8), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
 
     signal_keys = [key for key, val in dl_dict.items() if val.is_signal]
     background_keys = [key for key, val in dl_dict.items() if (not val.is_signal and not val.is_data)]
@@ -223,15 +212,16 @@ def do_control_plot(
     sum_MC_yields = 0
     hist_data = np.zeros(len(bin_edges)-1)
     for dl_name, dl in dl_dict.items():
-        variable_values = func_get_variable(dl)
-        variable_values = np.asarray(variable_values)
-        hist, _ = np.histogram(variable_values, bins=bin_edges)
-        hist_err2 = hist
+        events = dl.data[region_name]
+        weights = events['weight'].to_numpy() if 'weight' in events.fields else np.ones(len(events))
+        variable_values = func_get_variable(events)
+        if type(variable_values) is tuple:
+            variable_values, weights = variable_values
+        variable_values = np.asarray(variable_values).flatten()
+        weights = np.asarray(weights).flatten()
+        hist, _ = np.histogram(variable_values, bins=bin_edges, weights=weights)
+        hist_err2, _ = np.histogram(variable_values, bins=bin_edges, weights=weights**2)
         if not dl.is_data:
-            luminosity = luminosity if luminosity is not None else 1.0
-            scale = dl.norm_factor / dl.initial_total_num_events * luminosity
-            hist =   hist * scale
-            hist_err2 = hist_err2 * scale**2
             sum_MC_yields += np.sum(hist)
             hists_MC[dl_name] = hist
             hist_MC_err2[dl_name] = hist_err2
