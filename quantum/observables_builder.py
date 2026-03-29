@@ -10,6 +10,12 @@ from scipy.linalg import sqrtm, eig
 
 from utils.common_functions import get_p4_from_ak_events
 
+def get_mean_and_err_of_mean(x, weights=None):
+    weights = weights if weights is not None else np.ones_like(x)
+    mean = np.average(x, weights=weights)
+    err_of_mean = np.sqrt(np.sum( ((x - mean) / np.sum(weights) * weights)**2))
+    return mean, err_of_mean
+
 def get_observable_names():
     """
     Get the names of the observables that we will build
