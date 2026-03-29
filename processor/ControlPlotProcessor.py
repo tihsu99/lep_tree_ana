@@ -368,7 +368,8 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
             mask_others = mask_others & (charged_pdgId != pdgId)
             charged_pdgId[charged_pdgId == pdgId] = map_pdgId[pdgId]
         charged_pdgId[mask_others] = 0
-        return charged_pdgId
+        broad_casted_weights = ak.broadcast_arrays(events['weight'], events['Part_pdgId'])[0][charged_mask]
+        return charged_pdgId, broad_casted_weights
 
     bin_edges = np.linspace(-0.5, 3.5, 5)
     fig, ax, ax_ratio = do_control_plot(
@@ -492,6 +493,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
         if len(events) == 0:
             return np.array([])
         dr_list = []
+        weight_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
             tmp_events = events[events[f'has_pion_photon_pair_{hemisphere_id}'] == 1]
             pion_p4 = tmp_events[f'lead_{hemisphere_id}_p4']
@@ -499,9 +501,13 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
             photon_p4 = tmp_events['Part_p4'][photon_mask]
             dr = pion_p4.deltaR(photon_p4)
             dr_list.append(ak.to_numpy(ak.flatten(dr, axis=-1), allow_missing=False))
+            broad_casted_weights = ak.broadcast_arrays(tmp_events['weight'], tmp_events['Part_p4'])[0]
+            weight = broad_casted_weights[photon_mask]
+            weight_list.append(ak.to_numpy(ak.flatten(weight, axis=-1), allow_missing=False))
         dr_all = ak.concatenate(dr_list, axis=-1)
         dr_all = ak.to_numpy(dr_all, allow_missing=False)
-        return dr_all
+        weights = np.concatenate(weight_list)
+        return dr_all, weights
     bin_edges = np.linspace(0, 0.3, 51)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
@@ -526,7 +532,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
             num_list.append(num_photons)
         num_all = ak.concatenate(num_list, axis=-1)
         num_all = ak.to_numpy(num_all, allow_missing=False)
-        return num_all
+        return num_all, np.concatenate([events['weight'], events['weight']])
     bin_edges = np.linspace(0, 10, 11)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
@@ -545,6 +551,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
         if len(events) == 0:
             return np.array([])
         mass_list = []
+        weight_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
             tmp_events = events[events[f'has_pion_photon_pair_{hemisphere_id}'] == 1]
             pion_p4 = tmp_events[f'lead_{hemisphere_id}_p4']
@@ -554,9 +561,12 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
             system_p4 = pion_p4 + sum_photon_p4
             pair_mass = system_p4.mass
             mass_list.append(ak.to_numpy(ak.flatten(pair_mass, axis=-1), allow_missing=False))
+            broad_casted_weights = ak.broadcast_arrays(tmp_events['weight'], tmp_events['Part_p4'])[0]
+            weight = broad_casted_weights[photon_mask]
+            weight_list.append(ak.to_numpy(ak.flatten(weight, axis=-1), allow_missing=False))
         mass_all = ak.concatenate(mass_list, axis=-1)
         mass_all = ak.to_numpy(mass_all, allow_missing=False)
-        return mass_all
+        return mass_all, np.concatenate(weight_list)
     bin_edges = np.linspace(0, 2, 101)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
@@ -584,7 +594,7 @@ def make_control_plots_vb0(dl_dict, luminosity, normalize, output_dir, region_na
             mass_list.append(ak.to_numpy(mass, allow_missing=False))
         mass_all = ak.concatenate(mass_list, axis=-1)
         mass_all = ak.to_numpy(mass_all, allow_missing=False)
-        return mass_all
+        return mass_all, np.concatenate([events['weight'], events['weight']])
     bin_edges = np.linspace(0, 2, 101)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
@@ -640,7 +650,8 @@ def make_control_plots_vb0(dl_dict, luminosity, normalize, output_dir, region_na
                 bin_edges = np.linspace(-scale, scale, 51)
             fig, ax, ax_ratio = do_control_plot(
                 dl_dict,
-                func_get_variable=lambda dl, var=var: get_residual_missing(dl, var),
+                region_name=region_name,
+                func_get_variable=get_residual_missing,
                 bin_edges=bin_edges,
                 x_label=x_label,
                 title=title,
@@ -659,7 +670,7 @@ def make_control_plots_vb0(dl_dict, luminosity, normalize, output_dir, region_na
             dR_list.append(ak.to_numpy(dR, allow_missing=False))
         dR_all = ak.concatenate(dR_list, axis=-1)
         dR_all = ak.to_numpy(dR_all, allow_missing=False)
-        return dR_all
+        return dR_all, np.concatenate([events['weight'], events['weight']])
     bin_edges = np.linspace(0, 0.4, 51)
     fig, ax, ax_ratio = do_control_plot(
         dl_dict,
@@ -739,7 +750,8 @@ def plot_quantum_observables(dl_dict, luminosity, normalize, output_dir, region_
         def get_obs(events):
             obs_values = ak.to_numpy(events[obs], allow_missing=False)
             obs_values = obs_values[obs_values != 0]
-            return obs_values
+            weights = events['weight'][obs_values != 0]
+            return obs_values, weights
         bin_edges = np.linspace(-1, 1, 101)
         fig, ax, ax_ratio = do_control_plot(
             dl_dict,
