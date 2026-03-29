@@ -660,6 +660,16 @@ class DataLoader:
                         }
                     )
             
+            # define missing p4
+            masking_part = (ch_events['Part_charge'] != 0) | (ch_events['Part_pdgId'] == 21) # only consider charged particles and photons for visible p4, the rest is considered as missing
+            ch_events['missing_p4'] = vector.zip({
+                'px': -ak.sum(ch_events['Part_fourMomentum_fCoordinates_fX'] * masking_part, axis=1),
+                'py': -ak.sum(ch_events['Part_fourMomentum_fCoordinates_fY'] * masking_part, axis=1),
+                'pz': -ak.sum(ch_events['Part_fourMomentum_fCoordinates_fZ'] * masking_part, axis=1),
+                'E': cme - ak.sum(ch_events['Part_fourMomentum_fCoordinates_fT'] * masking_part, axis=1),
+                }
+            )
+            
 
             for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
                 # only consider photons near the leading particles

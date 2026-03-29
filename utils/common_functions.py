@@ -13,6 +13,14 @@ def print_and_write_to_file(text, file_path, mode='a'):
 def get_color_iterator(n):
     return iter(plt.cm.tab20.colors * (n // 20 + 1))
 
+def rebuild_p4(original_four_vector):
+    return vector.zip({
+        "px": original_four_vector.x,
+        "py": original_four_vector.y,
+        "pz": original_four_vector.z,
+        "E": original_four_vector.t,
+    })
+
 def get_p4_from_ak_events(events, flag, prefix='Part_fourMomentum'):
     px = ak.firsts(events[f'{prefix}_fCoordinates_fX'][flag][...,::-1]).to_numpy()
     py = ak.firsts(events[f'{prefix}_fCoordinates_fY'][flag][...,::-1]).to_numpy()

@@ -7,7 +7,8 @@ import copy
 import vector
 import awkward as ak
 import tqdm
-from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme, m_tau
+from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
+                    get_all_p4_from_ak_events, cme, m_tau, rebuild_p4
 from utils.plotter import plot_y_vs_x
 from quantum.observables_builder import build_observables, get_observable_names
 
@@ -589,11 +590,15 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
             for dl_name in dl_to_load:
                 dl = dl_dict[dl_name]
                 cur_output_dir = f"{self.output_dir}/{region_name}/"
-                output_file = f"{cur_output_dir}/{dl_name}_pipi_reconstructed_neutrinos.parquet"
+                output_file = f"{cur_output_dir}/{dl_name}_reconstructed_neutrinos.parquet"
 
                 if os.path.exists(output_file):
                     events = ak.from_parquet(output_file)
-
+                    for key in ['lead_a_missing_p4', 'lead_b_missing_p4', 'flags_valid', 'reco_tau_a_p4', 'reco_tau_b_p4']:
+                        if key not in events.fields:
+                            raise ValueError(f"Key {key} not found in existing output file {output_file}. Please remove the file to re-run the reconstruction.")
+                        if key.endswith('_p4'):
+                            events[key] = rebuild_p4(events[key])
                 else:
                     if not os.path.exists(cur_output_dir):
                         os.makedirs(cur_output_dir, exist_ok=True)
