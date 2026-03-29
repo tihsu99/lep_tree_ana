@@ -8,7 +8,9 @@ import glob
 import os
 import awkward as ak
 import copy
-from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme
+from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
+            get_all_p4_from_ak_events, cme, rebuild_p4
+from quantum.observables_builder import build_observables, get_mean_and_err_of_mean
 
 log = logging.getLogger(__name__)
 
@@ -369,6 +371,9 @@ class DataLoader:
         self.load_regions = list(set(self.load_regions)) # remove duplicates
         self.is_data = self.config.get("is_data", False)
         self.initial_total_num_events = 0
+        self.luminosity = self.config.get("luminosity", 0)
+        if self.luminosity == 0 and not self.is_data:
+            log.warning("Luminosity is set to 0 for MC sample. Please set luminosity in config for proper normalization.")
 
         self.is_Ztautau = "Ztautau" in self.name
 
@@ -434,9 +439,9 @@ class DataLoader:
             self.data[region_init] = ak.from_parquet(self.output_dir + f"/filtered___{region_init}.parquet")
             self.initial_total_num_events = self.data[region_init]['initial_total_num_events'][0]
             # load existing cutflow log if exists
-            if os.path.exists(self.output_dir + "/cutflow.txt"):
-                log.info(f"Loading existing cutflow log from {self.output_dir}/cutflow.txt")
-                with open(self.output_dir + "/cutflow.txt", "r") as f:
+            if os.path.exists(self.output_dir + f"/cutflow_{self.name}.txt"):
+                log.info(f"Loading existing cutflow log from {self.output_dir}/cutflow_{self.name}.txt")
+                with open(self.output_dir + f"/cutflow_{self.name}.txt", "r") as f:
                     lines = f.readlines()
                     for line in lines[1:]: # skip header
                         parts = line.split()
@@ -568,7 +573,7 @@ class DataLoader:
 
         # Log filter results
         if self.filter_results['initial_total_num_events'] > 0:
-            with open(self.output_dir + "/cutflow.txt", "w") as f:
+            with open(self.output_dir + f"/cutflow_{self.name}.txt", "w") as f:
                 f.write(f"{'Cut':<40} {'Events':<20} {'Efficiency':<20} {'Relative Efficiency':<20}\n")
                 previous_count = self.filter_results['initial_total_num_events']
                 for key, value in self.filter_results.items():
@@ -590,7 +595,7 @@ class DataLoader:
             # rotate x, fontsize to small
             plt.xticks(rotation=45, ha='right', fontsize=8)
             fig.tight_layout()
-            fig.savefig(self.output_dir + "/cutflow.pdf")
+            fig.savefig(self.output_dir + f"/cutflow_{self.name}.pdf")
 
             cutflow_normalized = [v / self.filter_results['initial_total_num_events'] for v in cutflow_values]
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
@@ -600,7 +605,7 @@ class DataLoader:
             ax.set_title('Event Cutflow Efficiency')
             plt.xticks(rotation=45, ha='right', fontsize=8)
             fig.tight_layout()
-            fig.savefig(self.output_dir + "/cutflow_efficiency.pdf")
+            fig.savefig(self.output_dir + f"/cutflow_efficiency_{self.name}.pdf")
 
             # cutflow_relative = [cutflow_values[i] / cutflow_values[i-1] if i > 0 else 1.0 for i in range(len(cutflow_values))]
             cutflow_relative = [1.0]
@@ -622,7 +627,7 @@ class DataLoader:
             ax.set_title('Event Cutflow Relative Efficiency')
             plt.xticks(rotation=45, ha='right', fontsize=8)
             fig.tight_layout()
-            fig.savefig(self.output_dir + "/cutflow_relative_efficiency.pdf")
+            fig.savefig(self.output_dir + f"/cutflow_relative_efficiency_{self.name}.pdf")
 
         return self.data
 
@@ -638,28 +643,17 @@ class DataLoader:
 
 
     def postprocess(self):
-        # redefine Part_p4 for all regions
+        # define weight for each event
+        weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
         for ch, ch_events in self.data.items():
-            ch_events['Part_p4'] = vector.zip(
-                {
-                    "px": ch_events['Part_fourMomentum_fCoordinates_fX'],
-                    "py": ch_events['Part_fourMomentum_fCoordinates_fY'],
-                    "pz": ch_events['Part_fourMomentum_fCoordinates_fZ'],
-                    "E": ch_events['Part_fourMomentum_fCoordinates_fT'],
-                }
-            )
-            # redefine the lead_a/b_p4
-            if f'lead_a_p4' in ch_events.fields and f'lead_b_p4' in ch_events.fields:
-                for part in ['a', 'b']:
-                    ch_events[f'lead_{part}_p4'] = vector.zip(
-                        {
-                            "px": ch_events[f'lead_{part}_p4'].x,
-                            "py": ch_events[f'lead_{part}_p4'].y,
-                            "pz": ch_events[f'lead_{part}_p4'].z,
-                            "E": ch_events[f'lead_{part}_p4'].t,
-                        }
-                    )
-            
+            ch_events['weight'] = weight * ak.ones_like(ch_events['evtNumber'], dtype=np.float32)
+
+        # rebuild branches that end in p4 
+        for ch, ch_events in self.data.items():
+            for br in ch_events.fields:
+                if br.endswith('p4'):
+                    ch_events[br] = rebuild_p4(ch_events[br])
+
             # define missing p4
             masking_part = (ch_events['Part_charge'] != 0) | (ch_events['Part_pdgId'] == 21) # only consider charged particles and photons for visible p4, the rest is considered as missing
             ch_events['missing_p4'] = vector.zip({
@@ -682,6 +676,32 @@ class DataLoader:
                 photon_mask = (ch_events[f'Part_hemisphere'] == hemisphere) & (ch_events[f'Part_pdgId'] == 21)
                 sum_photon_p4 = get_sum_p4_from_ak_events(ch_events, photon_mask)
                 ch_events[f'hemisphere_{hemisphere_id}_visible_p4'] = sum_photon_p4 + ch_events[f'lead_{hemisphere_id}_p4']
+
+            # build truth QI observables for Ztautau sample
+
+            if self.is_Ztautau:
+                pdgId = ch_events['GenPart_pdgId']
+                tau_a_p4 = get_p4_from_ak_events(ch_events, (pdgId == -15), prefix='GenPart_vector')
+                vis_a_p4 = tau_a_p4 - get_p4_from_ak_events(ch_events, (pdgId==-16), prefix='GenPart_vector')
+                tau_b_p4 = get_p4_from_ak_events(ch_events, (pdgId == 15), prefix='GenPart_vector')
+                vis_b_p4 = tau_b_p4 - get_p4_from_ak_events(ch_events, (pdgId==16), prefix='GenPart_vector')
+                truth_observables = build_observables(tau_a_p4=tau_a_p4, tau_b_p4=tau_b_p4, vis_a_p4=vis_a_p4, vis_b_p4=vis_b_p4)
+                for obs_name, obs_values in truth_observables.items():
+                    ch_events[f'truth_{obs_name}'] = obs_values
+                # plot cos_AB distribution for truth-level taus
+                outdir = f"{self.output_dir}/QI_observables/"
+                os.makedirs(outdir, exist_ok=True)
+                fig, ax = plt.subplots(dpi=300, figsize=(8, 6))
+                ary = ak.to_numpy(truth_observables['cos_AB'])
+                mean, err_of_mean = get_mean_and_err_of_mean(ary, weights=ak.to_numpy(ch_events['weight']))
+                ax.hist(truth_observables['cos_AB'], bins=50, range=(-1,1), weights=ch_events['weight'], histtype='step', label=f'Truth (μ={mean:.3f}±{err_of_mean:.3f})', linewidth=2)
+                ax.set_xlabel('cos(AB)')
+                ax.set_ylabel('Frequency')
+                ax.set_title(f'Cosine of Angle between Truth Visible Particles for {self.name}')
+                ax.legend()
+                fig.tight_layout()
+                fig.savefig(outdir + f"/{ch}_truth_cos_AB_{self.name}.pdf")
+                plt.close(fig)
 
 
 

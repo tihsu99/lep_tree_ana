@@ -10,15 +10,17 @@ import tqdm
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
                     get_all_p4_from_ak_events, cme, m_tau, rebuild_p4
 from utils.plotter import plot_y_vs_x
-from quantum.observables_builder import build_observables, get_observable_names
+from quantum.observables_builder import build_observables, get_observable_names, get_mean_and_err_of_mean
+
 
 def evaluate_observables(events, dl_name, output_dir):
     # Compare the distributions of the observables built from reconstructed neutrino momenta to those built from truth neutrino momenta
+    weights = events['weight'].to_numpy() if 'weight' in events.fields else np.ones(len(events))
     observables = get_observable_names()
     num_observables = len(observables)
     n_rows = int(np.ceil(num_observables / 3))
 
-    fig_distribution, axes_distribution = plt.subplots(n_rows, 3, figsize=(12, 5*n_rows), dpi=300)
+    fig_distribution, axes_distribution = plt.subplots(n_rows, 3, figsize=(18, 5*n_rows), dpi=300)
     fig_scatter, axes_scatter = plt.subplots(n_rows, 3, figsize=(12, 5*n_rows), dpi=300)
 
     for i, obs_name in enumerate(observables):
@@ -28,8 +30,10 @@ def evaluate_observables(events, dl_name, output_dir):
 
         # Distribution plot
         ax_dist = axes_distribution[i//3, i%3]
-        ax_dist.hist(ak.to_numpy(obs_truth), bins=50, range=(-1, 1), histtype='step', density=True, label='Truth', linewidth=2)
-        ax_dist.hist(ak.to_numpy(obs_reco), bins=50, range=(-1, 1), histtype='step', density=True, label='Reconstructed', linewidth=2)
+        mean, err_of_mean = get_mean_and_err_of_mean(ak.to_numpy(obs_truth), weights=weights)
+        ax_dist.hist(ak.to_numpy(obs_truth), bins=50, range=(-1, 1), histtype='step', density=True, label=f'Truth (μ={mean:.3f}±{err_of_mean:.3f})', linewidth=2, weights=weights)
+        mean, err_of_mean = get_mean_and_err_of_mean(ak.to_numpy(obs_reco), weights=weights)
+        ax_dist.hist(ak.to_numpy(obs_reco), bins=50, range=(-1, 1), histtype='step', density=True, label=f'Reconstructed (μ={mean:.3f}±{err_of_mean:.3f})', linewidth=2, weights=weights)
         ax_dist.set_xlabel(obs_name)
         ax_dist.set_ylabel('Density')
         ax_dist.set_title(f'{obs_name} Distribution for {dl_name}')
@@ -640,16 +644,6 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                         output_dir_for_plots = f"{cur_output_dir}/plots/"
                         os.makedirs(output_dir_for_plots, exist_ok=True)
                         evaluate_reconstruction(events, dl_name, output_dir_for_plots)
-
-                        # build truth observables for these events
-                        pdgId = events['GenPart_pdgId']
-                        tau_a_p4 = get_p4_from_ak_events(events, (pdgId == -15), prefix='GenPart_vector')
-                        vis_a_p4 = tau_a_p4 - get_p4_from_ak_events(events, (pdgId==-16), prefix='GenPart_vector')
-                        tau_b_p4 = get_p4_from_ak_events(events, (pdgId == 15), prefix='GenPart_vector')
-                        vis_b_p4 = tau_b_p4 - get_p4_from_ak_events(events, (pdgId==16), prefix='GenPart_vector')
-                        truth_observables = build_observables(tau_a_p4=tau_a_p4, tau_b_p4=tau_b_p4, vis_a_p4=vis_a_p4, vis_b_p4=vis_b_p4)
-                        for obs_name, obs_values in truth_observables.items():
-                            events[f'truth_{obs_name}'] = obs_values
 
                         # compare truth vs reconstructed observables
                         output_dir_for_comparison_plots = f"{cur_output_dir}/QI_observables/"
