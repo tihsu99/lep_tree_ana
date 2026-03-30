@@ -678,18 +678,45 @@ class DataLoader:
                 ch_events[f'hemisphere_{hemisphere_id}_visible_p4'] = sum_photon_p4 + ch_events[f'lead_{hemisphere_id}_p4']
 
             # build truth QI observables for Ztautau sample
-
             if self.is_Ztautau:
                 pdgId = ch_events['GenPart_pdgId']
+                mis_pdg_ID = np.array([-12, -14, 16])
+
                 tau_a_p4 = get_p4_from_ak_events(ch_events, (pdgId == -15), prefix='GenPart_vector')
-                vis_a_p4 = tau_a_p4 - get_p4_from_ak_events(ch_events, (pdgId==-16), prefix='GenPart_vector')
+                mis_a_flag = np.zeros_like(pdgId, dtype=bool)
+                for pdg_id in mis_pdg_ID:
+                    mis_a_flag = mis_a_flag | (pdgId == -pdg_id)
+                mis_a_flag = mis_a_flag & (events['GenPart_status'] == 1)
+                mis_a_p4 = get_sum_p4_from_ak_events(ch_events, mis_a_flag, prefix='GenPart_vector')
+                vis_a_p4 = tau_a_p4 - mis_a_p4
+
                 tau_b_p4 = get_p4_from_ak_events(ch_events, (pdgId == 15), prefix='GenPart_vector')
-                vis_b_p4 = tau_b_p4 - get_p4_from_ak_events(ch_events, (pdgId==16), prefix='GenPart_vector')
+                mis_b_flag = np.zeros_like(pdgId, dtype=bool)
+                for pdg_id in mis_pdg_ID:
+                    mis_b_flag = mis_b_flag | (pdgId == pdg_id)
+                mis_b_flag = mis_b_flag & (events['GenPart_status'] == 1)
+                mis_b_p4 = get_sum_p4_from_ak_events(ch_events, mis_b_flag, prefix='GenPart_vector')
+                vis_b_p4 = tau_b_p4 - mis_b_p4
                 truth_observables = build_observables(tau_a_p4=tau_a_p4, tau_b_p4=tau_b_p4, vis_a_p4=vis_a_p4, vis_b_p4=vis_b_p4)
                 for obs_name, obs_values in truth_observables.items():
                     ch_events[f'truth_{obs_name}'] = obs_values
+
+
+                # compute analyzing power for each event
+                event_category = ch_events['event_category']
+                # non-tau, pion, rho, ele, mu, other 
+                analyzing_power = np.array([0, 1, 0.41, -0.33, -0.34, 0])
+                pos_power = analyzing_power[event_category // 10]
+                neg_power = analyzing_power[event_category % 10]
+                ch_events['analyzing_power'] = pos_power * neg_power
+
+                # reweight events by (1 - scale * analyzing_power * cos_AB)/(1 - analyzing_power * cos_AB) 
+                scale = self.config.get("scale_correlation", 0.5)
+                ch_events['weight'] = ch_events['weight'] * (1 - scale * 0.351 * ch_events['analyzing_power'] * ch_events['truth_cos_AB']) / (1 - 0.351 * ch_events['analyzing_power'] * ch_events['truth_cos_AB'])
+
+
                 # plot cos_AB distribution for truth-level taus
-                outdir = f"{self.output_dir}/QI_observables/"
+                outdir = f"{self.output_dir}/QI_observables_scaleCorr_{scale}/"
                 os.makedirs(outdir, exist_ok=True)
                 fig, ax = plt.subplots(dpi=300, figsize=(8, 6))
                 ary = ak.to_numpy(truth_observables['cos_AB'])

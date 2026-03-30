@@ -8,7 +8,7 @@ from itertools import product
 from pandas import DataFrame
 from scipy.linalg import sqrtm, eig
 
-from utils.common_functions import get_p4_from_ak_events
+from utils.common_functions import get_p4_from_ak_events, get_sum_p4_from_ak_events
 
 def get_mean_and_err_of_mean(x, weights=None):
     weights = weights if weights is not None else np.ones_like(x)
@@ -113,7 +113,9 @@ if __name__ == "__main__":
     # plot observables using truth Z->tautau events
     event_categores = [11]
     events_name = 'pipi'
-    input_file = '/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260323-pipi/Ztautau/filtered___raw.parquet'
+    event_categores = [13, 14, 31, 41]
+    events_name = 'pilep'
+    input_file = '/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260328-testhadhad/Ztautau/filtered___raw.parquet'
     output_dir = f'example_plots/{events_name}/'
     output_dir = f'test/{events_name}/'
     if not os.path.exists(output_dir):
@@ -123,10 +125,23 @@ if __name__ == "__main__":
 
     # build tau and visible 4-momenta
     truth_pdgId = events['GenPart_pdgId']
+    mis_pdg_ID = np.array([-12, -14, 16])
+
     tau_a_p4 = get_p4_from_ak_events(events, flag=(truth_pdgId == -15), prefix='GenPart_vector')
-    mis_a_p4 = get_p4_from_ak_events(events, flag=(truth_pdgId == -16), prefix='GenPart_vector')
+    mis_a_flag = np.zeros_like(truth_pdgId, dtype=bool)
+    for pdg_id in mis_pdg_ID:
+        mis_a_flag = mis_a_flag | (truth_pdgId == -pdg_id)
+    mis_a_flag = mis_a_flag & (events['GenPart_status'] == 1)
+    # mis_a_p4 = get_p4_from_ak_events(events, flag=mis_a_flag, prefix='GenPart_vector')
+    mis_a_p4 = get_sum_p4_from_ak_events(events, flag=mis_a_flag, prefix='GenPart_vector')
+
     tau_b_p4 = get_p4_from_ak_events(events, flag=(truth_pdgId == 15), prefix='GenPart_vector')
-    mis_b_p4 = get_p4_from_ak_events(events, flag=(truth_pdgId == 16), prefix='GenPart_vector')
+    mis_b_flag = np.zeros_like(truth_pdgId, dtype=bool)
+    for pdg_id in mis_pdg_ID:
+        mis_b_flag = mis_b_flag | (truth_pdgId == pdg_id)
+    mis_b_flag = mis_b_flag & (events['GenPart_status'] == 1)
+    mis_b_p4 = get_sum_p4_from_ak_events(events, flag=mis_b_flag, prefix='GenPart_vector')
+
     vis_a_p4 = tau_a_p4 - mis_a_p4
     vis_b_p4 = tau_b_p4 - mis_b_p4
 
@@ -136,13 +151,16 @@ if __name__ == "__main__":
     # plot the observables
     import matplotlib.pyplot as plt
     for obs_name, obs_values in observables.items():
+        mean, err_of_mean = get_mean_and_err_of_mean(obs_values)
+        print(f"{obs_name}: mean = {mean:.4f} ± {err_of_mean:.4f}")
         plt.figure(figsize=(8, 6), dpi=300)
-        plt.hist(obs_values, bins=50, range=(-1, 1), histtype='step', density=True, linewidth=2)
+        plt.hist(obs_values, bins=50, range=(-1, 1), histtype='step', density=True, linewidth=2, label=f'{obs_name}: mean={mean:.3f}±{err_of_mean:.3f}')
         plt.xlabel(obs_name)
         plt.ylabel('Density')
         plt.title(f'{obs_name} distribution for {events_name} events')
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         plt.ylim(0, None)
+        plt.legend()
         plt.savefig(f'{output_dir}/{obs_name}.png')
 
