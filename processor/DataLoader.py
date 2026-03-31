@@ -686,7 +686,7 @@ class DataLoader:
                 mis_a_flag = np.zeros_like(pdgId, dtype=bool)
                 for pdg_id in mis_pdg_ID:
                     mis_a_flag = mis_a_flag | (pdgId == -pdg_id)
-                mis_a_flag = mis_a_flag & (events['GenPart_status'] == 1)
+                mis_a_flag = mis_a_flag & (ch_events['GenPart_status'] == 1)
                 mis_a_p4 = get_sum_p4_from_ak_events(ch_events, mis_a_flag, prefix='GenPart_vector')
                 vis_a_p4 = tau_a_p4 - mis_a_p4
 
@@ -694,7 +694,7 @@ class DataLoader:
                 mis_b_flag = np.zeros_like(pdgId, dtype=bool)
                 for pdg_id in mis_pdg_ID:
                     mis_b_flag = mis_b_flag | (pdgId == pdg_id)
-                mis_b_flag = mis_b_flag & (events['GenPart_status'] == 1)
+                mis_b_flag = mis_b_flag & (ch_events['GenPart_status'] == 1)
                 mis_b_p4 = get_sum_p4_from_ak_events(ch_events, mis_b_flag, prefix='GenPart_vector')
                 vis_b_p4 = tau_b_p4 - mis_b_p4
                 truth_observables = build_observables(tau_a_p4=tau_a_p4, tau_b_p4=tau_b_p4, vis_a_p4=vis_a_p4, vis_b_p4=vis_b_p4)
