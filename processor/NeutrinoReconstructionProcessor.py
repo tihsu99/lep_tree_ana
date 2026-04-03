@@ -586,6 +586,11 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
         self.dl_to_load = self.config.get('dl_to_load', []) # empty list means load all
         self.regions = self.config.get('regions', [])
         os.makedirs(self.output_dir, exist_ok=True)
+        self.fields_to_add = [
+            'lead_a_missing_p4', 'lead_b_missing_p4', 
+            'reco_tau_a_p4', 'reco_tau_b_p4',
+            'flags_valid', 
+        ] + get_observable_names()
 
     def run(self, dl_dict):
         # only load Ztautau samples for now
@@ -596,14 +601,19 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                 cur_output_dir = f"{self.output_dir}/{region_name}/"
                 output_file = f"{cur_output_dir}/{dl_name}_reconstructed_neutrinos.parquet"
 
+                solution_loaded = False
                 if os.path.exists(output_file):
                     events = ak.from_parquet(output_file)
-                    for key in ['lead_a_missing_p4', 'lead_b_missing_p4', 'flags_valid', 'reco_tau_a_p4', 'reco_tau_b_p4']:
-                        if key not in events.fields:
-                            raise ValueError(f"Key {key} not found in existing output file {output_file}. Please remove the file to re-run the reconstruction.")
+                    for key in self.fields_to_add:
+                        if key not in events.fields or len(events[key]) != len(dl.data[region_name]):
+                            print(f"Field {key} not found or length mismatch in loaded file for {dl_name} in region {region_name}. Recomputing neutrino reconstruction.")
+                            solution_loaded = False
+                            break
                         if key.endswith('_p4'):
                             events[key] = rebuild_p4(events[key])
-                else:
+                        solution_loaded = True
+
+                if not solution_loaded:
                     if not os.path.exists(cur_output_dir):
                         os.makedirs(cur_output_dir, exist_ok=True)
                     if region_name not in dl.data:
@@ -653,7 +663,9 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
 
                     ak.to_parquet(events, output_file, compression='snappy')
                     print(f"Saved reconstructed neutrino data to {output_file} for {dl_name}")
-                dl.data[region_name] = events
+
+                for key in self.fields_to_add:
+                    dl.data[region_name][key] = events[key]
 
 
     def finalize(self):

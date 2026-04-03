@@ -10,6 +10,10 @@ from scipy.linalg import sqrtm, eig
 
 from utils.common_functions import get_p4_from_ak_events, get_sum_p4_from_ak_events
 
+def get_analyzing_power_ary():
+    # order: [notTauDecay, pi, rho, el, mu, others]
+    return np.array([0, 1, 0.41, -0.33, -0.34, 0])
+
 def get_mean_and_err_of_mean(x, weights=None):
     weights = weights if weights is not None else np.ones_like(x)
     mean = np.average(x, weights=weights)
@@ -25,7 +29,6 @@ def get_observable_names():
     observable_names += [f'cos_theta_B_{axis}' for axis in ['n', 'r', 'k']]
     for axis_a, axis_b in product(['n', 'r', 'k'], repeat=2):
         observable_names.append(f'cos_theta_A_{axis_a}_times_cos_theta_B_{axis_b}')
-    observable_names.append('cos_AB')
     return observable_names
 
 def helicity_basis(particle: vector.Vector):
@@ -102,7 +105,7 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
     for axis_a, axis_b in product(['n', 'r', 'k'], repeat=2):
         observables[f'cos_theta_A_{axis_a}_times_cos_theta_B_{axis_b}'] = observables[f'cos_theta_A_{axis_a}'] * observables[f'cos_theta_B_{axis_b}']
 
-    observables['cos_AB'] = vis_a_p4_a_rest.to_pxpypz().unit().dot(vis_b_p4_b_rest.to_pxpypz().unit())
+    # observables['cos_AB'] = vis_a_p4_a_rest.to_pxpypz().unit().dot(vis_b_p4_b_rest.to_pxpypz().unit())
 
     return observables
 
