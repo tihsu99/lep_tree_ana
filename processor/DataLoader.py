@@ -677,6 +677,25 @@ class DataLoader:
                 sum_photon_p4 = get_sum_p4_from_ak_events(ch_events, photon_mask)
                 ch_events[f'hemisphere_{hemisphere_id}_visible_p4'] = sum_photon_p4 + ch_events[f'lead_{hemisphere_id}_p4']
 
+        # # test some cuts for hadhad region
+        # if 'hadhad' in self.data:
+        #     events = self.data['hadhad']
+        #     flag = ak.ones_like(events['evtNumber'], dtype=bool)
+
+        #     # number of photons near leading pion == 0
+        #     flag = flag & (ak.sum(events['is_photon_near_lead_a'], axis=1) == 0) & (ak.sum(events['is_photon_near_lead_b'], axis=1) == 0)
+        #     log.info(f"Cut efficiency for zero photon near lead in hadhad region: {ak.sum(flag) / len(events):.4f}")
+
+        #     # E/p for both leading particles < 0.75
+        #     for key in ['a', 'b']:
+        #         lead_mask = events[f'is_lead_{key}'] == 1
+        #         lead_E = events['Part_hpcTotalShowerEnergy'][lead_mask]
+        #         lead_p = events['Part_p4'][lead_mask].p
+        #         flag = flag & ak.firsts(lead_E / lead_p < 0.75)
+
+        #     self.data['hadhad'] = events[flag]
+
+        # for ch, ch_events in self.data.items():
             # build truth QI observables for Ztautau sample
             if self.is_Ztautau:
                 pdgId = ch_events['GenPart_pdgId']
@@ -708,27 +727,9 @@ class DataLoader:
                 analyzing_power = np.array([0, 1, 0.41, -0.33, -0.34, 0])
                 pos_power = analyzing_power[event_category // 10]
                 neg_power = analyzing_power[event_category % 10]
+                ch_events['analyzing_power_pos'] = pos_power
+                ch_events['analyzing_power_neg'] = neg_power
                 ch_events['analyzing_power'] = pos_power * neg_power
-
-                # reweight events by (1 - scale * analyzing_power * cos_AB)/(1 - analyzing_power * cos_AB) 
-                scale = self.config.get("scale_correlation", 0.5)
-                ch_events['weight'] = ch_events['weight'] * (1 - scale * 0.351 * ch_events['analyzing_power'] * ch_events['truth_cos_AB']) / (1 - 0.351 * ch_events['analyzing_power'] * ch_events['truth_cos_AB'])
-
-
-                # plot cos_AB distribution for truth-level taus
-                outdir = f"{self.output_dir}/QI_observables_scaleCorr_{scale}/"
-                os.makedirs(outdir, exist_ok=True)
-                fig, ax = plt.subplots(dpi=300, figsize=(8, 6))
-                ary = ak.to_numpy(truth_observables['cos_AB'])
-                mean, err_of_mean = get_mean_and_err_of_mean(ary, weights=ak.to_numpy(ch_events['weight']))
-                ax.hist(truth_observables['cos_AB'], bins=50, range=(-1,1), weights=ch_events['weight'], histtype='step', label=f'Truth (μ={mean:.3f}±{err_of_mean:.3f})', linewidth=2)
-                ax.set_xlabel('cos(AB)')
-                ax.set_ylabel('Frequency')
-                ax.set_title(f'Cosine of Angle between Truth Visible Particles for {self.name}')
-                ax.legend()
-                fig.tight_layout()
-                fig.savefig(outdir + f"/{ch}_truth_cos_AB_{self.name}.pdf")
-                plt.close(fig)
 
 
 
