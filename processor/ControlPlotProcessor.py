@@ -743,30 +743,6 @@ def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_
         plt.savefig(f"{output_dir}/control_plot_lead_{part}_hpcNumLayers.png")
 
 
-def plot_quantum_observables(dl_dict, luminosity, normalize, output_dir, region_name="hadhad", log_scale=False, blind=True):
-    observables = get_observable_names()
-    for obs in observables:
-        assert all([obs in dl_dict[dl_name].data[region_name].fields for dl_name in dl_dict.keys()]), f"Observable {obs} not found in all datasets for region {region_name}"
-        def get_obs(events):
-            obs_values = ak.to_numpy(events[obs], allow_missing=False)
-            obs_values = obs_values[obs_values != 0]
-            weights = events['weight'][obs_values != 0]
-            return obs_values, weights
-        bin_edges = np.linspace(-1, 1, 101)
-        fig, ax, ax_ratio = do_control_plot(
-            dl_dict,
-            region_name=region_name,
-            func_get_variable=get_obs,
-            bin_edges=bin_edges,
-            x_label=f'{obs}',
-            title=f'Control Plot: {obs}',
-            luminosity=luminosity, normalize=normalize,
-            log_scale=log_scale,
-            blind=blind,
-        )
-        plt.tight_layout()
-        plt.savefig(f"{output_dir}/control_plot_{obs}.png")
-
 
 class ControlPlotProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
@@ -782,7 +758,7 @@ class ControlPlotProcessor(BaseProcessor):
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         self.luminosity = config.get('luminosity', None) 
-        self.normalize = (self.luminosity is None)
+        self.normalize = False
         self.regions = config.get('regions', ['hadhad'])
         self.verbosity = config.get('verbosity', 1)
         # self.normalize = True
@@ -793,15 +769,6 @@ class ControlPlotProcessor(BaseProcessor):
             if 'hadhad' in self.regions:
                 print(f"Processing hadhad region: plotting quantum observables")
                 output_dir_hadhad = f"{self.output_dir}/hadhad/"
-                os.makedirs(output_dir_hadhad, exist_ok=True)
-                plot_quantum_observables(
-                    dl_dict,
-                    luminosity=self.luminosity,
-                    normalize=self.normalize,
-                    output_dir=output_dir_hadhad,
-                    region_name="hadhad",
-                    log_scale=False,
-                )
 
                 make_control_plots_vb0(
                     dl_dict,
