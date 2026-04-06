@@ -769,6 +769,7 @@ class ControlPlotProcessor(BaseProcessor):
             if 'hadhad' in self.regions:
                 print(f"Processing hadhad region: plotting quantum observables")
                 output_dir_hadhad = f"{self.output_dir}/hadhad/"
+                os.makedirs(output_dir_hadhad, exist_ok=True)
 
                 make_control_plots_vb0(
                     dl_dict,
@@ -781,30 +782,18 @@ class ControlPlotProcessor(BaseProcessor):
 
         # common control plots: verbose level 1
         if self.verbosity >= 1:
-            if 'tautau' in self.regions:
+            if 'baseline' in self.regions:
                 print(f"Processing tautau region")
-                output_dir_tautau = f"{self.output_dir}/tautau/"
+                output_dir_tautau = f"{self.output_dir}/baseline/"
                 os.makedirs(output_dir_tautau, exist_ok=True)
                 make_control_plots_tautau(
                 dl_dict,
                 luminosity=self.luminosity,
                 normalize=self.normalize,
                 output_dir=output_dir_tautau,
-                region_name="tautau",
+                region_name="baseline",
             )
 
-            if 'pion' in self.regions:
-                print(f"Processing pion region")
-                output_dir_pion = f"{self.output_dir}/pion/"
-                os.makedirs(output_dir_pion, exist_ok=True)
-                make_control_plots_pion(
-                    dl_dict,
-                    luminosity=self.luminosity,
-                    normalize=self.normalize,
-                    output_dir=output_dir_pion,
-                    region_name="pion",
-                    log_scale=False,
-                )
             
             if 'hadhad' in self.regions:
                 print(f"Processing hadhad region")

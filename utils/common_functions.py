@@ -4,6 +4,9 @@ import vector
 
 cme = 91.25 # GeV
 m_tau = 1.77686 # GeV
+deltaR_nearby = 0.3 # reconstructed particles within this dR is considered nearby
+deltaR_truth_matching = 0.05 # reconstructed particle and truth particle within this dR is considered matched
+
 
 def print_and_write_to_file(text, file_path, mode='a'):
     print(text)
@@ -59,3 +62,11 @@ def get_sum_p4_from_ak_events(events, flag, prefix='Part_fourMomentum'):
         "E": E,
     })
     return p4
+
+
+def load_events_from_parquet(file_path, columns=None):
+    events = ak.from_parquet(file_path, columns=columns)
+    for col in events.fields:
+        if col.endswith('_p4'):
+            events[col] = rebuild_p4(events[col])
+    return events

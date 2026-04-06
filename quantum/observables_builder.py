@@ -97,6 +97,7 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
 
 
     observables = {}
+    observables['theta_cm'] = np.arccos(tau_a_p4_cm.costheta)
     for axis in ['n', 'r', 'k']:
         observables[f'cos_theta_A_{axis}'] = vis_a_p4_a_rest.to_pxpypz().unit().dot(helicity_basis_a[axis])
         observables[f'cos_theta_B_{axis}'] = vis_b_p4_b_rest.to_pxpypz().unit().dot(helicity_basis_a[axis])
@@ -104,8 +105,6 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
     # product observables
     for axis_a, axis_b in product(['n', 'r', 'k'], repeat=2):
         observables[f'cos_theta_A_{axis_a}_times_cos_theta_B_{axis_b}'] = observables[f'cos_theta_A_{axis_a}'] * observables[f'cos_theta_B_{axis_b}']
-
-    # observables['cos_AB'] = vis_a_p4_a_rest.to_pxpypz().unit().dot(vis_b_p4_b_rest.to_pxpypz().unit())
 
     return observables
 
