@@ -11,6 +11,7 @@ import copy
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
             get_all_p4_from_ak_events, cme, rebuild_p4, deltaR_nearby
 from quantum.observables_builder import build_observables, get_analyzing_power_ary
+from NeutrinoReconstructionProcessor import compute_neutrino_momenta
 
 
 def define_recon_level_variables(events: ak.Array):
@@ -136,12 +137,10 @@ def define_recon_level_variables(events: ak.Array):
     return events
 
 
-def define_truth_level_variables(events: ak.Array, is_Ztautau=False):
-    if not is_Ztautau:
-        print("Currently only truth level variable definition for Ztautau samples is implemented. Returning events without modification.")
-        return events
-
-
+def define_signal_exclusive_variables(events: ak.Array):
+    """
+        Truth-level variables for Z->tautau events
+    """
     genpart_p4 = get_all_p4_from_ak_events(events, ak.ones_like(events['GenPart_pdgId'], dtype=bool), 'GenPart_vector')
     for charge, hemisphere_id in [(1, 'a'), (-1, 'b')]:
         # -15 - tau+ - a, 15 - tau- - b
@@ -186,6 +185,35 @@ def define_truth_level_variables(events: ak.Array, is_Ztautau=False):
     events['analyzing_power_a'] = pos_power
     events['analyzing_power_b'] = neg_power
     events['analyzing_power'] = pos_power * neg_power
+
+    """
+        Recon-level neutrino reconstruction  and QI observables
+    """
+    reco_vis_positive_p4 = events['lead_a_visible_p4']
+    reco_vis_negative_p4 = events['lead_b_visible_p4']
+    zero_mass_grid = np.zeros((len(events), 1))
+    reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
+        vis1_p4=reco_vis_negative_p4,
+        vis2_p4=reco_vis_positive_p4,
+        m_miss1_grid=zero_mass_grid,
+        m_miss2_grid=zero_mass_grid,
+    )
+    # reshape from (N,1) to (N,)
+    reco_mis_negativep4_array = ak.firsts(reco_mis_negativep4_array)
+    reco_mis_positivep4_array = ak.firsts(reco_mis_positivep4_array)
+    flags_valid_array = flags_valid_array[:, 0]
+
+    events[f'lead_a_missing_p4'] = reco_mis_positivep4_array
+    events[f'lead_b_missing_p4'] = reco_mis_negativep4_array
+    events['flags_valid'] = flags_valid_array
+
+    for key in ['a', 'b']:
+        events[f'reco_tau_{key}_p4'] = events[f'lead_{key}_visible_p4'] + events[f'lead_{key}_missing_p4']
+
+    # derive the observables for QI study
+    observables = build_observables(tau_a_p4=events['reco_tau_a_p4'], tau_b_p4=events['reco_tau_b_p4'], vis_a_p4=events['lead_a_visible_p4'], vis_b_p4=events['lead_b_visible_p4'])
+    for obs_name, obs_values in observables.items():
+        events[obs_name] = obs_values
 
     return events
 

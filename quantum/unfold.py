@@ -3,9 +3,9 @@ import numpy as np
 import awkward as ak
 
 
-def build_response(var_recon, var_truth, num_bins, weight=None):
+def build_response(var_recon, var_truth, num_bins, weight=None, name="response"):
     try:
-        response = ROOT.RooUnfoldResponse(num_bins, -0.5, num_bins - 0.5)
+        response = ROOT.RooUnfoldResponse(num_bins, -0.5, num_bins - 0.5, name, name)
     except Exception as e:
         print(f"Error occurred while creating RooUnfoldResponse: {e}")
         response = ROOT.RooUnfoldResponse(num_bins, -0.5, num_bins - 0.5)
@@ -13,8 +13,10 @@ def build_response(var_recon, var_truth, num_bins, weight=None):
     for reco_val, truth_val, w in zip(var_recon, var_truth, weight):
         if not np.isnan(truth_val) and not np.isnan(reco_val):
             response.Fill(reco_val, truth_val, w)
-        elif not np.isnan(truth_val):
+        elif (not np.isnan(truth_val)) and np.isnan(reco_val):
             response.Miss(truth_val, w)
+        elif (not np.isnan(reco_val)) and np.isnan(truth_val):
+            response.Fake(reco_val, w)
     return response
 
 
@@ -28,17 +30,32 @@ def build_TH1D(hname, var, num_bins, weight=None):
 
 
 def plot_unfolded_results(hUnfold, save_path, h_truth=None, h_reco=None, var_name="Observable"):
-    canvas = ROOT.TCanvas("RooUnfold", "SVD")
+    canvas = ROOT.TCanvas("RooUnfold", "RooUnfold", 450, 500)
     ROOT.gStyle.SetOptStat(0)
 
+    # create mainPad and ratioPad if truth distribution is provided for comparison
+    if h_truth is not None:
+        mainPad = ROOT.TPad("mainPad", "top", 0., 0.3, 1.0, 1.)
+        ratioPad = ROOT.TPad("ratioPad", "bottom", 0., 0., 1.0, 0.3)
+        mainPad.SetBottomMargin(0.01)  # remove x-axis labels and ticks from mainPad
+        ratioPad.SetTopMargin(0.02)  # remove space between mainPad and ratioPad
+        ratioPad.SetBottomMargin(0.4)  # increase bottom margin for ratioPad
+        mainPad.Draw()
+        ratioPad.Draw()
+    else:
+        mainPad = ROOT.TPad("mainPad", "mainPad", 0, 0, 1, 1)
+        mainPad.Draw()
+
+    mainPad.cd()
     # plot title and axis labels
     hUnfold.SetTitle(f"Unfolded {var_name} distribution")
     hUnfold.GetXaxis().SetTitle(var_name)
     hUnfold.GetYaxis().SetTitle("Events")
+    hUnfold.GetYaxis().SetRangeUser(-1, hUnfold.GetMaximum() * 1.2)
 
-    hUnfold.Draw("HIST E1")
+    hUnfold.Draw("SAME HIST E1")
 
-    legend = ROOT.TLegend(0.65, 0.7, 0.88, 0.88)  # (x1, y1, x2, y2) in NDC
+    legend = ROOT.TLegend(0.65, 0.75, 0.88, 0.88)  # (x1, y1, x2, y2) in NDC
     legend.SetBorderSize(0)
     legend.SetFillStyle(0)  # transparent
     legend.AddEntry(hUnfold, "Unfolded", "l")
@@ -53,7 +70,35 @@ def plot_unfolded_results(hUnfold, save_path, h_truth=None, h_reco=None, var_nam
         legend.AddEntry(h_truth, "Truth", "l")
 
 
-    legend.Draw()
+    legend.Draw("SAME")
+
+    # draw ratio plot if truth is provided
+    if h_truth is not None:
+        ratioPad.cd()
+        hRatio = hUnfold.Clone("hRatio")
+        hRatio.Divide(h_truth)
+        hRatio.SetTitle("")
+        hRatio.GetXaxis().SetTitle(var_name)
+        hRatio.GetXaxis().SetTitleSize(12/(ratioPad.GetWh()*ratioPad.GetAbsHNDC()))
+        hRatio.GetXaxis().SetLabelSize(12/(ratioPad.GetWh()*ratioPad.GetAbsHNDC()))
+        hRatio.GetYaxis().SetTitle("Unfolded / Truth")
+        hRatio.GetYaxis().SetRangeUser(0.71, 1.29)
+        hRatio.GetYaxis().SetTitleSize(12/(ratioPad.GetWh()*ratioPad.GetAbsHNDC()))
+        hRatio.GetYaxis().SetLabelSize(11/(ratioPad.GetWh()*ratioPad.GetAbsHNDC()))
+
+        hRatio.GetYaxis().SetTitleOffset(0.55)
+        hRatio.GetXaxis().SetTitleOffset(0.9)
+
+        hRatio.SetMarkerStyle(20)
+        hRatio.SetMarkerSize(0.4)
+        hRatio.SetLineColor(1)
+        hRatio.SetLineWidth(2)
+        hRatio.Draw("SAME LPEX0")
+        # add horizontal line at y=1
+        line = ROOT.TLine(hRatio.GetXaxis().GetXmin(), 1, hRatio.GetXaxis().GetXmax(), 1)
+        line.SetLineStyle(2)
+        line.Draw("SAME")
+
 
     if save_path:
         canvas.SaveAs(str(save_path))

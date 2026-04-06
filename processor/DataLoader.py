@@ -26,7 +26,7 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
     raw_events = DefineVariables.define_recon_level_variables(raw_events)
     if is_Ztautau:
         # define truth variables for Ztautau sample and save raw Ztautau events
-        raw_events = DefineVariables.define_truth_level_variables(raw_events, is_Ztautau=is_Ztautau)
+        raw_events = DefineVariables.define_signal_exclusive_variables(raw_events)
     
     # baseline selection
     baseline_selection_results = BaselineSelections.get_flag_passes_baseline(raw_events)

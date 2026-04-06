@@ -3,7 +3,7 @@ GlobalConfigs:
   region_of_interest: &RegionName "hadhad"
   load_regions:
     - *RegionName
-    - "baseline"
+    # - "baseline"
   luminosity: &Luminosity 46.3 # pb^-1
   signal_categories:
     Ztautau_pipi: [11]
@@ -23,15 +23,21 @@ DataLoaders:
       - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_tautau_v3/simana_*_ttree.root"
 
 Processors:
-  NeutrinoReconstructionProcessor:
-    output_dir_name: "neutrino_reco"
+  # NeutrinoReconstructionProcessor:
+  #   output_dir_name: "neutrino_reco"
+  #   regions:
+  #     - *RegionName
+  #   # dl_to_load:
+  #   #   - Ztautau_pipi
+  #   #   - Ztautau_pirho
+  #   #   - Ztautau_rhorho
+  #   #   - Ztautau_pilep
+  #   #   - Ztautau_rholep
+  #   #   # - Ztautau_leplep
+  #   #   - Ztautau_others
+
+  QIProcessor:
+    output_dir_name: "QI_analysis"
+    unfolding_target_sample: Ztautau_pipi
     regions:
       - *RegionName
-    # dl_to_load:
-    #   - Ztautau_pipi
-    #   - Ztautau_pirho
-    #   - Ztautau_rhorho
-    #   - Ztautau_pilep
-    #   - Ztautau_rholep
-    #   # - Ztautau_leplep
-    #   - Ztautau_others

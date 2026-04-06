@@ -24,7 +24,7 @@ def get_observable_names():
     """
     Get the names of the observables that we will build
     """
-    observable_names = []
+    observable_names = ['theta_cm']
     observable_names += [f'cos_theta_A_{axis}' for axis in ['n', 'r', 'k']]
     observable_names += [f'cos_theta_B_{axis}' for axis in ['n', 'r', 'k']]
     for axis_a, axis_b in product(['n', 'r', 'k'], repeat=2):
