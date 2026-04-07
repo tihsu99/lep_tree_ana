@@ -48,6 +48,20 @@ def binning_variable(var, bin_edges):
     return binned_var
 
 
+def get_event_category_from_signal_name(signal_name: str):
+    signal_name = signal_name.replace('Ztautau_', '').lower()
+    event_category = 0
+    if signal_name.startswith('pi'):
+        event_category += 1 * 10
+    elif signal_name.startswith('rho'):
+        event_category += 2 * 10
+
+    if signal_name.endswith('pi'):
+        event_category += 1
+    elif signal_name.endswith('rho'):
+        event_category += 2
+    return event_category
+
 
 class QIProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
@@ -62,21 +76,22 @@ class QIProcessor(BaseProcessor):
             output_dir = f"{output_dir}/QI_results/"
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
-        self.regions = config.get('regions', ['hadhad'])
+        self.regions = config.get('regions', ['hadhad']) # regions to unfold and analyze
         self.particle_level_only = config.get('particle_level_only', False)
         self.verbosity = config.get('verbosity', 0)
         
         # under development: unfolding results
-        self.unfolding_target_sample = 'Ztautau_pipi'
-        self.response_matrix = {}
+        self.path_raw_signal_events = f"{self.config.get('default_output_dir')}/Ztautau/filtered___raw.parquet"
+        self.signal_to_unfold = config.get('signal_to_unfold', ['Ztautau_pipi'])
+        self.response_matrix = {signal_name: {} for signal_name in self.signal_to_unfold}  
         self.num_bins = 20
         self.bin_edges = np.linspace(-1, 1, self.num_bins + 1)
 
         self.initialize()
 
     def initialize(self):
-        self.raw_ztautau_events = load_events_from_parquet(f"{self.config.get('default_output_dir')}/Ztautau/filtered___raw.parquet")
-        self.events_fiducial_region = self.raw_ztautau_events[(self.raw_ztautau_events['truth_QI_region'] == 1) & (self.raw_ztautau_events['event_category'] == 11)]
+        self.raw_ztautau_events = load_events_from_parquet(self.path_raw_signal_events)
+        self.events_truth_region = self.raw_ztautau_events[(self.raw_ztautau_events['truth_QI_region'] == 1)]
         self.load_response_matrix()
 
     def get_binned_observable(self, var, events):
@@ -88,49 +103,56 @@ class QIProcessor(BaseProcessor):
         # build response matrix using raw Ztautau events
         raw_events = self.raw_ztautau_events
 
-        # mask for fiducial region and analysis region
-        mask_fiducial_region = raw_events['truth_QI_region'] == 1
-        mask_analysis_region = (raw_events['hadhad_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['theta_cm']*2/np.pi > 0.6)
-        mask_target_channel = raw_events['event_category'] == 11
+        for signal_name in self.signal_to_unfold:
+            # mask for truth region and analysis region
+            mask_truth_region = raw_events['truth_QI_region'] == 1
+            mask_analysis_region = (raw_events['hadhad_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['theta_cm']*2/np.pi > 0.6)
+            event_category = get_event_category_from_signal_name(signal_name)
+            mask_target_signal = raw_events['event_category'] == event_category
 
-        # only use events that pass selection
-        mask_unfolding_events = mask_target_channel & (mask_fiducial_region | mask_analysis_region)
-        events = raw_events[mask_unfolding_events]
-        mask_fiducial_region = mask_fiducial_region[mask_unfolding_events]
-        mask_analysis_region = mask_analysis_region[mask_unfolding_events]
+            # only use events that pass selection
+            mask_unfolding_events = mask_target_signal & (mask_truth_region | mask_analysis_region)
+            events = raw_events[mask_unfolding_events]
+            mask_truth_region = mask_truth_region[mask_unfolding_events]
+            mask_analysis_region = mask_analysis_region[mask_unfolding_events]
 
-        for var in get_observable_names():
-            print(f"Building response matrix for {var}...")
-            binned_var_recon = self.get_binned_observable(var, events).astype(float)
-            binned_var_truth = self.get_binned_observable(f'truth_{var}', events).astype(float)
-            weight = ak.to_numpy(events['weight'], allow_missing=False)
+            for var in get_observable_names():
+                print(f"Building response matrix for {var}...")
+                binned_var_recon = self.get_binned_observable(var, events).astype(float)
+                binned_var_truth = self.get_binned_observable(f'truth_{var}', events).astype(float)
+                weight = ak.to_numpy(events['weight'], allow_missing=False)
 
-            # set truth (recon) observable to np.nan if the event is outside of the fiducial (analysis) region
-            binned_var_truth[~mask_fiducial_region] = np.nan
-            binned_var_recon[~mask_analysis_region] = np.nan
+                # set truth (recon) observable to np.nan if the event is outside of the truth (analysis) region
+                binned_var_truth[~mask_truth_region] = np.nan
+                binned_var_recon[~mask_analysis_region] = np.nan
 
-            # build response matrix
-            self.response_matrix[var] = unfold.build_response(binned_var_recon, binned_var_truth, num_bins=self.num_bins, weight=weight, name=f"response_{var}")
-        
+                # build response matrix
+                self.response_matrix[signal_name][var] = unfold.build_response(binned_var_recon, binned_var_truth, num_bins=self.num_bins, weight=weight, name=f"{signal_name}_{var}")
+            
         fout = ROOT.TFile(f"{self.output_dir}/response.root", "RECREATE")
-        for var in self.response_matrix.keys():
-            self.response_matrix[var].Write()
+        for signal_name in self.response_matrix.keys():
+            for var in self.response_matrix[signal_name].keys():
+                self.response_matrix[signal_name][var].Write()
         fout.Close()
 
 
     def load_response_matrix(self):
         loaded = True
-        for var in get_observable_names():
+        file_path = f"{self.output_dir}/response.root"
+        if not os.path.exists(file_path):
+            print(f"Response matrix file for {var} not found at {file_path}. Rebuilding all response matrices...")
             loaded = False
-            file_path = f"{self.output_dir}/response.root"
-            if not os.path.exists(file_path):
-                print(f"Response matrix file for {var} not found at {file_path}. Rebuilding all response matrices...")
-                break
+        else:
             fin = ROOT.TFile(file_path, "READ")
-            self.response_matrix[var] = fin.Get(f"response_{var}")
-            # self.response_matrix[var] = fin.Get(f"response")
+            for signal_name in self.signal_to_unfold:
+                for var in get_observable_names():
+                    if not fin.GetListOfKeys().Contains(f"{signal_name}_{var}"):
+                        print(f"Response matrix for {signal_name} and {var} not found in file. Rebuilding all response matrices...")
+                        loaded = False
+                        break
+                    self.response_matrix[signal_name][var] = fin.Get(f"{signal_name}_{var}")
+                    loaded = True and loaded
             fin.Close()
-            loaded = True
         if not loaded:
             self.build_response_matrix()
 
@@ -138,12 +160,12 @@ class QIProcessor(BaseProcessor):
     def run(self, dl_dict):
         f_out = open(f"{self.output_dir}/results.txt", 'w')
         for region in self.regions:
-            f_out.write(f"Region: {region}\n")
-            f_out.write("    Valid Fraction (unweighted):\n")
+            print_and_write_to_opened_file(f"\n\nRegion: {region}", f_out)
+            print_and_write_to_opened_file("    Valid Fraction (unweighted):", f_out)
             for dl_name, dl in dl_dict.items():
                 events = dl.data[region]
                 valid_fraction = ak.sum(events['flags_valid'] > 0) / len(events)
-                f_out.write(f"        {dl_name}: {valid_fraction:.4f}\n")
+                print_and_write_to_opened_file(f"        {dl_name}: {valid_fraction:.4f}", f_out)
 
             output_dir = f"{self.output_dir}/{region}/"
             os.makedirs(output_dir, exist_ok=True)
@@ -160,50 +182,59 @@ class QIProcessor(BaseProcessor):
 
 
             # unfold (under development)
-            output_dir_unfold = f"{output_dir}/unfolding/"
-            os.makedirs(output_dir_unfold, exist_ok=True)
-            events_to_unfold = dl_dict[self.unfolding_target_sample].data[region]
-            events_to_unfold = events_to_unfold[events_to_unfold['flags_valid'] > 0]  # only unfold valid events
-            events_to_unfold = events_to_unfold[events_to_unfold['theta_cm']*2/np.pi > 0.6] 
+            for signal_name in self.signal_to_unfold:
+                print_and_write_to_opened_file(f"\n\nUnfolding results for signal {signal_name} in region {region}:", f_out)
+                output_dir_unfold = f"{output_dir}/unfolding/{signal_name}/"
+                os.makedirs(output_dir_unfold, exist_ok=True)
 
-            # unfold the target variables
-            unfold_histograms = {}
-            truth_histograms = {}
-            for var in get_observable_names():
-                print(f"Unfolding {var}...")
-                var_recon_binned = self.get_binned_observable(var, events_to_unfold)
+                event_category = get_event_category_from_signal_name(signal_name)
+
+                events_to_unfold = dl_dict[signal_name].data[region]
+                events_to_unfold = events_to_unfold[events_to_unfold['flags_valid'] > 0]  # only unfold valid events
+                events_to_unfold = events_to_unfold[events_to_unfold['theta_cm']*2/np.pi > 0.6] 
+                events_to_unfold = events_to_unfold[events_to_unfold['event_category'] == event_category] # only unfold events in the target signal category
                 weight = ak.to_numpy(events_to_unfold['weight'], allow_missing=False)
 
-                # unfold the variable
-                h_measure = unfold.build_TH1D(f"h_{var}_reco", var_recon_binned, num_bins=self.num_bins, weight=weight)
-                unfold_result = ROOT.RooUnfoldSvd(self.response_matrix[var], h_measure, 5).Hunfold(2)
+                truth_events = self.events_truth_region[self.events_truth_region['event_category'] == event_category] 
+                truth_weight = ak.to_numpy(truth_events['weight'], allow_missing=False)
 
-                # build truth distribution using fiducial region events for comparison
-                var_truth_binned = self.get_binned_observable(f'truth_{var}', self.events_fiducial_region)
-                truth_weight = ak.to_numpy(self.events_fiducial_region['weight'], allow_missing=False)
-                h_truth = unfold.build_TH1D(f"h_{var}_truth", var_truth_binned, num_bins=self.num_bins, weight=truth_weight)
+                # unfold the target variables
+                unfold_histograms = {}
+                truth_histograms = {}
+                for var in get_observable_names():
+                    print(f"Unfolding {var}...")
+                    var_recon_binned = self.get_binned_observable(var, events_to_unfold)
 
-                # plot the results
-                unfold.plot_unfolded_results(unfold_result, save_path=f"{output_dir_unfold}/{var}_unfold.pdf", h_truth=h_truth, h_reco=h_measure, var_name=var)
+                    # unfold the variable
+                    h_measure = unfold.build_TH1D(f"h_{var}_reco", var_recon_binned, num_bins=self.num_bins, weight=weight)
+                    unfold_result = ROOT.RooUnfoldSvd(self.response_matrix[signal_name][var], h_measure, 5).Hunfold(2)
 
-                unfold_histograms[var] = unfold.build_Hist_from_TH1D(unfold_result, bin_edges=self.bin_edges)
-                truth_histograms[var] = unfold.build_Hist_from_TH1D(h_truth, bin_edges=self.bin_edges)
+                    # build truth distribution using truth region events for comparison
+                    var_truth_binned = self.get_binned_observable(f'truth_{var}', truth_events)
+                    h_truth = unfold.build_TH1D(f"h_{var}_truth", var_truth_binned, num_bins=self.num_bins, weight=truth_weight)
 
-            # derive quantum results using unfolded histograms
-            unfolded_BC_matrices, unfolded_quantum_results = derive_results(unfold_histograms, analyzing_power_a=1, analyzing_power_b=-1)
-            truth_BC_matrices, truth_quantum_results = derive_results(truth_histograms, analyzing_power_a=1, analyzing_power_b=-1)
-            for res_type, results in zip(['Unfolded', 'Truth'], [unfolded_BC_matrices, truth_BC_matrices]):
-                print_and_write_to_opened_file(f"\n    {res_type} B and C matrices:", f_out)
-                for key, value in results.items():
-                    nominal, err_up, err_down = value.value, value.err_up, value.err_down
-                    print_and_write_to_opened_file(f"        {key}: {nominal:.4f} +{err_up:.4f}/-{err_down:.4f}", f_out)
+                    # plot the results
+                    unfold.plot_unfolded_results(unfold_result, save_path=f"{output_dir_unfold}/{var}_unfold.pdf", h_truth=h_truth, h_reco=h_measure, var_name=var)
 
-            for res_type, results in zip(['Unfolded', 'Truth'], [unfolded_quantum_results, truth_quantum_results]):
-                print_and_write_to_opened_file(f"\n    {res_type} Quantum results:", f_out)
-                for key, value in results.items():
-                    nominal, err_up, err_down = value.value, value.err_up, value.err_down
-                    print_and_write_to_opened_file(f"        {key}: {nominal:.4f} +{err_up:.4f}/-{err_down:.4f}", f_out)
+                    unfold_histograms[var] = unfold.build_Hist_from_TH1D(unfold_result, bin_edges=self.bin_edges)
+                    truth_histograms[var] = unfold.build_Hist_from_TH1D(h_truth, bin_edges=self.bin_edges)
 
+                # derive quantum results using unfolded histograms
+                analyzing_power_a = events_to_unfold['analyzing_power_a'][0]
+                analyzing_power_b = events_to_unfold['analyzing_power_b'][0] * -1
+                unfolded_BC_matrices, unfolded_quantum_results = derive_results(unfold_histograms, analyzing_power_a=analyzing_power_a, analyzing_power_b=analyzing_power_b)
+                truth_BC_matrices, truth_quantum_results = derive_results(truth_histograms, analyzing_power_a=analyzing_power_a, analyzing_power_b=analyzing_power_b)
+                for res_type, results in zip(['Unfolded', 'Truth'], [unfolded_BC_matrices, truth_BC_matrices]):
+                    print_and_write_to_opened_file(f"\n    {res_type} B and C matrices:", f_out)
+                    for key, value in results.items():
+                        nominal, err_up, err_down = value.value, value.err_up, value.err_down
+                        print_and_write_to_opened_file(f"        {key}: {nominal:.4f} +{err_up:.4f}/-{err_down:.4f}", f_out)
+
+                for res_type, results in zip(['Unfolded', 'Truth'], [unfolded_quantum_results, truth_quantum_results]):
+                    print_and_write_to_opened_file(f"\n    {res_type} Quantum results:", f_out)
+                    for key, value in results.items():
+                        nominal, err_up, err_down = value.value, value.err_up, value.err_down
+                        print_and_write_to_opened_file(f"        {key}: {nominal:.4f} +{err_up:.4f}/-{err_down:.4f}", f_out)
 
         f_out.close()
 

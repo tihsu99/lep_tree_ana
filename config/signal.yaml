@@ -5,13 +5,14 @@ GlobalConfigs:
     - *RegionName
     # - "baseline"
   luminosity: &Luminosity 46.3 # pb^-1
-  verbosity: 0
+  verbosity: 1
   signal_categories:
     Ztautau_pipi: [11]
-    Ztautau_pirho: [12, 21]
+    Ztautau_pirho: [12]
+    Ztautau_rhopi: [21]
     Ztautau_rhorho: [22]
-    Ztautau_pilep: [13, 31, 14, 41]
-    Ztautau_rholep: [23, 24, 42, 32]
+    # Ztautau_pilep: [13, 31, 14, 41]
+    # Ztautau_rholep: [23, 24, 42, 32]
 
 DataLoaders:
   Ztautau:
@@ -39,6 +40,11 @@ Processors:
 
   QIProcessor:
     output_dir_name: "QI_analysis"
-    unfolding_target_sample: Ztautau_pipi
-    regions:
+    # output_dir_name: "QI_testUnc"
+    signal_to_unfold:
+      - Ztautau_pipi
+      - Ztautau_pirho
+      - Ztautau_rhopi
+      - Ztautau_rhorho
+    input_regions:
       - *RegionName

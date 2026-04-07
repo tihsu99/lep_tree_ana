@@ -97,7 +97,8 @@ Processors:
 
   # QIProcessor:
   #   output_dir_name: "QI_analysis"
-  #   unfolding_target_sample: Ztautau_pipi
+  #   signal_to_unfold: 
+  #     - Ztautau_pipi
   #   regions:
   #     - *RegionName
 
