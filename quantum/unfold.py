@@ -35,6 +35,7 @@ def build_Hist_from_TH1D(h, bin_edges=None):
         bin_edges = np.array([h.GetBinLowEdge(i) for i in range(1, h.GetNbinsX() + 2)])
     values = np.array([h.GetBinContent(i) for i in range(1, h.GetNbinsX() + 1)])
     errors = np.array([h.GetBinError(i) for i in range(1, h.GetNbinsX() + 1)])
+    # errors = np.sqrt(values)  # use sqrt of values as error to mimic Poisson unc
     return Hist(bin_edges=bin_edges, values=values, errors=errors)
 
 
