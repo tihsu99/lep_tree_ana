@@ -7,17 +7,23 @@ from itertools import product
 
 from pandas import DataFrame
 from scipy.linalg import sqrtm, eig
+from collections import namedtuple
 
 from utils.common_functions import get_p4_from_ak_events, get_sum_p4_from_ak_events
+
+Hist = namedtuple('Hist', ['bin_edges', 'values', 'errors'])
+ValueWithUncertainty = namedtuple('ValueWithUncertainty', ['value', 'err_up', 'err_down'])
+
 
 def get_analyzing_power_ary():
     # order: [notTauDecay, pi, rho, el, mu, others]
     return np.array([0, 1, 0.41, -0.33, -0.34, 0])
 
-def get_mean_and_err_of_mean(x, weights=None):
+def get_mean_and_err_of_mean(x, weights=None, err=None):
     weights = weights if weights is not None else np.ones_like(x)
+    err = err if err is not None else weights
     mean = np.average(x, weights=weights)
-    err_of_mean = np.sqrt(np.sum( ((x - mean) / np.sum(weights) * weights)**2))
+    err_of_mean = np.sqrt(np.sum( ((x - mean) / np.sum(weights) * err)**2))
     return mean, err_of_mean
 
 def get_observable_names():
@@ -108,6 +114,169 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
 
     return observables
 
+
+def compute_full_density_matrix(C: dict[str, float], B: dict[str, float]) -> np.array:
+    # Define Pauli matrices
+    pauli_x = np.array([[0, 1], [1, 0]])  # σ1
+    pauli_y = np.array([[0, -1j], [1j, 0]])  # σ2
+    pauli_z = np.array([[1, 0], [0, -1]])  # σ3
+    identity_2 = np.eye(2)
+
+    # Define Kronecker product function for simplicity
+    def kron(a, b):
+        return np.kron(a, b)
+
+    # Construct the density matrix ρ
+    rho = (1 / 4) * (
+            np.eye(4) +
+            B['Bk'] * kron(pauli_x, identity_2) +
+            B['Br'] * kron(pauli_y, identity_2) +
+            B['Bn'] * kron(pauli_z, identity_2) +
+            B['Ak'] * kron(identity_2, pauli_x) +
+            B['Ar'] * kron(identity_2, pauli_y) +
+            B['An'] * kron(identity_2, pauli_z) +
+            C['kk'] * kron(pauli_x, pauli_x) +
+            C['rr'] * kron(pauli_y, pauli_y) +
+            C['nn'] * kron(pauli_z, pauli_z) +
+            C['kr'] * kron(pauli_x, pauli_y) +
+            C['kn'] * kron(pauli_x, pauli_z) +
+            C['rn'] * kron(pauli_y, pauli_z) +
+            C['rk'] * kron(pauli_y, pauli_x) +
+            C['nr'] * kron(pauli_z, pauli_x) +
+            C['nk'] * kron(pauli_z, pauli_y)
+    )
+
+    pauli_y_tensor = kron(pauli_y, pauli_y)
+    rho_conjugate = np.conjugate(rho)
+    rho_tilde = pauli_y_tensor @ rho_conjugate @ pauli_y_tensor
+    # Compute the square root of ρ
+    sqrt_rho = sqrtm(rho)
+    # Compute the R matrix
+    R = sqrt_rho @ rho_tilde @ sqrt_rho
+
+    # Compute the eigenvalues of rho
+    eigenvalues, _ = eig(R)
+    eigenvalues = np.real(eigenvalues)
+    eigenvalues.sort()
+    eigenvalues = eigenvalues[::-1]
+
+    return eigenvalues
+
+
+def calculate_polarization_from_hist(h_observable: Hist, analyzing_power: float):
+    """
+    Calculate the polarization using the formula:
+        P = 3 * <cos(theta)> / analyzing_power
+    where <cos(theta)> is the mean of the observable distribution, and analyzing_power is the analyzing power of the decay mode.
+    """
+    bin_centers = 0.5 * (h_observable.bin_edges[:-1] + h_observable.bin_edges[1:])
+    mean, err_of_mean = get_mean_and_err_of_mean(bin_centers, weights=h_observable.values, err=h_observable.errors)
+    polarization = 3 * mean / analyzing_power
+    err_of_polarization = 3 * err_of_mean / np.abs(analyzing_power)
+    return polarization, err_of_polarization
+
+def calculate_spin_correlation_from_hist(h_observable: Hist, analyzing_power_a: float, analyzing_power_b: float):
+    """
+    Calculate the correlation using the formula:
+        C = 9 * <cos(theta_A) * cos(theta_B)>
+    where <cos(theta_A) * cos(theta_B)> is the mean of the product observable distribution.
+    """
+    bin_centers = 0.5 * (h_observable.bin_edges[:-1] + h_observable.bin_edges[1:])
+    mean, err_of_mean = get_mean_and_err_of_mean(bin_centers, weights=h_observable.values, err=h_observable.errors)
+    correlation = 9 * mean / (analyzing_power_a * analyzing_power_b)
+    err_of_correlation = 9 * err_of_mean / np.abs(analyzing_power_a * analyzing_power_b)
+    return correlation, err_of_correlation
+
+def evaluate_quantum_results_with_uncertainties(BC_matrices) -> dict:
+    """Compute eigenvalues and uncertainties using first-order perturbation theory with precomputed up/down values."""
+    quantum_results = {}
+
+    def compute_eigenvalues_from_BC_matrices(input_BC_matrices: dict) -> np.array:
+        """Compute eigenvalues from a given set of BC_matrices."""
+        C = {key.replace("C_", ""): value for key, value in input_BC_matrices.items() if 'C_' in key}
+        B = {key.replace("B_", ""): value for key, value in input_BC_matrices.items() if 'B_' in key}
+        return compute_full_density_matrix(C=C, B=B)
+
+    BC_matrices_nominal, BC_matrices_up, BC_matrices_down = {}, {}, {}
+    for key, value in BC_matrices.items():
+        BC_matrices_nominal[key] = value.value
+        BC_matrices_up[key] = value.value + value.err_up
+        BC_matrices_down[key] = value.value - value.err_down
+
+    # Compute nominal eigenvalues
+    nominal_eigenvalues = compute_eigenvalues_from_BC_matrices(BC_matrices_nominal)
+
+    # Initialize uncertainty storage for asymmetric uncertainties
+    eigenvalue_uncertainties_up = np.zeros_like(nominal_eigenvalues)
+    eigenvalue_uncertainties_down = np.zeros_like(nominal_eigenvalues)
+
+    # Compute uncertainties
+    for param in BC_matrices.keys():
+        if param not in BC_matrices_up or param not in BC_matrices_down:
+            continue  # Skip if no up/down value is provided for this parameter
+
+        # Compute eigenvalues for up and down perturbed BC_matrices
+        eigenvalues_up = compute_eigenvalues_from_BC_matrices({**BC_matrices_nominal, param: BC_matrices_up[param]})
+        eigenvalues_down = compute_eigenvalues_from_BC_matrices({**BC_matrices_nominal, param: BC_matrices_down[param]})
+
+        # Accumulate squared uncertainties
+        eigenvalue_uncertainties_up += np.abs(eigenvalues_up - nominal_eigenvalues) ** 2
+        eigenvalue_uncertainties_down += np.abs(eigenvalues_down - nominal_eigenvalues) ** 2
+
+    # Final uncertainties (square root of accumulated squares)
+    eigenvalue_uncertainties_up = np.sqrt(eigenvalue_uncertainties_up)
+    eigenvalue_uncertainties_down = np.sqrt(eigenvalue_uncertainties_down)
+
+    # Compute Concurrence
+    concurrence_nominal = max(0, nominal_eigenvalues[0] - sum(nominal_eigenvalues[1:]))
+    concurrence_uncertainty_up = np.sqrt(sum(eigenvalue_uncertainties_up ** 2))
+    concurrence_uncertainty_down = np.sqrt(sum(eigenvalue_uncertainties_down ** 2))
+
+    quantum_results['Concurrence'] = ValueWithUncertainty(value=concurrence_nominal, err_up=concurrence_uncertainty_up, err_down=concurrence_uncertainty_down)
+
+    # Compute Cij terms with asymmetric uncertainties
+    for i, j in [('kk', 'nn'), ('kk', 'rr'), ('nn', 'rr')]:
+        value_sum = np.abs(BC_matrices_nominal[f'C_{i}'] + BC_matrices_nominal[f'C_{j}']) - np.sqrt(2)
+        value_diff = np.abs(BC_matrices_nominal[f'C_{i}'] - BC_matrices_nominal[f'C_{j}']) - np.sqrt(2)
+
+        uncertainty_up = np.sqrt(
+            (BC_matrices_up[f'C_{i}'] - BC_matrices_nominal[f'C_{i}']) ** 2 + (BC_matrices_up[f'C_{j}'] - BC_matrices_nominal[f'C_{j}']) ** 2
+        )
+        uncertainty_down = np.sqrt(
+            (BC_matrices_nominal[f'C_{i}'] - BC_matrices_down[f'C_{i}']) ** 2 + (BC_matrices_nominal[f'C_{j}'] - BC_matrices_down[f'C_{j}']) ** 2
+        )
+
+        quantum_results[f'C{i} + C{j}'] = ValueWithUncertainty(value=value_sum, err_up=uncertainty_up, err_down=uncertainty_down)
+        quantum_results[f'C{i} - C{j}'] = ValueWithUncertainty(value=value_diff, err_up=uncertainty_up, err_down=uncertainty_down)
+
+    return quantum_results
+
+
+def derive_results(obs_hist_dict, analyzing_power_a, analyzing_power_b):
+    """
+    Derive the B and C matrices from the histograms of the observables, then compute the quantum results with uncertainties.
+    """
+    BC_matrices = {}
+    # calculate polarization
+    for axis in ['n', 'r', 'k']:
+        for particle in ['A', 'B']:
+            obs_name = f'cos_theta_{particle}_{axis}'
+            analyzing_power = analyzing_power_a if particle == 'A' else analyzing_power_b
+            if obs_name in obs_hist_dict:
+                polarization, err_of_polarization = calculate_polarization_from_hist(obs_hist_dict[obs_name], analyzing_power)
+                BC_matrices[f'B_{particle}{axis}'] = ValueWithUncertainty(value=polarization, err_up=err_of_polarization, err_down=err_of_polarization)
+
+    # calculate spin correlation
+    for axis_a, axis_b in product(['n', 'r', 'k'], repeat=2):
+        obs_name = f'cos_theta_A_{axis_a}_times_cos_theta_B_{axis_b}'
+        if obs_name in obs_hist_dict:
+            correlation, err_of_correlation = calculate_spin_correlation_from_hist(obs_hist_dict[obs_name], analyzing_power_a, analyzing_power_b)
+            BC_matrices[f'C_{axis_a}{axis_b}'] = ValueWithUncertainty(value=correlation, err_up=err_of_correlation, err_down=err_of_correlation)
+
+    # compute quantum results with uncertainties
+    quantum_results = evaluate_quantum_results_with_uncertainties(BC_matrices)
+    
+    return BC_matrices, quantum_results
 
 
 if __name__ == "__main__":

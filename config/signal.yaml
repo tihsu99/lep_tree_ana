@@ -5,6 +5,7 @@ GlobalConfigs:
     - *RegionName
     # - "baseline"
   luminosity: &Luminosity 46.3 # pb^-1
+  verbosity: 0
   signal_categories:
     Ztautau_pipi: [11]
     Ztautau_pirho: [12, 21]

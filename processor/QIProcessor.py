@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import os
 import vector
 import awkward as ak
-from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme, load_events_from_parquet
+from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme, load_events_from_parquet, print_and_write_to_opened_file
 from utils.plotter import do_control_plot
-from quantum.observables_builder import get_observable_names, get_mean_and_err_of_mean
+from quantum.observables_builder import get_observable_names, get_mean_and_err_of_mean, derive_results
 import quantum.unfold as unfold
 import ROOT
 
@@ -70,6 +70,7 @@ class QIProcessor(BaseProcessor):
         self.unfolding_target_sample = 'Ztautau_pipi'
         self.response_matrix = {}
         self.num_bins = 20
+        self.bin_edges = np.linspace(-1, 1, self.num_bins + 1)
 
         self.initialize()
 
@@ -80,7 +81,7 @@ class QIProcessor(BaseProcessor):
 
     def get_binned_observable(self, var, events):
         var_values = ak.to_numpy(events[var], allow_missing=False)
-        binned_var = binning_variable(var_values, np.linspace(-1, 1, self.num_bins + 1))
+        binned_var = binning_variable(var_values, self.bin_edges)
         return binned_var
 
     def build_response_matrix(self):
@@ -166,6 +167,8 @@ class QIProcessor(BaseProcessor):
             events_to_unfold = events_to_unfold[events_to_unfold['theta_cm']*2/np.pi > 0.6] 
 
             # unfold the target variables
+            unfold_histograms = {}
+            truth_histograms = {}
             for var in get_observable_names():
                 print(f"Unfolding {var}...")
                 var_recon_binned = self.get_binned_observable(var, events_to_unfold)
@@ -182,6 +185,25 @@ class QIProcessor(BaseProcessor):
 
                 # plot the results
                 unfold.plot_unfolded_results(unfold_result, save_path=f"{output_dir_unfold}/{var}_unfold.pdf", h_truth=h_truth, h_reco=h_measure, var_name=var)
+
+                unfold_histograms[var] = unfold.build_Hist_from_TH1D(unfold_result, bin_edges=self.bin_edges)
+                truth_histograms[var] = unfold.build_Hist_from_TH1D(h_truth, bin_edges=self.bin_edges)
+
+            # derive quantum results using unfolded histograms
+            unfolded_BC_matrices, unfolded_quantum_results = derive_results(unfold_histograms, analyzing_power_a=1, analyzing_power_b=-1)
+            truth_BC_matrices, truth_quantum_results = derive_results(truth_histograms, analyzing_power_a=1, analyzing_power_b=-1)
+            for res_type, results in zip(['Unfolded', 'Truth'], [unfolded_BC_matrices, truth_BC_matrices]):
+                print_and_write_to_opened_file(f"\n    {res_type} B and C matrices:", f_out)
+                for key, value in results.items():
+                    nominal, err_up, err_down = value.value, value.err_up, value.err_down
+                    print_and_write_to_opened_file(f"        {key}: {nominal:.4f} +{err_up:.4f}/-{err_down:.4f}", f_out)
+
+            for res_type, results in zip(['Unfolded', 'Truth'], [unfolded_quantum_results, truth_quantum_results]):
+                print_and_write_to_opened_file(f"\n    {res_type} Quantum results:", f_out)
+                for key, value in results.items():
+                    nominal, err_up, err_down = value.value, value.err_up, value.err_down
+                    print_and_write_to_opened_file(f"        {key}: {nominal:.4f} +{err_up:.4f}/-{err_down:.4f}", f_out)
+
 
         f_out.close()
 

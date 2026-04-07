@@ -7,11 +7,13 @@ m_tau = 1.77686 # GeV
 deltaR_nearby = 0.3 # reconstructed particles within this dR is considered nearby
 deltaR_truth_matching = 0.05 # reconstructed particle and truth particle within this dR is considered matched
 
+def print_and_write_to_opened_file(text, f_to_write):
+    print(text)
+    f_to_write.write(text + '\n')
 
 def print_and_write_to_file(text, file_path, mode='a'):
-    print(text)
     with open(file_path, mode) as f:
-        f.write(text + '\n')
+        print_and_write_to_opened_file(text, f)
 
 def get_color_iterator(n):
     return iter(plt.cm.tab20.colors * (n // 20 + 1))

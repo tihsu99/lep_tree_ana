@@ -1,6 +1,7 @@
 import ROOT
 import numpy as np
 import awkward as ak
+from quantum.observables_builder import Hist
 
 
 def build_response(var_recon, var_truth, num_bins, weight=None, name="response"):
@@ -27,6 +28,14 @@ def build_TH1D(hname, var, num_bins, weight=None):
         if not np.isnan(val):
             h.Fill(val, w)
     return h
+
+
+def build_Hist_from_TH1D(h, bin_edges=None):
+    if bin_edges is None:
+        bin_edges = np.array([h.GetBinLowEdge(i) for i in range(1, h.GetNbinsX() + 2)])
+    values = np.array([h.GetBinContent(i) for i in range(1, h.GetNbinsX() + 1)])
+    errors = np.array([h.GetBinError(i) for i in range(1, h.GetNbinsX() + 1)])
+    return Hist(bin_edges=bin_edges, values=values, errors=errors)
 
 
 def plot_unfolded_results(hUnfold, save_path, h_truth=None, h_reco=None, var_name="Observable"):
