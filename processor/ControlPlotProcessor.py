@@ -346,11 +346,33 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
     plt.savefig(f"{output_dir}/control_plot_lead_part_pair_angle.png")
 
 
+    # invariant mass of lead visible p4
+    def get_lead_visible_mass(events):
+        if len(events) == 0:
+            return np.array([])
+        mass_list = []
+        for key in ['a', 'b']:
+            lead_vis_p4 = events[f'lead_{key}_visible_p4']
+            mass = lead_vis_p4.mass
+            mass_list.append(ak.to_numpy(mass, allow_missing=False))
+        mass_all = ak.concatenate(mass_list, axis=-1)
+        mass_all = ak.to_numpy(mass_all, allow_missing=False)
+        return mass_all, np.concatenate([events['weight'], events['weight']])
+    bin_edges = np.linspace(0, 2, 101)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        region_name=region_name,
+        func_get_variable=get_lead_visible_mass,
+        bin_edges=bin_edges,
+        x_label='Invariant Mass of Lead Visible System [GeV]',
+        title='Control Plot: Invariant Mass of Lead Visible System',
+        luminosity=luminosity, normalize=normalize, log_scale=True,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_lead_visible_mass.png")
+
 
 def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_name="pion", log_scale=True):
-
-    make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region_name=region_name, log_scale=log_scale)
-
     # plot pdg id for charged particles
     # for better visualization, first map others, pi, el, mu to 0, 1, 2, 3, then plot histogram with x-ticks showing the mapping
     map_pdgId = {
@@ -582,32 +604,6 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
 
 
 def make_control_plots_vb0(dl_dict, luminosity, normalize, output_dir, region_name="pion", log_scale=True):
-
-    # invariant mass of lead visible p4
-    def get_lead_visible_mass(events):
-        if len(events) == 0:
-            return np.array([])
-        mass_list = []
-        for key in ['a', 'b']:
-            lead_vis_p4 = events[f'lead_{key}_visible_p4']
-            mass = lead_vis_p4.mass
-            mass_list.append(ak.to_numpy(mass, allow_missing=False))
-        mass_all = ak.concatenate(mass_list, axis=-1)
-        mass_all = ak.to_numpy(mass_all, allow_missing=False)
-        return mass_all, np.concatenate([events['weight'], events['weight']])
-    bin_edges = np.linspace(0, 2, 101)
-    fig, ax, ax_ratio = do_control_plot(
-        dl_dict,
-        region_name=region_name,
-        func_get_variable=get_lead_visible_mass,
-        bin_edges=bin_edges,
-        x_label='Invariant Mass of Lead Visible System [GeV]',
-        title='Control Plot: Invariant Mass of Lead Visible System',
-        luminosity=luminosity, normalize=normalize, log_scale=True,
-    )
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/control_plot_lead_visible_mass.png")
-
     """
         plot some post-nutrino reco variables
     """
@@ -660,29 +656,29 @@ def make_control_plots_vb0(dl_dict, luminosity, normalize, output_dir, region_na
             plt.tight_layout()
             plt.savefig(f"{output_dir}/control_plot_residual_missing_{var}.png")
 
-    # dR between lead visible system and reconstructed missing momentum
-    def get_dR_lead_visible_missing(events):
-        dR_list = []
-        for key in ['a', 'b']:
-            lead_vis_p4 = events[f'lead_{key}_visible_p4']
-            missing_p4 = events[f'lead_{key}_missing_p4']
-            dR = lead_vis_p4.deltaR(missing_p4)
-            dR_list.append(ak.to_numpy(dR, allow_missing=False))
-        dR_all = ak.concatenate(dR_list, axis=-1)
-        dR_all = ak.to_numpy(dR_all, allow_missing=False)
-        return dR_all, np.concatenate([events['weight'], events['weight']])
-    bin_edges = np.linspace(0, 0.4, 51)
-    fig, ax, ax_ratio = do_control_plot(
-        dl_dict,
-        region_name=region_name,
-        func_get_variable=get_dR_lead_visible_missing,
-        bin_edges=bin_edges,
-        x_label='dR between Lead Visible System and Missing Momentum',
-        title='Control Plot: dR between Lead Visible System and Missing Momentum',
-        luminosity=luminosity, normalize=normalize, log_scale=log_scale,
-    )
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/control_plot_dR_lead_visible_missing.png")
+        # dR between lead visible system and reconstructed missing momentum
+        def get_dR_lead_visible_missing(events):
+            dR_list = []
+            for key in ['a', 'b']:
+                lead_vis_p4 = events[f'lead_{key}_visible_p4']
+                missing_p4 = events[f'lead_{key}_missing_p4']
+                dR = lead_vis_p4.deltaR(missing_p4)
+                dR_list.append(ak.to_numpy(dR, allow_missing=False))
+            dR_all = ak.concatenate(dR_list, axis=-1)
+            dR_all = ak.to_numpy(dR_all, allow_missing=False)
+            return dR_all, np.concatenate([events['weight'], events['weight']])
+        bin_edges = np.linspace(0, 0.4, 51)
+        fig, ax, ax_ratio = do_control_plot(
+            dl_dict,
+            region_name=region_name,
+            func_get_variable=get_dR_lead_visible_missing,
+            bin_edges=bin_edges,
+            x_label='dR between Lead Visible System and Missing Momentum',
+            title='Control Plot: dR between Lead Visible System and Missing Momentum',
+            luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+        )
+        plt.tight_layout()
+        plt.savefig(f"{output_dir}/control_plot_dR_lead_visible_missing.png")
 
 
 def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_name="pilep", log_scale=True):
@@ -766,9 +762,9 @@ class ControlPlotProcessor(BaseProcessor):
     def run(self, dl_dict):
         # plot QI observables for hadhad region: verbose level 0
         if self.verbosity >= 0:
-            if 'hadhad' in self.regions:
-                print(f"Processing hadhad region: plotting quantum observables")
-                output_dir_hadhad = f"{self.output_dir}/hadhad/"
+            for region in self.regions:
+                print(f"Processing {region} region: plotting quantum observables")
+                output_dir_hadhad = f"{self.output_dir}/{region}/"
                 os.makedirs(output_dir_hadhad, exist_ok=True)
 
                 make_control_plots_vb0(
@@ -776,24 +772,23 @@ class ControlPlotProcessor(BaseProcessor):
                     luminosity=self.luminosity,
                     normalize=self.normalize,
                     output_dir=output_dir_hadhad,
-                    region_name="hadhad",
+                    region_name=region,
                     log_scale=False,
                 )
 
         # common control plots: verbose level 1
         if self.verbosity >= 1:
-            if 'baseline' in self.regions:
-                print(f"Processing tautau region")
+            for region in self.regions:
                 output_dir_tautau = f"{self.output_dir}/baseline/"
                 os.makedirs(output_dir_tautau, exist_ok=True)
                 make_control_plots_tautau(
-                dl_dict,
-                luminosity=self.luminosity,
-                normalize=self.normalize,
-                output_dir=output_dir_tautau,
-                region_name="baseline",
-            )
-
+                    dl_dict,
+                    luminosity=self.luminosity,
+                    normalize=self.normalize,
+                    output_dir=output_dir_tautau,
+                    region_name=region,
+                    log_scale=False,
+                )
             
             if 'hadhad' in self.regions:
                 print(f"Processing hadhad region")
