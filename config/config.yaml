@@ -1,26 +1,24 @@
 GlobalConfigs:
-  default_output_dir: "./20260406-hadhad"
-  region_of_interest: &RegionName "hadhad"
-  # region_of_interest: &RegionName "baseline"
+  default_output_dir: "./20260413-baseline"
+  region_of_interest: &RegionName "baseline"
   load_regions:
     - *RegionName
-    # - "baseline"
     - "hadhad"
+    - "ee"
+    - "mumu"
+    - "emu"
   verbosity: 0
   luminosity: &Luminosity 46.3 # pb^-1
   # Ztautau sample can be further split categorizes below
   signal_categories:
-    # Ztautau_pion: [11, 12, 13, 14, 41, 31, 21]
-    # Ztautau_rho: [21, 22, 23, 24, 25, 52, 42, 32, 12]
     Ztautau_pipi: [11]
     Ztautau_pirho: [12, 21]
     Ztautau_rhorho: [22]
-    Ztautau_pilep: [13, 31, 14, 41]
-    Ztautau_rholep: [23, 24, 42, 32]
-    # Ztautau_piele: [13, 31]
-    # Ztautau_pimu: [14, 41]
-    # Ztautau_leplep: [33, 34, 43, 44]
-    # Ztautau_piother: [15, 51]
+    Ztautau_lephad: [13, 31, 14, 41, 23, 24, 42, 32]
+    Ztautau_ee: [33]
+    Ztautau_mumu: [44]
+    Ztautau_emu: [34]
+    Ztautau_mue: [43]
 
 DataLoaders:
   data94:
@@ -56,7 +54,10 @@ DataLoaders:
     is_signal: false
     norm_factor: 30511.2 # pb
     input_files:
+      # Only load a subset of samples for testing, can load all samples for final analysis
       - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*01_ttree.root"
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*02_ttree.root"
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*03_ttree.root"
 
 Processors:
   # TruthMatchProcessor:
@@ -90,24 +91,31 @@ Processors:
   #     - "pion"
   NeutrinoReconstructionProcessor:
     output_dir_name: "neutrino_reco"
+    mmc_regions: ["ee", "mumu", "emu"]
     regions:
       - *RegionName
-      # - hadhad
-      # - "pipi"
+      - hadhad
+      - ee
+      - mumu
+      - emu
 
-  # QIProcessor:
-  #   output_dir_name: "QI_analysis"
-  #   signal_to_unfold: 
-  #     - Ztautau_pipi
-  #   regions:
-  #     - *RegionName
+  QIProcessor:
+    output_dir_name: "QI_analysis"
+    dict_region_to_signals:
+      *RegionName: ["Ztautau_pipi", "Ztautau_ee", "Ztautau_emu", "Ztautau_mumu"]
+      hadhad: ["Ztautau_pipi", "Ztautau_pirho", "Ztautau_rhorho"]
+      ee: ["Ztautau_ee"]
+      mumu: ["Ztautau_mumu"]
+      emu: ["Ztautau_emu", "Ztautau_mue"]
 
   ControlPlotProcessor:
     output_dir_name: "control_plots"
     regions:
       - *RegionName
-      # - "baseline"
-      # - "hadhad"
+      - "hadhad"
+      - "ee"
+      - "mumu"
+      - "emu"
 
   # IDAnaProcessor:
   #   output_dir_name: "ID_analysis"
