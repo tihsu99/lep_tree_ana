@@ -272,8 +272,8 @@ def _eps_normal(v1, v2, v3):
 def compute_neutrino_momenta(
         vis1_p4: vector.Array, # (num_events,)
         vis2_p4: vector.Array, # (num_events,)
-        m_miss1_grid: np.ndarray, # (num_events, num_grid_points)
-        m_miss2_grid: np.ndarray, # (num_events, num_grid_points)
+        m_miss1_grid: np.ndarray = None, # (num_events, num_grid_points)
+        m_miss2_grid: np.ndarray = None, # (num_events, num_grid_points)
         choose: str = "larger_E1",
 ):
     """
@@ -316,8 +316,13 @@ def compute_neutrino_momenta(
     8) Finally k2 = Q - k1
     ============================================================================
     """
+    num_events = len(vis1_p4)
 
-    num_events, num_grid_points = m_miss1_grid.shape
+    if m_miss1_grid is None:
+        m_miss1_grid = np.zeros((num_events, 1))
+    if m_miss2_grid is None:
+        m_miss2_grid = np.zeros((num_events, 1))
+    num_grid_points = m_miss1_grid.shape[1]
 
     # ----------------------------
     # Define visible vectors and initial state
@@ -574,6 +579,12 @@ def compute_neutrino_momenta(
         "E":  miss2_E,
     })
 
+    if m_miss1_grid.shape[1] == 1 and m_miss2_grid.shape[1] == 1:
+        # Squeeze out grid dimension if it was not used
+        miss1_p4 = ak.firsts(miss1_p4)
+        miss2_p4 = ak.firsts(miss2_p4)
+        flag_valid = flag_valid[:, 0]
+
     return miss1_p4, miss2_p4, flag_valid
 
 class NeutrinoReconstructionProcessor(BaseProcessor):
@@ -638,8 +649,9 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                     reco_vis_negative_p4 = events['lead_b_visible_p4']
 
                     # -------------------------------------------------
-                    # The Clean ONE-LINER Implementation requested!
+                    # Reconstruct neutrino momenta using either MMC or algebraic method, depending on the region
                     # -------------------------------------------------
+                    reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array, mmc_likelihood = None, None, None, None
                     if region_name in self.mmc_regions:
                         print(f"  -> Routing to MMC Engine for {region_name}...")
                         reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array, mmc_likelihood = self.mmc_engine.calculate(
@@ -648,24 +660,18 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                             region_name=region_name,
                             events=events
                         )
-                        events['mmc_likelihood'] = mmc_likelihood  # <-- Changed here
                     else:
                         print(f"  -> Routing to Algebraic Neutrino Reconstruction for {region_name}...")
-                        zero_mass_grid = np.zeros((len(events), 1))
                         reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
                             vis1_p4=reco_vis_negative_p4,
                             vis2_p4=reco_vis_positive_p4,
-                            m_miss1_grid=zero_mass_grid,
-                            m_miss2_grid=zero_mass_grid,
                         )
-                        reco_mis_negativep4_array = ak.firsts(reco_mis_negativep4_array)
-                        reco_mis_positivep4_array = ak.firsts(reco_mis_positivep4_array)
-                        flags_valid_array = flags_valid_array[:, 0]
-                        events['mmc_likelihood'] = np.ones(len(events))
+                        mmc_likelihood = np.zeros(len(events))  # Placeholder likelihood for non-MMC reconstruction
 
                     events[f'lead_a_missing_p4'] = reco_mis_positivep4_array
                     events[f'lead_b_missing_p4'] = reco_mis_negativep4_array
                     events['flags_valid'] = flags_valid_array
+                    events['mmc_likelihood'] = mmc_likelihood 
 
                     for key in ['a', 'b']:
                         events[f'reco_tau_{key}_p4'] = events[f'lead_{key}_visible_p4'] + events[f'lead_{key}_missing_p4']

@@ -222,7 +222,7 @@ def define_recon_level_variables(events: ak.Array):
     return events
 
 
-def define_signal_exclusive_variables(events: ak.Array):
+def define_signal_exclusive_variables(events: ak.Array, neutrino_reconstructior: str = 'analytical'):
     """
         Truth-level variables for Z->tautau events
     """
@@ -276,17 +276,16 @@ def define_signal_exclusive_variables(events: ak.Array):
     """
     reco_vis_positive_p4 = events['lead_a_visible_p4']
     reco_vis_negative_p4 = events['lead_b_visible_p4']
-    zero_mass_grid = np.zeros((len(events), 1))
-    reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
-        vis1_p4=reco_vis_negative_p4,
-        vis2_p4=reco_vis_positive_p4,
-        m_miss1_grid=zero_mass_grid,
-        m_miss2_grid=zero_mass_grid,
-    )
-    # reshape from (N,1) to (N,)
-    reco_mis_negativep4_array = ak.firsts(reco_mis_negativep4_array)
-    reco_mis_positivep4_array = ak.firsts(reco_mis_positivep4_array)
-    flags_valid_array = flags_valid_array[:, 0]
+    if neutrino_reconstructior == 'analytical':
+        zero_mass_grid = np.zeros((len(events), 1))
+        reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
+            vis1_p4=reco_vis_negative_p4,
+            vis2_p4=reco_vis_positive_p4,
+            m_miss1_grid=zero_mass_grid,
+            m_miss2_grid=zero_mass_grid,
+        )
+    elif neutrino_reconstructior == 'mmc':
+        ...
 
     events[f'lead_a_missing_p4'] = reco_mis_positivep4_array
     events[f'lead_b_missing_p4'] = reco_mis_negativep4_array
