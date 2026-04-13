@@ -632,7 +632,7 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                             print(f"Field {key} not found or length mismatch in loaded file for {dl_name} in region {region_name}. Recomputing neutrino reconstruction.")
                             solution_loaded = False
                             break
-                        if key.endswith('_p4'):
+                        if key.endswith('_p4') and len(events)>0:
                             events[key] = rebuild_p4(events[key])
 
                 if not solution_loaded:

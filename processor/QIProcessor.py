@@ -195,7 +195,7 @@ class QIProcessor(BaseProcessor):
                 events_to_unfold = events_to_unfold[events_to_unfold['theta_cm']*2/np.pi > 0.6] 
                 events_to_unfold = events_to_unfold[events_to_unfold['event_category'] == event_category] # only unfold events in the target signal category
                 if len(events_to_unfold) == 0:
-                    print_and_write_to_opened_file(f"        No valid events to unfold for {signal_name} in region {region}. Skipping...", f_out)
+                    print_and_write_to_opened_file(f"No valid events to unfold for {signal_name} in region {region}. Skipping...", f_out)
                     continue
                 weight = ak.to_numpy(events_to_unfold['weight'], allow_missing=False)
 
