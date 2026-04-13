@@ -24,7 +24,9 @@ class MMC:
         
         self.pdfs = {}
         if len(self.mmc_regions) > 0:
-            pdf_path = self.config.get('mmc_pdf_path', 'mmc_lep_lep_parameters_master.h5')
+            this_dir = os.path.dirname(os.path.abspath(__file__))
+            default_pdf_path = os.path.join(this_dir, 'mmc_lep_lep_parameters.h5')
+            pdf_path = self.config.get('mmc_pdf_path', default_pdf_path)
             print(f"[MMC] Loading Master PDF parameters from {pdf_path}...")
             self.pdfs['electron'] = load_h5_group(pdf_path, 'electron')
             self.pdfs['muon'] = load_h5_group(pdf_path, 'muon')
