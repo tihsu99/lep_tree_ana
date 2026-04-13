@@ -62,7 +62,8 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
             
     # Now simply split the final arrays into their respective dictionaries
     for channel in ['mumu', 'ee', 'emu']:
-        flag_passes = selection_results[channel] & flag_passes_baseline
+        cut_name = f"{channel}_cut"
+        flag_passes = selection_results[cut_name] & flag_passes_baseline
         filtered_events_dict[channel] = raw_events[flag_passes]
 
     return filtered_events_dict, filter_log_dict
