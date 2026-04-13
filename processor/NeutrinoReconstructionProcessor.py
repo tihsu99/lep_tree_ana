@@ -643,6 +643,8 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
 
                     if len(events) == 0:
                         print(f"  -> No events in {dl_name}/{region_name}. Skipping reconstruction and saving empty output.")
+                        for key in self.fields_to_add:
+                            events[key] = np.array([])
                         ak.to_parquet(events, output_file, compression='snappy')
                         continue
 
