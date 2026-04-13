@@ -276,7 +276,7 @@ class DataLoader:
             fig.tight_layout()
             fig.savefig(self.output_dir + f"/cutflow_{self.name}_weighted.pdf")
 
-            cutflow_normalized = [v / self.filter_results['initial_total_num_events'] for v in cutflow_values]
+            cutflow_normalized = [v / cutflow_values[0] for v in cutflow_values]
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
             p = ax.bar(cutflow_labels, cutflow_normalized)
             ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_normalized], padding=3, fontsize=4)
