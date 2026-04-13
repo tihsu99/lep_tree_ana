@@ -93,10 +93,10 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
     def get_lead_part_E_over_p(events):
         mask_is_lead_a = events['is_lead_a'] == 1
         mask_is_lead_b = events['is_lead_b'] == 1
-        lead_a_E = ak.to_numpy(events['Part_hpcTotalShowerEnergy'][mask_is_lead_a], allow_missing=False)
-        lead_b_E = ak.to_numpy(events['Part_hpcTotalShowerEnergy'][mask_is_lead_b], allow_missing=False)
-        lead_a_p = ak.to_numpy(events['Part_p4'][mask_is_lead_a].p, allow_missing=False)
-        lead_b_p = ak.to_numpy(events['Part_p4'][mask_is_lead_b].p, allow_missing=False)
+        lead_a_E = ak.to_numpy(ak.firsts(events['Part_hpcTotalShowerEnergy'][mask_is_lead_a]), allow_missing=False)
+        lead_b_E = ak.to_numpy(ak.firsts(events['Part_hpcTotalShowerEnergy'][mask_is_lead_b]), allow_missing=False)
+        lead_a_p = ak.to_numpy(ak.firsts(events['Part_p4'][mask_is_lead_a].p), allow_missing=False)
+        lead_b_p = ak.to_numpy(ak.firsts(events['Part_p4'][mask_is_lead_b].p), allow_missing=False)
         # lead_a_p = ak.to_numpy(events['lead_a_p4'].p, allow_missing=False)
         # lead_b_p = ak.to_numpy(events['lead_b_p4'].p, allow_missing=False)
         lead_a_E_over_p = lead_a_E / (lead_a_p + 1e-10) # avoid division by zero
@@ -120,8 +120,8 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
 
     # hpcNumLayers of lead part in each hemisphere
     def get_lead_part_hpcNumLayers(events):
-        lead_a_hpcNumLayers = ak.to_numpy(events['Part_hpcNumLayers'][events['is_lead_a'] == 1], allow_missing=False)
-        lead_b_hpcNumLayers = ak.to_numpy(events['Part_hpcNumLayers'][events['is_lead_b'] == 1], allow_missing=False)
+        lead_a_hpcNumLayers = ak.to_numpy(ak.firsts(events['Part_hpcNumLayers'][events['is_lead_a'] == 1]), allow_missing=False)
+        lead_b_hpcNumLayers = ak.to_numpy(ak.firsts(events['Part_hpcNumLayers'][events['is_lead_b'] == 1]), allow_missing=False)
         lead_parts_hpcNumLayers = np.concatenate([lead_a_hpcNumLayers, lead_b_hpcNumLayers])
         weights = np.concatenate([events['weight'], events['weight']])
         return lead_parts_hpcNumLayers, weights
@@ -491,7 +491,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
         hpcNumLayers_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
             tmp_events = events[events[f'lead_{hemisphere_id}_is_pion'] == 1]
-            lead_pion_hpcNumLayers = ak.to_numpy(tmp_events['Part_hpcNumLayers'][tmp_events[f'is_lead_{hemisphere_id}'] == 1], allow_missing=False)
+            lead_pion_hpcNumLayers = ak.to_numpy(ak.firsts(tmp_events['Part_hpcNumLayers'][tmp_events[f'is_lead_{hemisphere_id}'] == 1]), allow_missing=False)
             lead_pion_hpcNumLayers = lead_pion_hpcNumLayers.flatten()
             hpcNumLayers_list.append(lead_pion_hpcNumLayers)
         hpcNumLayers_all = np.concatenate(hpcNumLayers_list)
@@ -517,7 +517,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
         dr_list = []
         weight_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-            tmp_events = events[events[f'has_pion_photon_pair_{hemisphere_id}'] == 1]
+            tmp_events = events[events[f'num_photon_near_lead_{hemisphere_id}'] > 0]
             pion_p4 = tmp_events[f'lead_{hemisphere_id}_p4']
             photon_mask = tmp_events[f'is_photon_near_lead_{hemisphere_id}'] == 1
             photon_p4 = tmp_events['Part_p4'][photon_mask]
@@ -575,7 +575,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
         mass_list = []
         weight_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-            tmp_events = events[events[f'has_pion_photon_pair_{hemisphere_id}'] == 1]
+            tmp_events = events[events[f'num_photon_near_lead_{hemisphere_id}'] > 0]
             pion_p4 = tmp_events[f'lead_{hemisphere_id}_p4']
             photon_mask = tmp_events[f'is_photon_near_lead_{hemisphere_id}'] == 1
             photon_p4 = tmp_events['Part_p4'][photon_mask]
@@ -583,9 +583,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
             system_p4 = pion_p4 + sum_photon_p4
             pair_mass = system_p4.mass
             mass_list.append(ak.to_numpy(ak.flatten(pair_mass, axis=-1), allow_missing=False))
-            broad_casted_weights = ak.broadcast_arrays(tmp_events['weight'], tmp_events['Part_p4'])[0]
-            weight = broad_casted_weights[photon_mask]
-            weight_list.append(ak.to_numpy(ak.flatten(weight, axis=-1), allow_missing=False))
+            weight_list.append(ak.to_numpy(tmp_events['weight'], allow_missing=False))
         mass_all = ak.concatenate(mass_list, axis=-1)
         mass_all = ak.to_numpy(mass_all, allow_missing=False)
         return mass_all, np.concatenate(weight_list)
@@ -608,12 +606,14 @@ def make_control_plots_vb0(dl_dict, luminosity, normalize, output_dir, region_na
         plot some post-nutrino reco variables
     """
     # check if missing mass reco variable is available
-    if all(['lead_a_missing_p4' in dl.data[region_name].fields for dl in dl_dict.values()]):
+    if not (all(['lead_a_missing_p4' in dl.data[region_name].fields for dl in dl_dict.values()])):
+        print("Missing neutrino reco variables, skip control plots.")
+    else:
         # plot reconstructed tau p4
         for var in ['pt', 'theta', 'phi', 'E', 'M', 'pz']:
             def get_reco_tau(events):
                 reco_tau_var_list = []
-                flag_valid = events['flags_valid'] == 1
+                flag_valid = events['flags_valid'] > 0
                 weight = events['weight'][flag_valid]
                 for key in ['a', 'b']:
                     # reco_tau_p4 = events[f'reco_tau_{key}_p4']
@@ -662,7 +662,7 @@ def make_control_plots_vb0(dl_dict, luminosity, normalize, output_dir, region_na
         for var in ['pt', 'theta', 'phi', 'E', 'M', 'pz']:
             def get_reco_ditau(events):
                 reco_ditau_var_list = []
-                flag_valid = events['flags_valid'] == 1
+                flag_valid = events['flags_valid'] > 0
                 weight = events['weight'][flag_valid]
                 reco_tau_a_p4 = events[f'reco_tau_a_p4'][flag_valid]
                 reco_tau_b_p4 = events[f'reco_tau_b_p4'][flag_valid]
@@ -756,6 +756,7 @@ def make_control_plots_vb0(dl_dict, luminosity, normalize, output_dir, region_na
         # dR between lead visible system and reconstructed missing momentum
         def get_dR_lead_visible_missing(events):
             dR_list = []
+            events = events[events['flags_valid'] > 0]
             for key in ['a', 'b']:
                 lead_vis_p4 = events[f'lead_{key}_visible_p4']
                 missing_p4 = events[f'lead_{key}_missing_p4']
@@ -789,10 +790,10 @@ def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_
             flag_b_valid = events['lead_b_is_pion'] == is_pion
             mask_is_lead_a = events['is_lead_a'] == 1
             mask_is_lead_b = events['is_lead_b'] == 1
-            lead_a_E = ak.to_numpy(events['Part_hpcTotalShowerEnergy'][mask_is_lead_a], allow_missing=False)[flag_a_valid]
-            lead_b_E = ak.to_numpy(events['Part_hpcTotalShowerEnergy'][mask_is_lead_b], allow_missing=False)[flag_b_valid]
-            lead_a_p = ak.to_numpy(events['Part_p4'][mask_is_lead_a].p, allow_missing=False)[flag_a_valid]
-            lead_b_p = ak.to_numpy(events['Part_p4'][mask_is_lead_b].p, allow_missing=False)[flag_b_valid]
+            lead_a_E = ak.to_numpy(ak.firsts(events['Part_hpcTotalShowerEnergy'][mask_is_lead_a]), allow_missing=False)[flag_a_valid]
+            lead_b_E = ak.to_numpy(ak.firsts(events['Part_hpcTotalShowerEnergy'][mask_is_lead_b]), allow_missing=False)[flag_b_valid]
+            lead_a_p = ak.to_numpy(ak.firsts(events['Part_p4'][mask_is_lead_a].p), allow_missing=False)[flag_a_valid]
+            lead_b_p = ak.to_numpy(ak.firsts(events['Part_p4'][mask_is_lead_b].p), allow_missing=False)[flag_b_valid]
             lead_a_E_over_p = lead_a_E / (lead_a_p + 1e-10) # avoid division by zero
             lead_b_E_over_p = lead_b_E / (lead_b_p + 1e-10)
             lead_parts_E_over_p = np.concatenate([lead_a_E_over_p, lead_b_E_over_p])
@@ -816,8 +817,8 @@ def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_
         def get_part_hpcNumLayers(events):
             flag_a_valid = events['lead_a_is_pion'] == is_pion
             flag_b_valid = events['lead_b_is_pion'] == is_pion
-            lead_a_hpcNumLayers = ak.to_numpy(events['Part_hpcNumLayers'][events['is_lead_a'] == 1], allow_missing=False)[flag_a_valid]
-            lead_b_hpcNumLayers = ak.to_numpy(events['Part_hpcNumLayers'][events['is_lead_b'] == 1], allow_missing=False)[flag_b_valid]
+            lead_a_hpcNumLayers = ak.to_numpy(ak.firsts(events['Part_hpcNumLayers'][events['is_lead_a'] == 1]), allow_missing=False)[flag_a_valid]
+            lead_b_hpcNumLayers = ak.to_numpy(ak.firsts(events['Part_hpcNumLayers'][events['is_lead_b'] == 1]), allow_missing=False)[flag_b_valid]
             lead_parts_hpcNumLayers = np.concatenate([lead_a_hpcNumLayers, lead_b_hpcNumLayers])
             weights = np.concatenate([events['weight'], events['weight']])
             return lead_parts_hpcNumLayers, weights
@@ -861,14 +862,14 @@ class ControlPlotProcessor(BaseProcessor):
         if self.verbosity >= 0:
             for region in self.regions:
                 print(f"Processing {region} region: plotting quantum observables")
-                output_dir_hadhad = f"{self.output_dir}/{region}/"
-                os.makedirs(output_dir_hadhad, exist_ok=True)
+                output_dir = f"{self.output_dir}/{region}/"
+                os.makedirs(output_dir, exist_ok=True)
 
                 make_control_plots_vb0(
                     dl_dict,
                     luminosity=self.luminosity,
                     normalize=self.normalize,
-                    output_dir=output_dir_hadhad,
+                    output_dir=output_dir,
                     region_name=region,
                     log_scale=False,
                 )
@@ -876,7 +877,7 @@ class ControlPlotProcessor(BaseProcessor):
         # common control plots: verbose level 1
         if self.verbosity >= 1:
             for region in self.regions:
-                output_dir_tautau = f"{self.output_dir}/baseline/"
+                output_dir_tautau = f"{self.output_dir}/{region}/"
                 os.makedirs(output_dir_tautau, exist_ok=True)
                 make_control_plots_tautau(
                     dl_dict,
