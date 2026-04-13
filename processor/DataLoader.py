@@ -66,6 +66,9 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
         flag_passes = selection_results[cut_name] & flag_passes_baseline
         filtered_events_dict[channel] = raw_events[flag_passes]
 
+    if is_Ztautau:
+        raw_events = DefineVariables.define_region_specific_variables(raw_events)
+
     return filtered_events_dict, filter_log_dict
 
 
