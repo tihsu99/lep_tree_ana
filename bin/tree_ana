@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
     import logging
     loglevel = logging.getLevelName(args.log_level.upper())
-    logging.basicConfig(level = loglevel, format = ">>> [%(levelname)s] %(module).s%(name)s: %(message)s")
+    logging.basicConfig(level = loglevel, format = ">>> [%(levelname)s] %(module)s.%(name)s: %(message)s")
     log = logging.getLogger("LepAna")
 
     analysis_config = read_yaml(args.config_yaml)

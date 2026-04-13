@@ -7,11 +7,12 @@ import copy
 import vector
 import awkward as ak
 import tqdm
+import h5py
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
                     get_all_p4_from_ak_events, cme, m_tau, rebuild_p4
 from utils.plotter import plot_y_vs_x
 from quantum.observables_builder import build_observables, get_observable_names, get_mean_and_err_of_mean
-
+from mmc.MMC import MMC
 
 def evaluate_observables(events, dl_name, output_dir):
     # Compare the distributions of the observables built from reconstructed neutrino momenta to those built from truth neutrino momenta
@@ -575,28 +576,34 @@ def compute_neutrino_momenta(
 
     return miss1_p4, miss2_p4, flag_valid
 
-
-
 class NeutrinoReconstructionProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
         super().__init__(config)
         self.config = config
         self.output_dir_name = self.config.get('output_dir_name', 'neutrino_reconstruction')
         self.output_dir = f"{output_dir}/{self.output_dir_name}/"
-        self.dl_to_load = self.config.get('dl_to_load', []) # empty list means load all
+        self.dl_to_load = self.config.get('dl_to_load', []) 
         self.regions = self.config.get('regions', [])
         os.makedirs(self.output_dir, exist_ok=True)
         self.fields_to_add = [
             'lead_a_missing_p4', 'lead_b_missing_p4', 
             'reco_tau_a_p4', 'reco_tau_b_p4',
-            'flags_valid', 
+            'flags_valid', 'mmc_likelihood' 
         ] + get_observable_names()
 
+        # Instantiate the new MMC Engine Wrapper
+        self.mmc_regions = self.config.get('mmc_regions', [])
+        if len(self.mmc_regions) > 0:
+            self.mmc_engine = MMC(self.config)
+
     def run(self, dl_dict):
-        # only load Ztautau samples for now
-        dl_to_load = list(dl_dict.keys()) if len(self.dl_to_load) == 0 else self.dl_to_load
+        requested = self.dl_to_load
+        dl_to_load = list(dl_dict.keys()) if len(requested) == 0 else requested
         for region_name in self.regions:
             for dl_name in dl_to_load:
+                if dl_name not in dl_dict:
+                    print(f"[WARN] Requested dataloader '{dl_name}' not found. Skip.")
+                    continue
                 dl = dl_dict[dl_name]
                 cur_output_dir = f"{self.output_dir}/{region_name}/"
                 output_file = f"{cur_output_dir}/{dl_name}_reconstructed_neutrinos.parquet"
@@ -604,6 +611,7 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                 solution_loaded = False
                 if os.path.exists(output_file):
                     events = ak.from_parquet(output_file)
+                    solution_loaded = True
                     for key in self.fields_to_add:
                         if key not in events.fields or len(events[key]) != len(dl.data[region_name]):
                             print(f"Field {key} not found or length mismatch in loaded file for {dl_name} in region {region_name}. Recomputing neutrino reconstruction.")
@@ -611,7 +619,6 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                             break
                         if key.endswith('_p4'):
                             events[key] = rebuild_p4(events[key])
-                        solution_loaded = True
 
                 if not solution_loaded:
                     if not os.path.exists(cur_output_dir):
@@ -622,21 +629,39 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                     events = dl.data.get(region_name)
                     print(f"Processing {dl_name} for region {region_name} with {len(events)} events")
 
-                    # Get visible tau p4
+                    if len(events) == 0:
+                        print(f"  -> No events in {dl_name}/{region_name}. Skipping reconstruction and saving empty output.")
+                        ak.to_parquet(events, output_file, compression='snappy')
+                        continue
+
                     reco_vis_positive_p4 = events['lead_a_visible_p4']
                     reco_vis_negative_p4 = events['lead_b_visible_p4']
 
-                    zero_mass_grid = np.zeros((len(events), 1))
-                    reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
-                        vis1_p4=reco_vis_negative_p4,
-                        vis2_p4=reco_vis_positive_p4,
-                        m_miss1_grid=zero_mass_grid,
-                        m_miss2_grid=zero_mass_grid,
-                    )
-                    # reshape from (N,1) to (N,)
-                    reco_mis_negativep4_array = ak.firsts(reco_mis_negativep4_array)
-                    reco_mis_positivep4_array = ak.firsts(reco_mis_positivep4_array)
-                    flags_valid_array = flags_valid_array[:, 0]
+                    # -------------------------------------------------
+                    # The Clean ONE-LINER Implementation requested!
+                    # -------------------------------------------------
+                    if region_name in self.mmc_regions:
+                        print(f"  -> Routing to MMC Engine for {region_name}...")
+                        reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array, mmc_likelihood = self.mmc_engine.calculate(
+                            vis1_p4=reco_vis_negative_p4,
+                            vis2_p4=reco_vis_positive_p4,
+                            region_name=region_name,
+                            events=events
+                        )
+                        events['mmc_likelihood'] = mmc_likelihood  # <-- Changed here
+                    else:
+                        print(f"  -> Routing to Algebraic Neutrino Reconstruction for {region_name}...")
+                        zero_mass_grid = np.zeros((len(events), 1))
+                        reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
+                            vis1_p4=reco_vis_negative_p4,
+                            vis2_p4=reco_vis_positive_p4,
+                            m_miss1_grid=zero_mass_grid,
+                            m_miss2_grid=zero_mass_grid,
+                        )
+                        reco_mis_negativep4_array = ak.firsts(reco_mis_negativep4_array)
+                        reco_mis_positivep4_array = ak.firsts(reco_mis_positivep4_array)
+                        flags_valid_array = flags_valid_array[:, 0]
+                        events['mmc_likelihood'] = np.ones(len(events))
 
                     events[f'lead_a_missing_p4'] = reco_mis_positivep4_array
                     events[f'lead_b_missing_p4'] = reco_mis_negativep4_array
@@ -644,7 +669,7 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
 
                     for key in ['a', 'b']:
                         events[f'reco_tau_{key}_p4'] = events[f'lead_{key}_visible_p4'] + events[f'lead_{key}_missing_p4']
-
+                    
                     # derive the observables for QI study
                     observables = build_observables(tau_a_p4=events['reco_tau_a_p4'], tau_b_p4=events['reco_tau_b_p4'], vis_a_p4=events['lead_a_visible_p4'], vis_b_p4=events['lead_b_visible_p4'])
                     for obs_name, obs_values in observables.items():
@@ -665,8 +690,10 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                     print(f"Saved reconstructed neutrino data to {output_file} for {dl_name}")
 
                 for key in self.fields_to_add:
-                    dl.data[region_name][key] = events[key]
-
+                    if key in events.fields:
+                        dl.data[region_name][key] = events[key]
+                    else:
+                        print(f"[WARN] Missing field '{key}' for {dl_name}/{region_name}; skip write-back for this field.")
 
     def finalize(self):
         pass
