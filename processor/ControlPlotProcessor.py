@@ -609,52 +609,149 @@ def make_control_plots_vb0(dl_dict, luminosity, normalize, output_dir, region_na
     """
     # check if missing mass reco variable is available
     if all(['lead_a_missing_p4' in dl.data[region_name].fields for dl in dl_dict.values()]):
-        # residual missing pt, E, and mass after accounting all visible particles and the lead neutrino reco
-        def get_residual_missing(events):
-            residual_px = events['missing_p4'].px - events['lead_a_missing_p4'].px - events['lead_b_missing_p4'].px
-            residual_py = events['missing_p4'].py - events['lead_a_missing_p4'].py - events['lead_b_missing_p4'].py
-            residual_pz = events['missing_p4'].pz - events['lead_a_missing_p4'].pz - events['lead_b_missing_p4'].pz
-            residual_E = events['missing_p4'].E - events['lead_a_missing_p4'].E - events['lead_b_missing_p4'].E
+        # plot reconstructed tau p4
+        for var in ['pt', 'theta', 'phi', 'E', 'M', 'pz']:
+            def get_reco_tau(events):
+                reco_tau_var_list = []
+                flag_valid = events['flags_valid'] == 1
+                weight = events['weight'][flag_valid]
+                for key in ['a', 'b']:
+                    # reco_tau_p4 = events[f'reco_tau_{key}_p4']
+                    reco_tau_var = ak.to_numpy(getattr(events[f'reco_tau_{key}_p4'], var)[flag_valid], allow_missing=False)
+                    reco_tau_var_list.append(reco_tau_var)
+                reco_tau_var_all = np.concatenate(reco_tau_var_list, axis=-1)
+                weights = np.concatenate([weight, weight])
+                return reco_tau_var_all, weights
             if var == 'pt':
-                residual_missing_var = np.sqrt(residual_px**2 + residual_py**2)
+                x_label = 'Reconstructed Tau pT [GeV]'
+                title = 'Control Plot: Reconstructed Tau pT'
+                bin_edges = np.linspace(0, 50, 101)
+            elif var == 'theta':
+                x_label = 'Reconstructed Tau Theta [rad]'
+                title = 'Control Plot: Reconstructed Tau Theta'
+                bin_edges = np.linspace(0, np.pi, 101)
+            elif var == 'phi':
+                x_label = 'Reconstructed Tau Phi [rad]'
+                title = 'Control Plot: Reconstructed Tau Phi'
+                bin_edges = np.linspace(-np.pi, np.pi, 101)
             elif var == 'E':
-                residual_missing_var = residual_E
+                x_label = 'Reconstructed Tau E [GeV]'
+                title = 'Control Plot: Reconstructed Tau E'
+                bin_edges = np.linspace(0, 50, 101)
             elif var == 'M':
-                mass2 = residual_E**2 - residual_px**2 - residual_py**2 - residual_pz**2
-                residual_missing_var = np.where(mass2 >= 0, np.sqrt(mass2), -np.sqrt(-mass2)) # handle negative mass^2 due to reco imperfections
+                x_label = 'Reconstructed Tau Mass [GeV]'
+                title = 'Control Plot: Reconstructed Tau Mass'
+                bin_edges = np.linspace(0, 50, 101)
             elif var == 'pz':
-                residual_missing_var = residual_pz
-            residual_missing_var = ak.fill_none(residual_missing_var, 0) # replace None with 0
-            return ak.to_numpy(residual_missing_var, allow_missing=False)
-        scale = 20
-        for var in ['pt', 'E', 'M', 'pz']:
-            if var == 'pt':
-                x_label = 'Residual Missing pT [GeV]'
-                title = 'Control Plot: Residual Missing pT'
-                bin_edges = np.linspace(0, scale, 51)
-            elif var == 'E':
-                x_label = 'Residual Missing E [GeV]'
-                title = 'Control Plot: Residual Missing E'
-                bin_edges = np.linspace(-scale, scale, 51)
-            elif var == 'M':
-                x_label = 'Residual Missing Mass [GeV]'
-                title = 'Control Plot: Residual Missing Mass'
-                bin_edges = np.linspace(-scale, scale, 51)
-            elif var == 'pz':
-                x_label = 'Residual Missing pz [GeV]'
-                title = 'Control Plot: Residual Missing pz'
-                bin_edges = np.linspace(-scale, scale, 51)
+                x_label = 'Reconstructed Tau pz [GeV]'
+                title = 'Control Plot: Reconstructed Tau pz'
+                bin_edges = np.linspace(-50, 50, 101)
             fig, ax, ax_ratio = do_control_plot(
                 dl_dict,
                 region_name=region_name,
-                func_get_variable=get_residual_missing,
+                func_get_variable=get_reco_tau,
                 bin_edges=bin_edges,
                 x_label=x_label,
                 title=title,
                 luminosity=luminosity, normalize=normalize, log_scale=log_scale,
             )
             plt.tight_layout()
-            plt.savefig(f"{output_dir}/control_plot_residual_missing_{var}.png")
+            plt.savefig(f"{output_dir}/control_plot_reco_tau_{var}.png")
+        
+        # plot ditau system
+        for var in ['pt', 'theta', 'phi', 'E', 'M', 'pz']:
+            def get_reco_ditau(events):
+                reco_ditau_var_list = []
+                flag_valid = events['flags_valid'] == 1
+                weight = events['weight'][flag_valid]
+                reco_tau_a_p4 = events[f'reco_tau_a_p4'][flag_valid]
+                reco_tau_b_p4 = events[f'reco_tau_b_p4'][flag_valid]
+                reco_ditau_p4 = reco_tau_a_p4 + reco_tau_b_p4
+                reco_ditau_var = ak.to_numpy(getattr(reco_ditau_p4, var), allow_missing=False)
+                return reco_ditau_var, weight
+            if var == 'pt':
+                x_label = 'Reconstructed Ditau pT [GeV]'
+                title = 'Control Plot: Reconstructed Ditau pT'
+                bin_edges = np.linspace(0, 100, 101)
+            elif var == 'theta':
+                x_label = 'Reconstructed Ditau Theta [rad]'
+                title = 'Control Plot: Reconstructed Ditau Theta'
+                bin_edges = np.linspace(0, np.pi, 101)
+            elif var == 'phi':
+                x_label = 'Reconstructed Ditau Phi [rad]'
+                title = 'Control Plot: Reconstructed Ditau Phi'
+                bin_edges = np.linspace(-np.pi, np.pi, 101)
+            elif var == 'E':
+                x_label = 'Reconstructed Ditau E [GeV]'
+                title = 'Control Plot: Reconstructed Ditau E'
+                bin_edges = np.linspace(0, 100, 101)
+            elif var == 'M':
+                x_label = 'Reconstructed Ditau Mass [GeV]'
+                title = 'Control Plot: Reconstructed Ditau Mass'
+                bin_edges = np.linspace(0, 100, 101)
+            elif var == 'pz':
+                x_label = 'Reconstructed Ditau pz [GeV]'
+                title = 'Control Plot: Reconstructed Ditau pz'
+                bin_edges = np.linspace(-100, 100, 101)
+            fig, ax, ax_ratio = do_control_plot(
+                dl_dict,
+                region_name=region_name,
+                func_get_variable=get_reco_ditau,
+                bin_edges=bin_edges,
+                x_label=x_label,
+                title=title,
+                luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+            )
+            plt.tight_layout()
+            plt.savefig(f"{output_dir}/control_plot_reco_ditau_{var}.png")
+
+        # # residual missing pt, E, and mass after accounting all visible particles and the lead neutrino reco
+        # scale = 20
+        # for var in ['pt', 'E', 'M', 'pz']:
+        #     def get_residual_missing(events):
+        #         residual_px = events['missing_p4'].px - events['lead_a_missing_p4'].px - events['lead_b_missing_p4'].px
+        #         residual_py = events['missing_p4'].py - events['lead_a_missing_p4'].py - events['lead_b_missing_p4'].py
+        #         residual_pz = events['missing_p4'].pz - events['lead_a_missing_p4'].pz - events['lead_b_missing_p4'].pz
+        #         residual_E = events['missing_p4'].E - events['lead_a_missing_p4'].E - events['lead_b_missing_p4'].E
+        #         if var == 'pt':
+        #             residual_missing_var = np.sqrt(residual_px**2 + residual_py**2)
+        #         elif var == 'E':
+        #             residual_missing_var = residual_E
+        #         elif var == 'M':
+        #             mass2 = residual_E**2 - residual_px**2 - residual_py**2 - residual_pz**2
+        #             residual_missing_var = np.where(mass2 >= 0, np.sqrt(mass2), -np.sqrt(-mass2)) # handle negative mass^2 due to reco imperfections
+        #         elif var == 'pz':
+        #             residual_missing_var = residual_pz
+        #         residual_missing_var = ak.fill_none(residual_missing_var, 0) # replace None with 0
+        #         return ak.to_numpy(residual_missing_var, allow_missing=False)
+
+        #     if var == 'pt':
+        #         x_label = 'Residual Missing pT [GeV]'
+        #         title = 'Control Plot: Residual Missing pT'
+        #         bin_edges = np.linspace(0, scale, 51)
+        #     elif var == 'E':
+        #         x_label = 'Residual Missing E [GeV]'
+        #         title = 'Control Plot: Residual Missing E'
+        #         bin_edges = np.linspace(-scale, scale, 51)
+        #     elif var == 'M':
+        #         x_label = 'Residual Missing Mass [GeV]'
+        #         title = 'Control Plot: Residual Missing Mass'
+        #         bin_edges = np.linspace(-scale, scale, 51)
+        #     elif var == 'pz':
+        #         x_label = 'Residual Missing pz [GeV]'
+        #         title = 'Control Plot: Residual Missing pz'
+        #         bin_edges = np.linspace(-scale, scale, 51)
+        #     fig, ax, ax_ratio = do_control_plot(
+        #         dl_dict,
+        #         region_name=region_name,
+        #         func_get_variable=get_residual_missing,
+        #         bin_edges=bin_edges,
+        #         x_label=x_label,
+        #         title=title,
+        #         luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+        #     )
+        #     plt.tight_layout()
+        #     plt.savefig(f"{output_dir}/control_plot_residual_missing_{var}.png")
 
         # dR between lead visible system and reconstructed missing momentum
         def get_dR_lead_visible_missing(events):
