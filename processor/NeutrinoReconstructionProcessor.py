@@ -616,6 +616,10 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                     print(f"[WARN] Requested dataloader '{dl_name}' not found. Skip.")
                     continue
                 dl = dl_dict[dl_name]
+
+                events = dl.data.get(region_name)
+                print(f"Processing {dl_name} for region {region_name} with {len(events)} events")
+
                 cur_output_dir = f"{self.output_dir}/{region_name}/"
                 output_file = f"{cur_output_dir}/{dl_name}_reconstructed_neutrinos.parquet"
 
@@ -636,9 +640,6 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                         os.makedirs(cur_output_dir, exist_ok=True)
                     if region_name not in dl.data:
                         raise ValueError(f"Region {region_name} not found in dataloader {dl_name}. Available regions: {list(dl.data.keys())}")
-
-                    events = dl.data.get(region_name)
-                    print(f"Processing {dl_name} for region {region_name} with {len(events)} events")
 
                     if len(events) == 0:
                         print(f"  -> No events in {dl_name}/{region_name}. Skipping reconstruction and saving empty output.")
