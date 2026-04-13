@@ -28,7 +28,6 @@ def define_recon_level_variables(events: ak.Array):
     """
         Define hemisphere specific variables
     """
-
     # Split event into hemisphere a and b according to thrust
     truthst = vector.zip({"x": events['thrust_x'], "y": events['thrust_y'], "z": events['thrust_z']})
     part_hemisphere_id = ak.where(events['Part_p4'].to_Vector3D().dot(truthst) > 0, 1, -1)
@@ -48,6 +47,7 @@ def define_recon_level_variables(events: ak.Array):
         idx_sorted = ak.argsort(p4.p, axis=1, ascending=False)
         particle_idx_sorted = idx_particle[idx_sorted]
         leading_particle_idx = ak.firsts(particle_idx_sorted)
+        events[f'lead_{hemisphere}_idx'] = leading_particle_idx
         flag_is_leading_particle = (part_idx_all == leading_particle_idx)
         lead_particle_flags[hemisphere] = flag_is_leading_particle
         lead_particle_charges[hemisphere] = ak.fill_none(ak.firsts(events['Part_charge'][flag_is_leading_particle]), 0)
@@ -87,9 +87,6 @@ def define_recon_level_variables(events: ak.Array):
 
         # find leading pions/electrons/muons and their nearby photons in each hemisphere
         events[f'lead_{hemisphere}_is_pion'] = ak.fill_none(ak.any(lead_flag & (abs(events['Part_pdgId']) == 41) & (events['Part_charge'] != 0), axis=1), False)
-        events[f'lead_{hemisphere}_is_electron'] = ak.fill_none(ak.any(lead_flag & (abs(events['Part_pdgId']) == 2) & (events['Part_charge'] != 0), axis=1), False)
-        events[f'lead_{hemisphere}_is_muon'] = ak.fill_none(ak.any(lead_flag & (abs(events['Part_pdgId']) == 6) & (events['Part_charge'] != 0), axis=1), False)
-        events[f'lead_{hemisphere}_is_lepton'] = ak.fill_none(ak.any(lead_flag & (abs(events['Part_pdgId']) == 2) & (events['Part_charge'] != 0), axis=1), False)
 
         events[f'is_photon_near_lead_{hemisphere}'] = (events['Part_pdgId'] == 21) & (events['Part_charge'] == 0) & (events[f'Part_dR_to_lead_{hemisphere}'] < deltaR_nearby)
         events[f'num_photon_near_lead_{hemisphere}'] = ak.fill_none(ak.sum(events[f'is_photon_near_lead_{hemisphere}'], axis=1), 0)
@@ -134,6 +131,94 @@ def define_recon_level_variables(events: ak.Array):
         flag_nearby_hpc_energy = events[f'Part_angle_to_lead_{hemisphere}'] < 30
         E_rad = E_rad + ak.sum(events[f'Part_hpcTotalShowerEnergy'][flag_nearby_hpc_energy], axis=-1)**2
     events['E_rad'] = ak.where(flag_valid, E_rad**0.5 / (cme/2), -999)
+
+    # ---------------------------------------------------------
+    # Leptonic Specific Aliases & Hardware Variables
+    # ---------------------------------------------------------
+    events['n_charged'] = events['nprong']
+    
+    n_charged_a = ak.sum(flags_hemisphere['a'] & (events['Part_charge'] != 0), axis=1)
+    n_charged_b = ak.sum(flags_hemisphere['b'] & (events['Part_charge'] != 0), axis=1)
+    events['pass_1_vs_1'] = (n_charged_a == 1) & (n_charged_b == 1)
+
+    events['lead_a_raw_hpc_E'] = events['lead_a_hpcTotalShowerEnergy']
+    events['lead_b_raw_hpc_E'] = events['lead_b_hpcTotalShowerEnergy']
+
+    # Pre-calculate neutral energy mapping
+    is_neutral = (events['Part_charge'] == 0)
+    neutral_hpc_E = ak.where(is_neutral, events['Part_hpcTotalShowerEnergy'], 0.0)
+
+    # Single unified loop for both Electron and Muon variables
+    for hemi in ['a', 'b']:
+        lead_flag = events[f'is_lead_{hemi}']
+        lead_idx = events[f'lead_{hemi}_idx']
+        
+        # --- Muon Variables ---
+        if 'Muid_partIdx' in events.fields:
+            muid_mask = (events['Muid_partIdx'] == lead_idx)
+            events[f'lead_{hemi}_raw_muon_tag'] = ak.fill_none(ak.firsts(events['Muid_tag'][muid_mask]), 0)
+            events[f'lead_{hemi}_raw_muon_hits'] = ak.fill_none(ak.firsts(events['Muid_hitPattern'][muid_mask]), 0)
+        else:
+            events[f'lead_{hemi}_raw_muon_tag'] = ak.zeros_like(events['nprong'])
+            events[f'lead_{hemi}_raw_muon_hits'] = ak.zeros_like(events['nprong'])
+            
+        # --- Electron Variables ---
+        d_angle = np.abs(events[f'lead_{hemi}_p4'].deltaangle(events['Part_p4'])) * (180.0 / np.pi)
+        in_cone = d_angle < 18.0
+        events[f'neutral_cone18_{hemi}'] = ak.sum(neutral_hpc_E[in_cone], axis=1)
+
+        events[f'lead_{hemi}_raw_wires'] = ak.fill_none(ak.firsts(events['Dedx_nrWires'][lead_flag]), -999)
+        events[f'lead_{hemi}_raw_hcal'] = ak.fill_none(ak.firsts(events['Part_hacTowerHitPattern'][lead_flag]), -999)
+        
+        raw_shower_phi = ak.fill_none(ak.firsts(events['Part_hpcShowerPhi'][lead_flag]), -999.0)
+        raw_track_phi = events[f'lead_{hemi}_p4'].phi
+
+        best_phi_rad = ak.where(raw_shower_phi > -900.0, raw_shower_phi, raw_track_phi)
+        best_phi_deg = best_phi_rad * (180.0 / np.pi)
+        best_dist_mod = (best_phi_deg % 360.0) % 15.0
+        
+        events[f'lead_{hemi}_best_crack'] = ak.where(best_dist_mod < 7.5, best_dist_mod, 15.0 - best_dist_mod)
+
+        if 'Elid_partIdx' in events.fields:
+            elid_mask = (events['Elid_partIdx'] == lead_idx)
+            events[f'lead_{hemi}_elid'] = ak.fill_none(ak.firsts(events['Elid_tag'][elid_mask]), 0)
+        else:
+            events[f'lead_{hemi}_elid'] = ak.zeros_like(events['nprong'])
+
+        events[f'lead_{hemi}_hpc_E'] = ak.fill_none(ak.firsts(events['Part_hpcTotalShowerEnergy'][lead_flag]), 0.0)
+
+        # =========================================================
+        # REDEFINE 'is_electron' AND 'is_muon' WITH STRICT N-1 CUTS
+        # =========================================================
+        base_is_e = ak.fill_none(ak.any(lead_flag & (abs(events['Part_pdgId']) == 2) & (events['Part_charge'] != 0), axis=1), False)
+        base_is_mu = ak.fill_none(ak.any(lead_flag & (abs(events['Part_pdgId']) == 6) & (events['Part_charge'] != 0), axis=1), False)
+        
+        # --- FROM YOUR apply_tautau_to_ee SCRIPT ---
+        strict_e_hardware = (
+            (events[f'lead_{hemi}_raw_wires'] >= 38) &               # pass_cut_ele_wires
+            (events[f'lead_{hemi}_raw_muon_hits'] == 0) &            # pass_cut_ele_muon_veto
+            ((events[f'lead_{hemi}_raw_hcal'] >> 1) == 0) &          # pass_cut_ele_hcal_veto
+            (events[f'lead_{hemi}_best_crack'] > 1.0) &              # pass_cut_ele_best_crack
+            (events[f'lead_{hemi}_hpc_E'] < 40.0) &                  # pass_cut_ele_pid
+            (events[f'neutral_cone18_{hemi}'] < 4.0) &               # pass_cut_neutral
+            (events[f'lead_{hemi}_elid'] >= 3) &                     # pass_cut_official_elid
+            (events[f'lead_{hemi}_raw_muon_tag'] == 0)               # pass_cut_official_muon
+        )
+
+        # --- FROM YOUR apply_tautau_to_mumu SCRIPT ---
+        strict_mu_hardware = (
+            (events[f'lead_{hemi}_raw_muon_tag'] >= 7) &             # pass_muid_strict (Bitmask >= 7)
+            (events[f'lead_{hemi}_raw_muon_hits'] >= 2) &            # pass_muon_hits (>= 2 hits in chambers)
+            (events[f'lead_{hemi}_hpc_E'] < 2.0)                     # pass_cut_mip (MIP signature < 2.0 GeV)
+        )
+        
+        # Overwrite the flags in the events array
+        events[f'lead_{hemi}_is_electron'] = base_is_e & strict_e_hardware
+        events[f'lead_{hemi}_is_muon'] = base_is_mu & strict_mu_hardware
+        
+        # Redefine is_lepton to include only these strictly vetted particles
+        events[f'lead_{hemi}_is_lepton'] = events[f'lead_{hemi}_is_electron'] | events[f'lead_{hemi}_is_muon']
+
     return events
 
 
@@ -176,7 +261,7 @@ def define_signal_exclusive_variables(events: ak.Array):
     events['truth_QI_region'] = events['truth_theta_cm'] * 2 / np.pi > 0.6
 
     # analyzing power
-    # non-tau, pion, rho, ele, mu, other 
+    # non-tau, pion, rho, ele, mu, other
     analyzing_power_ary = get_analyzing_power_ary()
     event_category = events['event_category']
 
@@ -216,8 +301,3 @@ def define_signal_exclusive_variables(events: ak.Array):
         events[obs_name] = obs_values
 
     return events
-
-
-
-
-

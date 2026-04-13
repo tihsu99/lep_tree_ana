@@ -1,0 +1,136 @@
+GlobalConfigs:
+  default_output_dir: "./test10"
+  region_of_interest: &RegionName "mumu"
+  # region_of_interest: &RegionName "baseline"
+  load_regions:
+    - *RegionName
+    # - "baseline"
+    - "hadhad"
+    - "mumu"
+    - "ee"
+    - "emu"
+  verbosity: 0
+  luminosity: &Luminosity 46.3 # pb^-1
+  # Ztautau sample can be further split categorizes below
+  signal_categories:
+    # Ztautau_pion: [11, 12, 13, 14, 41, 31, 21]
+    # Ztautau_rho: [21, 22, 23, 24, 25, 52, 42, 32, 12]
+    Ztautau_pipi: [11]
+    Ztautau_pirho: [12, 21]
+    Ztautau_rhorho: [22]
+    Ztautau_pilep: [13, 31, 14, 41]
+    Ztautau_rholep: [23, 24, 42, 32]
+    # Ztautau_piele: [13, 31]
+    # Ztautau_pimu: [14, 41]
+    Ztautau_leplep: [33, 34, 43, 44]
+    # Ztautau_piother: [15, 51]
+
+DataLoaders:
+  data94:
+    name: "data94"
+    tree_name: "t"
+    is_data: true
+    is_signal: false
+    input_files:
+      - "/eos/home-y/yulei/Ztautau/ntuple/collision_data_v3/v94c/91.25/nanoaod_Y13709.10.al_ttree.root"
+  
+  Ztautau:
+    name: "Ztautau"
+    tree_name: "t"
+    is_data: false
+    is_signal: false
+    norm_factor: 1458.9 # pb
+    input_files:
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_tautau_v3/simana_10_ttree.root"
+      
+  Zll:
+    name: "Zll"
+    tree_name: "t"
+    is_data: false
+    is_signal: false
+    norm_factor:  2844.4 # pb
+    input_files:
+      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_ll_v3/simana_10_ttree.root"
+
+  # Zqq:
+  #   name: "Zqq"
+  #   tree_name: "t"
+  #   is_data: false
+  #   is_signal: false
+  #   norm_factor: 30511.2 # pb
+  #   input_files:
+  #     - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_443_ttree.root"
+
+Processors:
+  # TruthMatchProcessor:
+  #   output_dir_name: "truth_match_pion"
+  #   target_recon_particle: "pion"
+  #   dl_to_load: 
+  #     - Ztautau_pipi
+  #     - Ztautau_pirho
+  #     - Ztautau_rhorho
+  #     - Ztautau_pilep
+  #     - Ztautau_leplep
+  #   regions:
+  #     - "pion"
+  # ElTruthMatchProcessor:
+  #   processor_name: "TruthMatchProcessor"
+  #   output_dir_name: "truth_match_el"
+  #   target_recon_particle: "electron"
+  #   dl_to_load: 
+  #     - Ztautau_pilep
+  #     - Ztautau_leplep
+  #   regions:
+  #     - "pion"
+  # MuonTruthMatchProcessor:
+  #   processor_name: "TruthMatchProcessor"
+  #   output_dir_name: "truth_match_mu"
+  #   target_recon_particle: "muon"
+  #   dl_to_load: 
+  #     - Ztautau_pilep
+  #     - Ztautau_leplep
+  #   regions:
+  #     - "pion"
+  NeutrinoReconstructionProcessor:
+    output_dir_name: "neutrino_reco"
+    #dl_to_load: []
+      #- "Ztautau_leplep"
+    regions:
+      - "hadhad"
+      - "mumu"
+      - "ee"
+      - "emu"
+
+    mmc_regions:
+      - "mumu"
+      - "ee"
+      - "emu"
+
+    mmc_pdf_path: "/eos/home-c/chenhua/lep_tree_ana_master_2/mmc/mmc_lep_lep_parameters.h5"
+      
+    mmc_workers: 4
+
+  # QIProcessor:
+  #   output_dir_name: "QI_analysis"
+  #   unfolding_target_sample: Ztautau_pipi
+  #   regions:
+  #     - *RegionName
+
+  ControlPlotProcessor:
+    output_dir_name: "control_plots"
+    regions:
+      - *RegionName
+      # - "baseline"
+      # - "hadhad"
+
+  # IDAnaProcessor:
+  #   output_dir_name: "ID_analysis"
+  #   targeted_recon_pdgId: 
+  #     - 41
+  #     # - 6
+  #     # - 2
+  #   regions:
+  #     # - "pipi"
+  #     # - "leplep"
+  #     - "pipiLoose"
+  #     # - "raw"

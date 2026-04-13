@@ -14,6 +14,7 @@ from quantum.observables_builder import build_observables, get_mean_and_err_of_m
 import RegionSelections.DefineVariables as DefineVariables
 import RegionSelections.BaselineSelections as BaselineSelections
 import RegionSelections.HadHadSelections as HadHadSelections
+import RegionSelections.LepLepSelections as LepLepSelections
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +26,6 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
 
     raw_events = DefineVariables.define_recon_level_variables(raw_events)
     if is_Ztautau:
-        # define truth variables for Ztautau sample and save raw Ztautau events
         raw_events = DefineVariables.define_signal_exclusive_variables(raw_events)
     
     # baseline selection
@@ -46,6 +46,24 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
         raw_events[cut_name] = flag_passes_cut
     flag_passes_hadhad = hadhad_selection_results[HadHadSelections.get_cut_name()] & flag_passes_baseline
     filtered_events_dict['hadhad'] = raw_events[flag_passes_hadhad]
+
+    # ---------------------------------------------------------
+    # Unified Leptonic Selections (ee, mumu, emu)
+    # ---------------------------------------------------------
+    # Call the selection function OUTSIDE the loop
+    selection_results = LepLepSelections.get_flag_passes_leplep_region(raw_events)
+    
+    # Log the cuts and append the flags to raw_events OUTSIDE the channel split loop
+    for cut_name, flag_passes_cut in selection_results.items():
+        cut_title = LepLepSelections.get_dict_of_leplep_selection_names()[cut_name]
+        flag_passes_cut = flag_passes_cut & flag_passes_baseline
+        filter_log_dict[cut_title] = filter_log_dict.get(cut_title, 0) + ak.sum(flag_passes_cut)
+        raw_events[cut_name] = flag_passes_cut
+            
+    # Now simply split the final arrays into their respective dictionaries
+    for channel in ['mumu', 'ee', 'emu']:
+        flag_passes = selection_results[channel] & flag_passes_baseline
+        filtered_events_dict[channel] = raw_events[flag_passes]
 
     return filtered_events_dict, filter_log_dict
 
@@ -102,7 +120,7 @@ class DataLoader:
                         empty_events = next(iter(self.data.values())) # get the structure of events from any existing region
                         filter_events = ak.zeros_like(empty_events['evtNumber'], dtype=bool)
                         self.data[region] = empty_events[filter_events]
-                    if self.initial_total_num_events == 0:
+                    if self.initial_total_num_events == 0 and len(self.data[region]) > 0:
                         self.initial_total_num_events = self.data[region]['initial_total_num_events'][0]
                     _data_loaded = True
                 else:
@@ -119,7 +137,7 @@ class DataLoader:
                     del self.data[key]
             _data_loaded = True
 
-        log.info(f"DataLoader initialization complete. Loaded {len(all_files)} files.")
+        log.info(f"DataLoader initialization complete. Loaded {len(self.input_files)} files.")
 
     
 
@@ -148,13 +166,13 @@ class DataLoader:
                 "charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood", "vtxIdx", 
                 "hpcShowerEnergy", "hpcShowerTheta", "hpcShowerPhi", "hpcParticleCode", "hpcNumLayers", "hpcLayerHitPattern", "hpcNumAssociatedShowers", "hpcTotalShowerEnergy", 
                 "hacShowerEnergy", "hacShowerTheta", "hacShowerPhi", "hacParticleCode", "hacNumTowers", "hacTowerHitPattern", "hacNumAssociatedShowers", "hacTotalShowerEnergy", 
-                "sticShowerEnergy", "sticShowerTheta", "sticShowerPhi", "sticNumTowers", "sticChargedTag", "sticSiliconVertexPos", 
+                "sticShowerEnergy", "sticShowerTheta", "sticShowerPhi", "sticNumTowers", "sticChargedTag", "sticSiliconVertexPos",  
                 "lock",
             ]
             part_branches = [f'Part_{b}' for b in part_branches]
             id_branches = [
                 "Elid_partIdx", "Elid_tag", "Elid_gammaConversion",
-                "Muid_partIdx", "Muid_tag",
+                "Muid_partIdx", "Muid_tag", "Muid_hitPattern",
                 "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
             ]
             track_branches = [ f'Trac_{b}' for b in 
@@ -162,6 +180,9 @@ class DataLoader:
                     "originVtxIdx", "impParToVertexRPhi", "impParToVertexZ", "impParRPhi", "impParZ",
                 ]
             ]
+            
+            # Dedx branches are not Part_ prefixed, they are top-level
+            dedx_branches = ["Dedx_value", "Dedx_error", "Dedx_nrWires"]
 
             part_branches = part_branches + id_branches + track_branches
 
@@ -169,7 +190,7 @@ class DataLoader:
                 ["position_fCoordinates_fX", "position_fCoordinates_fY", "position_fCoordinates_fZ",]
             ]
 
-            branches_to_load = common_evt_branches + part_branches + vertex_branches 
+            branches_to_load = common_evt_branches + part_branches + vertex_branches + dedx_branches
             if not self.is_data:
                 branches_to_load += gen_part_branches
 
