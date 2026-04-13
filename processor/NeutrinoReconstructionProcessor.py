@@ -655,19 +655,19 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                     reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array, mmc_likelihood = None, None, None, None
                     if region_name in self.mmc_regions:
                         print(f"  -> Routing to MMC Engine for {region_name}...")
-                        reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array, mmc_likelihood = self.mmc_engine.calculate(
-                            vis1_p4=reco_vis_negative_p4,
-                            vis2_p4=reco_vis_positive_p4,
+                        reco_mis_positivep4_array, reco_mis_negativep4_array, flags_valid_array, mmc_likelihood = self.mmc_engine.calculate(
+                            vis_a_p4=reco_vis_positive_p4,
+                            vis_b_p4=reco_vis_negative_p4,
                             region_name=region_name,
                             events=events
                         )
                     else:
                         print(f"  -> Routing to Algebraic Neutrino Reconstruction for {region_name}...")
-                        reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
-                            vis1_p4=reco_vis_negative_p4,
-                            vis2_p4=reco_vis_positive_p4,
+                        reco_mis_positivep4_array, reco_mis_negativep4_array, flags_valid_array = compute_neutrino_momenta(
+                            vis1_p4=reco_vis_positive_p4,
+                            vis2_p4=reco_vis_negative_p4,
                         )
-                        mmc_likelihood = np.zeros(len(events))  # Placeholder likelihood for non-MMC reconstruction
+                        mmc_likelihood = np.ones(len(events))  # Placeholder likelihood for non-MMC reconstruction
 
                     events[f'lead_a_missing_p4'] = reco_mis_positivep4_array
                     events[f'lead_b_missing_p4'] = reco_mis_negativep4_array
