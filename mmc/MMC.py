@@ -104,4 +104,4 @@ class MMC:
         mmc_likelihood = np.ascontiguousarray(mmc_likelihood)
         flags_valid = np.ascontiguousarray(np.where((mmc_likelihood > 0) & np.isfinite(mmc_likelihood), 1, 0))
         
-        return reco_mis_negativep4, reco_mis_positivep4, flags_valid, mmc_likelihood
+        return reco_mis_positivep4, reco_mis_negativep4, flags_valid, mmc_likelihood
