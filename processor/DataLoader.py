@@ -62,8 +62,12 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
             
     # Now simply split the final arrays into their respective dictionaries
     for channel in ['mumu', 'ee', 'emu']:
-        flag_passes = selection_results[channel] & flag_passes_baseline
+        cut_name = f"{channel}_cut"
+        flag_passes = selection_results[cut_name] & flag_passes_baseline
         filtered_events_dict[channel] = raw_events[flag_passes]
+
+    # Store the raw events with all the defined variables 
+    filtered_events_dict['raw'] = raw_events
 
     return filtered_events_dict, filter_log_dict
 
@@ -240,6 +244,11 @@ class DataLoader:
                 self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
                 self.data[key]['weight'] = self.weight * ak.ones_like(self.data[key]['evtNumber'], dtype=np.float32)
 
+            # reconstruct neutrinos of Ztautau raw events for later use in unfolding
+            if self.is_Ztautau:
+                raw_events = self.data['raw']
+                self.data['raw'] = DefineVariables.define_region_specific_variables(raw_events)
+
         # Log filter results
         if self.filter_results['initial_total_num_events'] > 0:
             with open(self.output_dir + f"/cutflow_{self.name}.txt", "w") as f:
@@ -276,7 +285,7 @@ class DataLoader:
             fig.tight_layout()
             fig.savefig(self.output_dir + f"/cutflow_{self.name}_weighted.pdf")
 
-            cutflow_normalized = [v / self.filter_results['initial_total_num_events'] for v in cutflow_values]
+            cutflow_normalized = [v / cutflow_values[0] for v in cutflow_values]
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
             p = ax.bar(cutflow_labels, cutflow_normalized)
             ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_normalized], padding=3, fontsize=4)

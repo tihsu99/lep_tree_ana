@@ -214,7 +214,9 @@ def do_control_plot(
     for dl_name, dl in dl_dict.items():
         events = dl.data[region_name]
         weights = events['weight'].to_numpy() if 'weight' in events.fields else np.ones(len(events))
-        variable_values = func_get_variable(events)
+        variable_values = np.array([])
+        if len(events) > 0:
+            variable_values = func_get_variable(events)
         if type(variable_values) is tuple:
             variable_values, weights = variable_values
         variable_values = np.asarray(variable_values).flatten()

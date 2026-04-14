@@ -93,10 +93,10 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
     def get_lead_part_E_over_p(events):
         mask_is_lead_a = events['is_lead_a'] == 1
         mask_is_lead_b = events['is_lead_b'] == 1
-        lead_a_E = ak.to_numpy(events['Part_hpcTotalShowerEnergy'][mask_is_lead_a], allow_missing=False)
-        lead_b_E = ak.to_numpy(events['Part_hpcTotalShowerEnergy'][mask_is_lead_b], allow_missing=False)
-        lead_a_p = ak.to_numpy(events['Part_p4'][mask_is_lead_a].p, allow_missing=False)
-        lead_b_p = ak.to_numpy(events['Part_p4'][mask_is_lead_b].p, allow_missing=False)
+        lead_a_E = ak.to_numpy(ak.firsts(events['Part_hpcTotalShowerEnergy'][mask_is_lead_a]), allow_missing=False)
+        lead_b_E = ak.to_numpy(ak.firsts(events['Part_hpcTotalShowerEnergy'][mask_is_lead_b]), allow_missing=False)
+        lead_a_p = ak.to_numpy(ak.firsts(events['Part_p4'][mask_is_lead_a].p), allow_missing=False)
+        lead_b_p = ak.to_numpy(ak.firsts(events['Part_p4'][mask_is_lead_b].p), allow_missing=False)
         # lead_a_p = ak.to_numpy(events['lead_a_p4'].p, allow_missing=False)
         # lead_b_p = ak.to_numpy(events['lead_b_p4'].p, allow_missing=False)
         lead_a_E_over_p = lead_a_E / (lead_a_p + 1e-10) # avoid division by zero
@@ -120,8 +120,8 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
 
     # hpcNumLayers of lead part in each hemisphere
     def get_lead_part_hpcNumLayers(events):
-        lead_a_hpcNumLayers = ak.to_numpy(events['Part_hpcNumLayers'][events['is_lead_a'] == 1], allow_missing=False)
-        lead_b_hpcNumLayers = ak.to_numpy(events['Part_hpcNumLayers'][events['is_lead_b'] == 1], allow_missing=False)
+        lead_a_hpcNumLayers = ak.to_numpy(ak.firsts(events['Part_hpcNumLayers'][events['is_lead_a'] == 1]), allow_missing=False)
+        lead_b_hpcNumLayers = ak.to_numpy(ak.firsts(events['Part_hpcNumLayers'][events['is_lead_b'] == 1]), allow_missing=False)
         lead_parts_hpcNumLayers = np.concatenate([lead_a_hpcNumLayers, lead_b_hpcNumLayers])
         weights = np.concatenate([events['weight'], events['weight']])
         return lead_parts_hpcNumLayers, weights
@@ -346,11 +346,33 @@ def make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region
     plt.savefig(f"{output_dir}/control_plot_lead_part_pair_angle.png")
 
 
+    # invariant mass of lead visible p4
+    def get_lead_visible_mass(events):
+        if len(events) == 0:
+            return np.array([])
+        mass_list = []
+        for key in ['a', 'b']:
+            lead_vis_p4 = events[f'lead_{key}_visible_p4']
+            mass = lead_vis_p4.mass
+            mass_list.append(ak.to_numpy(mass, allow_missing=False))
+        mass_all = ak.concatenate(mass_list, axis=-1)
+        mass_all = ak.to_numpy(mass_all, allow_missing=False)
+        return mass_all, np.concatenate([events['weight'], events['weight']])
+    bin_edges = np.linspace(0, 2, 101)
+    fig, ax, ax_ratio = do_control_plot(
+        dl_dict,
+        region_name=region_name,
+        func_get_variable=get_lead_visible_mass,
+        bin_edges=bin_edges,
+        x_label='Invariant Mass of Lead Visible System [GeV]',
+        title='Control Plot: Invariant Mass of Lead Visible System',
+        luminosity=luminosity, normalize=normalize, log_scale=True,
+    )
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/control_plot_lead_visible_mass.png")
+
 
 def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_name="pion", log_scale=True):
-
-    make_control_plots_tautau(dl_dict, luminosity, normalize, output_dir, region_name=region_name, log_scale=log_scale)
-
     # plot pdg id for charged particles
     # for better visualization, first map others, pi, el, mu to 0, 1, 2, 3, then plot histogram with x-ticks showing the mapping
     map_pdgId = {
@@ -469,7 +491,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
         hpcNumLayers_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
             tmp_events = events[events[f'lead_{hemisphere_id}_is_pion'] == 1]
-            lead_pion_hpcNumLayers = ak.to_numpy(tmp_events['Part_hpcNumLayers'][tmp_events[f'is_lead_{hemisphere_id}'] == 1], allow_missing=False)
+            lead_pion_hpcNumLayers = ak.to_numpy(ak.firsts(tmp_events['Part_hpcNumLayers'][tmp_events[f'is_lead_{hemisphere_id}'] == 1]), allow_missing=False)
             lead_pion_hpcNumLayers = lead_pion_hpcNumLayers.flatten()
             hpcNumLayers_list.append(lead_pion_hpcNumLayers)
         hpcNumLayers_all = np.concatenate(hpcNumLayers_list)
@@ -495,7 +517,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
         dr_list = []
         weight_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-            tmp_events = events[events[f'has_pion_photon_pair_{hemisphere_id}'] == 1]
+            tmp_events = events[events[f'num_photon_near_lead_{hemisphere_id}'] > 0]
             pion_p4 = tmp_events[f'lead_{hemisphere_id}_p4']
             photon_mask = tmp_events[f'is_photon_near_lead_{hemisphere_id}'] == 1
             photon_p4 = tmp_events['Part_p4'][photon_mask]
@@ -553,7 +575,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
         mass_list = []
         weight_list = []
         for hemisphere, hemisphere_id in [(1, 'a'), (-1, 'b')]:
-            tmp_events = events[events[f'has_pion_photon_pair_{hemisphere_id}'] == 1]
+            tmp_events = events[events[f'num_photon_near_lead_{hemisphere_id}'] > 0]
             pion_p4 = tmp_events[f'lead_{hemisphere_id}_p4']
             photon_mask = tmp_events[f'is_photon_near_lead_{hemisphere_id}'] == 1
             photon_p4 = tmp_events['Part_p4'][photon_mask]
@@ -561,9 +583,7 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
             system_p4 = pion_p4 + sum_photon_p4
             pair_mass = system_p4.mass
             mass_list.append(ak.to_numpy(ak.flatten(pair_mass, axis=-1), allow_missing=False))
-            broad_casted_weights = ak.broadcast_arrays(tmp_events['weight'], tmp_events['Part_p4'])[0]
-            weight = broad_casted_weights[photon_mask]
-            weight_list.append(ak.to_numpy(ak.flatten(weight, axis=-1), allow_missing=False))
+            weight_list.append(ak.to_numpy(tmp_events['weight'], allow_missing=False))
         mass_all = ak.concatenate(mass_list, axis=-1)
         mass_all = ak.to_numpy(mass_all, allow_missing=False)
         return mass_all, np.concatenate(weight_list)
@@ -582,107 +602,181 @@ def make_control_plots_pion(dl_dict, luminosity, normalize, output_dir, region_n
 
 
 def make_control_plots_vb0(dl_dict, luminosity, normalize, output_dir, region_name="pion", log_scale=True):
-
-    # invariant mass of lead visible p4
-    def get_lead_visible_mass(events):
-        if len(events) == 0:
-            return np.array([])
-        mass_list = []
-        for key in ['a', 'b']:
-            lead_vis_p4 = events[f'lead_{key}_visible_p4']
-            mass = lead_vis_p4.mass
-            mass_list.append(ak.to_numpy(mass, allow_missing=False))
-        mass_all = ak.concatenate(mass_list, axis=-1)
-        mass_all = ak.to_numpy(mass_all, allow_missing=False)
-        return mass_all, np.concatenate([events['weight'], events['weight']])
-    bin_edges = np.linspace(0, 2, 101)
-    fig, ax, ax_ratio = do_control_plot(
-        dl_dict,
-        region_name=region_name,
-        func_get_variable=get_lead_visible_mass,
-        bin_edges=bin_edges,
-        x_label='Invariant Mass of Lead Visible System [GeV]',
-        title='Control Plot: Invariant Mass of Lead Visible System',
-        luminosity=luminosity, normalize=normalize, log_scale=True,
-    )
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/control_plot_lead_visible_mass.png")
-
     """
         plot some post-nutrino reco variables
     """
     # check if missing mass reco variable is available
-    if all(['lead_a_missing_p4' in dl.data[region_name].fields for dl in dl_dict.values()]):
-        # residual missing pt, E, and mass after accounting all visible particles and the lead neutrino reco
-        def get_residual_missing(events):
-            residual_px = events['missing_p4'].px - events['lead_a_missing_p4'].px - events['lead_b_missing_p4'].px
-            residual_py = events['missing_p4'].py - events['lead_a_missing_p4'].py - events['lead_b_missing_p4'].py
-            residual_pz = events['missing_p4'].pz - events['lead_a_missing_p4'].pz - events['lead_b_missing_p4'].pz
-            residual_E = events['missing_p4'].E - events['lead_a_missing_p4'].E - events['lead_b_missing_p4'].E
+    if not (all(['lead_a_missing_p4' in dl.data[region_name].fields for dl in dl_dict.values()])):
+        print("Missing neutrino reco variables, skip control plots.")
+    else:
+        # plot reconstructed tau p4
+        for var in ['pt', 'theta', 'phi', 'E', 'M', 'pz']:
+            def get_reco_tau(events):
+                reco_tau_var_list = []
+                flag_valid = events['flags_valid'] > 0
+                weight = events['weight'][flag_valid]
+                for key in ['a', 'b']:
+                    # reco_tau_p4 = events[f'reco_tau_{key}_p4']
+                    reco_tau_var = ak.to_numpy(getattr(events[f'reco_tau_{key}_p4'], var)[flag_valid], allow_missing=False)
+                    reco_tau_var_list.append(reco_tau_var)
+                reco_tau_var_all = np.concatenate(reco_tau_var_list, axis=-1)
+                weights = np.concatenate([weight, weight])
+                return reco_tau_var_all, weights
             if var == 'pt':
-                residual_missing_var = np.sqrt(residual_px**2 + residual_py**2)
+                x_label = 'Reconstructed Tau pT [GeV]'
+                title = 'Control Plot: Reconstructed Tau pT'
+                bin_edges = np.linspace(0, 50, 101)
+            elif var == 'theta':
+                x_label = 'Reconstructed Tau Theta [rad]'
+                title = 'Control Plot: Reconstructed Tau Theta'
+                bin_edges = np.linspace(0, np.pi, 101)
+            elif var == 'phi':
+                x_label = 'Reconstructed Tau Phi [rad]'
+                title = 'Control Plot: Reconstructed Tau Phi'
+                bin_edges = np.linspace(-np.pi, np.pi, 101)
             elif var == 'E':
-                residual_missing_var = residual_E
+                x_label = 'Reconstructed Tau E [GeV]'
+                title = 'Control Plot: Reconstructed Tau E'
+                bin_edges = np.linspace(0, 50, 101)
             elif var == 'M':
-                mass2 = residual_E**2 - residual_px**2 - residual_py**2 - residual_pz**2
-                residual_missing_var = np.where(mass2 >= 0, np.sqrt(mass2), -np.sqrt(-mass2)) # handle negative mass^2 due to reco imperfections
+                x_label = 'Reconstructed Tau Mass [GeV]'
+                title = 'Control Plot: Reconstructed Tau Mass'
+                bin_edges = np.linspace(0, 50, 101)
             elif var == 'pz':
-                residual_missing_var = residual_pz
-            residual_missing_var = ak.fill_none(residual_missing_var, 0) # replace None with 0
-            return ak.to_numpy(residual_missing_var, allow_missing=False)
-        scale = 20
-        for var in ['pt', 'E', 'M', 'pz']:
-            if var == 'pt':
-                x_label = 'Residual Missing pT [GeV]'
-                title = 'Control Plot: Residual Missing pT'
-                bin_edges = np.linspace(0, scale, 51)
-            elif var == 'E':
-                x_label = 'Residual Missing E [GeV]'
-                title = 'Control Plot: Residual Missing E'
-                bin_edges = np.linspace(-scale, scale, 51)
-            elif var == 'M':
-                x_label = 'Residual Missing Mass [GeV]'
-                title = 'Control Plot: Residual Missing Mass'
-                bin_edges = np.linspace(-scale, scale, 51)
-            elif var == 'pz':
-                x_label = 'Residual Missing pz [GeV]'
-                title = 'Control Plot: Residual Missing pz'
-                bin_edges = np.linspace(-scale, scale, 51)
+                x_label = 'Reconstructed Tau pz [GeV]'
+                title = 'Control Plot: Reconstructed Tau pz'
+                bin_edges = np.linspace(-50, 50, 101)
             fig, ax, ax_ratio = do_control_plot(
                 dl_dict,
                 region_name=region_name,
-                func_get_variable=get_residual_missing,
+                func_get_variable=get_reco_tau,
                 bin_edges=bin_edges,
                 x_label=x_label,
                 title=title,
                 luminosity=luminosity, normalize=normalize, log_scale=log_scale,
             )
             plt.tight_layout()
-            plt.savefig(f"{output_dir}/control_plot_residual_missing_{var}.png")
+            plt.savefig(f"{output_dir}/control_plot_reco_tau_{var}.png")
+        
+        # plot ditau system
+        for var in ['pt', 'theta', 'phi', 'E', 'M', 'pz']:
+            def get_reco_ditau(events):
+                reco_ditau_var_list = []
+                flag_valid = events['flags_valid'] > 0
+                weight = events['weight'][flag_valid]
+                reco_tau_a_p4 = events[f'reco_tau_a_p4'][flag_valid]
+                reco_tau_b_p4 = events[f'reco_tau_b_p4'][flag_valid]
+                reco_ditau_p4 = reco_tau_a_p4 + reco_tau_b_p4
+                reco_ditau_var = ak.to_numpy(getattr(reco_ditau_p4, var), allow_missing=False)
+                return reco_ditau_var, weight
+            if var == 'pt':
+                x_label = 'Reconstructed Ditau pT [GeV]'
+                title = 'Control Plot: Reconstructed Ditau pT'
+                bin_edges = np.linspace(0, 100, 101)
+            elif var == 'theta':
+                x_label = 'Reconstructed Ditau Theta [rad]'
+                title = 'Control Plot: Reconstructed Ditau Theta'
+                bin_edges = np.linspace(0, np.pi, 101)
+            elif var == 'phi':
+                x_label = 'Reconstructed Ditau Phi [rad]'
+                title = 'Control Plot: Reconstructed Ditau Phi'
+                bin_edges = np.linspace(-np.pi, np.pi, 101)
+            elif var == 'E':
+                x_label = 'Reconstructed Ditau E [GeV]'
+                title = 'Control Plot: Reconstructed Ditau E'
+                bin_edges = np.linspace(0, 100, 101)
+            elif var == 'M':
+                x_label = 'Reconstructed Ditau Mass [GeV]'
+                title = 'Control Plot: Reconstructed Ditau Mass'
+                bin_edges = np.linspace(0, 100, 101)
+            elif var == 'pz':
+                x_label = 'Reconstructed Ditau pz [GeV]'
+                title = 'Control Plot: Reconstructed Ditau pz'
+                bin_edges = np.linspace(-100, 100, 101)
+            fig, ax, ax_ratio = do_control_plot(
+                dl_dict,
+                region_name=region_name,
+                func_get_variable=get_reco_ditau,
+                bin_edges=bin_edges,
+                x_label=x_label,
+                title=title,
+                luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+            )
+            plt.tight_layout()
+            plt.savefig(f"{output_dir}/control_plot_reco_ditau_{var}.png")
 
-    # dR between lead visible system and reconstructed missing momentum
-    def get_dR_lead_visible_missing(events):
-        dR_list = []
-        for key in ['a', 'b']:
-            lead_vis_p4 = events[f'lead_{key}_visible_p4']
-            missing_p4 = events[f'lead_{key}_missing_p4']
-            dR = lead_vis_p4.deltaR(missing_p4)
-            dR_list.append(ak.to_numpy(dR, allow_missing=False))
-        dR_all = ak.concatenate(dR_list, axis=-1)
-        dR_all = ak.to_numpy(dR_all, allow_missing=False)
-        return dR_all, np.concatenate([events['weight'], events['weight']])
-    bin_edges = np.linspace(0, 0.4, 51)
-    fig, ax, ax_ratio = do_control_plot(
-        dl_dict,
-        region_name=region_name,
-        func_get_variable=get_dR_lead_visible_missing,
-        bin_edges=bin_edges,
-        x_label='dR between Lead Visible System and Missing Momentum',
-        title='Control Plot: dR between Lead Visible System and Missing Momentum',
-        luminosity=luminosity, normalize=normalize, log_scale=log_scale,
-    )
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/control_plot_dR_lead_visible_missing.png")
+        # # residual missing pt, E, and mass after accounting all visible particles and the lead neutrino reco
+        # scale = 20
+        # for var in ['pt', 'E', 'M', 'pz']:
+        #     def get_residual_missing(events):
+        #         residual_px = events['missing_p4'].px - events['lead_a_missing_p4'].px - events['lead_b_missing_p4'].px
+        #         residual_py = events['missing_p4'].py - events['lead_a_missing_p4'].py - events['lead_b_missing_p4'].py
+        #         residual_pz = events['missing_p4'].pz - events['lead_a_missing_p4'].pz - events['lead_b_missing_p4'].pz
+        #         residual_E = events['missing_p4'].E - events['lead_a_missing_p4'].E - events['lead_b_missing_p4'].E
+        #         if var == 'pt':
+        #             residual_missing_var = np.sqrt(residual_px**2 + residual_py**2)
+        #         elif var == 'E':
+        #             residual_missing_var = residual_E
+        #         elif var == 'M':
+        #             mass2 = residual_E**2 - residual_px**2 - residual_py**2 - residual_pz**2
+        #             residual_missing_var = np.where(mass2 >= 0, np.sqrt(mass2), -np.sqrt(-mass2)) # handle negative mass^2 due to reco imperfections
+        #         elif var == 'pz':
+        #             residual_missing_var = residual_pz
+        #         residual_missing_var = ak.fill_none(residual_missing_var, 0) # replace None with 0
+        #         return ak.to_numpy(residual_missing_var, allow_missing=False)
+
+        #     if var == 'pt':
+        #         x_label = 'Residual Missing pT [GeV]'
+        #         title = 'Control Plot: Residual Missing pT'
+        #         bin_edges = np.linspace(0, scale, 51)
+        #     elif var == 'E':
+        #         x_label = 'Residual Missing E [GeV]'
+        #         title = 'Control Plot: Residual Missing E'
+        #         bin_edges = np.linspace(-scale, scale, 51)
+        #     elif var == 'M':
+        #         x_label = 'Residual Missing Mass [GeV]'
+        #         title = 'Control Plot: Residual Missing Mass'
+        #         bin_edges = np.linspace(-scale, scale, 51)
+        #     elif var == 'pz':
+        #         x_label = 'Residual Missing pz [GeV]'
+        #         title = 'Control Plot: Residual Missing pz'
+        #         bin_edges = np.linspace(-scale, scale, 51)
+        #     fig, ax, ax_ratio = do_control_plot(
+        #         dl_dict,
+        #         region_name=region_name,
+        #         func_get_variable=get_residual_missing,
+        #         bin_edges=bin_edges,
+        #         x_label=x_label,
+        #         title=title,
+        #         luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+        #     )
+        #     plt.tight_layout()
+        #     plt.savefig(f"{output_dir}/control_plot_residual_missing_{var}.png")
+
+        # dR between lead visible system and reconstructed missing momentum
+        def get_dR_lead_visible_missing(events):
+            dR_list = []
+            events = events[events['flags_valid'] > 0]
+            for key in ['a', 'b']:
+                lead_vis_p4 = events[f'lead_{key}_visible_p4']
+                missing_p4 = events[f'lead_{key}_missing_p4']
+                dR = lead_vis_p4.deltaR(missing_p4)
+                dR_list.append(ak.to_numpy(dR, allow_missing=False))
+            dR_all = ak.concatenate(dR_list, axis=-1)
+            dR_all = ak.to_numpy(dR_all, allow_missing=False)
+            return dR_all, np.concatenate([events['weight'], events['weight']])
+        bin_edges = np.linspace(0, 0.4, 51)
+        fig, ax, ax_ratio = do_control_plot(
+            dl_dict,
+            region_name=region_name,
+            func_get_variable=get_dR_lead_visible_missing,
+            bin_edges=bin_edges,
+            x_label='dR between Lead Visible System and Missing Momentum',
+            title='Control Plot: dR between Lead Visible System and Missing Momentum',
+            luminosity=luminosity, normalize=normalize, log_scale=log_scale,
+        )
+        plt.tight_layout()
+        plt.savefig(f"{output_dir}/control_plot_dR_lead_visible_missing.png")
 
 
 def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_name="pilep", log_scale=True):
@@ -696,10 +790,10 @@ def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_
             flag_b_valid = events['lead_b_is_pion'] == is_pion
             mask_is_lead_a = events['is_lead_a'] == 1
             mask_is_lead_b = events['is_lead_b'] == 1
-            lead_a_E = ak.to_numpy(events['Part_hpcTotalShowerEnergy'][mask_is_lead_a], allow_missing=False)[flag_a_valid]
-            lead_b_E = ak.to_numpy(events['Part_hpcTotalShowerEnergy'][mask_is_lead_b], allow_missing=False)[flag_b_valid]
-            lead_a_p = ak.to_numpy(events['Part_p4'][mask_is_lead_a].p, allow_missing=False)[flag_a_valid]
-            lead_b_p = ak.to_numpy(events['Part_p4'][mask_is_lead_b].p, allow_missing=False)[flag_b_valid]
+            lead_a_E = ak.to_numpy(ak.firsts(events['Part_hpcTotalShowerEnergy'][mask_is_lead_a]), allow_missing=False)[flag_a_valid]
+            lead_b_E = ak.to_numpy(ak.firsts(events['Part_hpcTotalShowerEnergy'][mask_is_lead_b]), allow_missing=False)[flag_b_valid]
+            lead_a_p = ak.to_numpy(ak.firsts(events['Part_p4'][mask_is_lead_a].p), allow_missing=False)[flag_a_valid]
+            lead_b_p = ak.to_numpy(ak.firsts(events['Part_p4'][mask_is_lead_b].p), allow_missing=False)[flag_b_valid]
             lead_a_E_over_p = lead_a_E / (lead_a_p + 1e-10) # avoid division by zero
             lead_b_E_over_p = lead_b_E / (lead_b_p + 1e-10)
             lead_parts_E_over_p = np.concatenate([lead_a_E_over_p, lead_b_E_over_p])
@@ -723,8 +817,8 @@ def make_control_plots_pilep(dl_dict, luminosity, normalize, output_dir, region_
         def get_part_hpcNumLayers(events):
             flag_a_valid = events['lead_a_is_pion'] == is_pion
             flag_b_valid = events['lead_b_is_pion'] == is_pion
-            lead_a_hpcNumLayers = ak.to_numpy(events['Part_hpcNumLayers'][events['is_lead_a'] == 1], allow_missing=False)[flag_a_valid]
-            lead_b_hpcNumLayers = ak.to_numpy(events['Part_hpcNumLayers'][events['is_lead_b'] == 1], allow_missing=False)[flag_b_valid]
+            lead_a_hpcNumLayers = ak.to_numpy(ak.firsts(events['Part_hpcNumLayers'][events['is_lead_a'] == 1]), allow_missing=False)[flag_a_valid]
+            lead_b_hpcNumLayers = ak.to_numpy(ak.firsts(events['Part_hpcNumLayers'][events['is_lead_b'] == 1]), allow_missing=False)[flag_b_valid]
             lead_parts_hpcNumLayers = np.concatenate([lead_a_hpcNumLayers, lead_b_hpcNumLayers])
             weights = np.concatenate([events['weight'], events['weight']])
             return lead_parts_hpcNumLayers, weights
@@ -766,34 +860,33 @@ class ControlPlotProcessor(BaseProcessor):
     def run(self, dl_dict):
         # plot QI observables for hadhad region: verbose level 0
         if self.verbosity >= 0:
-            if 'hadhad' in self.regions:
-                print(f"Processing hadhad region: plotting quantum observables")
-                output_dir_hadhad = f"{self.output_dir}/hadhad/"
-                os.makedirs(output_dir_hadhad, exist_ok=True)
+            for region in self.regions:
+                print(f"Processing {region} region: plotting quantum observables")
+                output_dir = f"{self.output_dir}/{region}/"
+                os.makedirs(output_dir, exist_ok=True)
 
                 make_control_plots_vb0(
                     dl_dict,
                     luminosity=self.luminosity,
                     normalize=self.normalize,
-                    output_dir=output_dir_hadhad,
-                    region_name="hadhad",
+                    output_dir=output_dir,
+                    region_name=region,
                     log_scale=False,
                 )
 
         # common control plots: verbose level 1
         if self.verbosity >= 1:
-            if 'baseline' in self.regions:
-                print(f"Processing tautau region")
-                output_dir_tautau = f"{self.output_dir}/baseline/"
+            for region in self.regions:
+                output_dir_tautau = f"{self.output_dir}/{region}/"
                 os.makedirs(output_dir_tautau, exist_ok=True)
                 make_control_plots_tautau(
-                dl_dict,
-                luminosity=self.luminosity,
-                normalize=self.normalize,
-                output_dir=output_dir_tautau,
-                region_name="baseline",
-            )
-
+                    dl_dict,
+                    luminosity=self.luminosity,
+                    normalize=self.normalize,
+                    output_dir=output_dir_tautau,
+                    region_name=region,
+                    log_scale=False,
+                )
             
             if 'hadhad' in self.regions:
                 print(f"Processing hadhad region")

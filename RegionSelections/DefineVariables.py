@@ -12,6 +12,7 @@ from utils.common_functions import get_p4_from_ak_events, get_color_iterator, ge
             get_all_p4_from_ak_events, cme, rebuild_p4, deltaR_nearby
 from quantum.observables_builder import build_observables, get_analyzing_power_ary
 from NeutrinoReconstructionProcessor import compute_neutrino_momenta
+from mmc.MMC import MMC
 
 
 def define_recon_level_variables(events: ak.Array):
@@ -271,26 +272,55 @@ def define_signal_exclusive_variables(events: ak.Array):
     events['analyzing_power_b'] = neg_power
     events['analyzing_power'] = pos_power * neg_power
 
+    return events
+
+
+def define_region_specific_variables(events: ak.Array):
     """
-        Recon-level neutrino reconstruction  and QI observables
+        Recon-level neutrino reconstruction and QI observables
     """
     reco_vis_positive_p4 = events['lead_a_visible_p4']
     reco_vis_negative_p4 = events['lead_b_visible_p4']
-    zero_mass_grid = np.zeros((len(events), 1))
-    reco_mis_negativep4_array, reco_mis_positivep4_array, flags_valid_array = compute_neutrino_momenta(
-        vis1_p4=reco_vis_negative_p4,
-        vis2_p4=reco_vis_positive_p4,
-        m_miss1_grid=zero_mass_grid,
-        m_miss2_grid=zero_mass_grid,
-    )
-    # reshape from (N,1) to (N,)
-    reco_mis_negativep4_array = ak.firsts(reco_mis_negativep4_array)
-    reco_mis_positivep4_array = ak.firsts(reco_mis_positivep4_array)
-    flags_valid_array = flags_valid_array[:, 0]
+    num_events = len(events)
+    nu_pos_px, nu_pos_py, nu_pos_pz, nu_pos_E = np.zeros(num_events), np.zeros(num_events), np.zeros(num_events), np.zeros(num_events)
+    nu_neg_px, nu_neg_py, nu_neg_pz, nu_neg_E = np.zeros(num_events), np.zeros(num_events), np.zeros(num_events), np.zeros(num_events)
+    flags_valid_array = np.zeros(num_events, dtype=bool)
+    mmc_likelihood = np.zeros(num_events)
 
-    events[f'lead_a_missing_p4'] = reco_mis_positivep4_array
-    events[f'lead_b_missing_p4'] = reco_mis_negativep4_array
+    mask_do_mmc = np.zeros(num_events, dtype=bool)
+    # MMC for certain regions
+    mmc_regions = ['ee', 'mumu', 'emu']
+    mmc_engine = MMC({'mmc_regions': mmc_regions})
+    for region in mmc_regions:
+        mask_region = events[f'{region}_cut']
+        mask_do_mmc = mask_do_mmc | mask_region
+        tmp_v1_p4, tmp_v2_p4, tmp_flag_valid, tmp_mmc_likelihood = mmc_engine.calculate(
+            vis_a_p4=reco_vis_positive_p4[mask_region],
+            vis_b_p4=reco_vis_negative_p4[mask_region],
+            region_name=region,
+            events=events[mask_region]
+        )
+        nu_pos_px[mask_region], nu_pos_py[mask_region], nu_pos_pz[mask_region], nu_pos_E[mask_region] = tmp_v1_p4.px, tmp_v1_p4.py, tmp_v1_p4.pz, tmp_v1_p4.E
+        nu_neg_px[mask_region], nu_neg_py[mask_region], nu_neg_pz[mask_region], nu_neg_E[mask_region] = tmp_v2_p4.px, tmp_v2_p4.py, tmp_v2_p4.pz, tmp_v2_p4.E
+        flags_valid_array[mask_region] = tmp_flag_valid
+        mmc_likelihood[mask_region] = tmp_mmc_likelihood
+
+    # Analytical solution for the rest of the events (non-MMC regions)
+    mask_non_mmc = ~mask_do_mmc
+    if np.any(mask_non_mmc):
+        tmp_v1_p4, tmp_v2_p4, flags_valid_array_non_mmc = compute_neutrino_momenta(
+            vis1_p4=reco_vis_positive_p4[mask_non_mmc],
+            vis2_p4=reco_vis_negative_p4[mask_non_mmc],
+        )
+        nu_pos_px[mask_non_mmc], nu_pos_py[mask_non_mmc], nu_pos_pz[mask_non_mmc], nu_pos_E[mask_non_mmc] = tmp_v1_p4.px, tmp_v1_p4.py, tmp_v1_p4.pz, tmp_v1_p4.E
+        nu_neg_px[mask_non_mmc], nu_neg_py[mask_non_mmc], nu_neg_pz[mask_non_mmc], nu_neg_E[mask_non_mmc] = tmp_v2_p4.px, tmp_v2_p4.py, tmp_v2_p4.pz, tmp_v2_p4.E
+        flags_valid_array[mask_non_mmc] = flags_valid_array_non_mmc
+        mmc_likelihood[mask_non_mmc] = np.ones_like(nu_neg_px[mask_non_mmc])  
+
+    events[f'lead_a_missing_p4'] = vector.zip({"px": nu_pos_px, "py": nu_pos_py, "pz": nu_pos_pz, "E": nu_pos_E})
+    events[f'lead_b_missing_p4'] = vector.zip({"px": nu_neg_px, "py": nu_neg_py, "pz": nu_neg_pz, "E": nu_neg_E})
     events['flags_valid'] = flags_valid_array
+    events['mmc_likelihood'] = mmc_likelihood
 
     for key in ['a', 'b']:
         events[f'reco_tau_{key}_p4'] = events[f'lead_{key}_visible_p4'] + events[f'lead_{key}_missing_p4']

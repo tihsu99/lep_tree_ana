@@ -21,6 +21,8 @@ def get_analyzing_power_ary():
 
 def get_mean_and_err_of_mean(x, weights=None, err=None):
     weights = weights if weights is not None else np.ones_like(x)
+    if weights.sum() == 0:
+        return 0, 0
     err = err if err is not None else weights
     mean = np.average(x, weights=weights)
     err_of_mean = np.sqrt(np.sum( ((x - mean) / np.sum(weights) * err)**2))

@@ -1,12 +1,8 @@
 GlobalConfigs:
   default_output_dir: "./20260413-baseline"
-  region_of_interest: &RegionName "baseline"
+  region_of_interest: &RegionName "hadhad"
   load_regions:
     - *RegionName
-    - "hadhad"
-    - "ee"
-    - "mumu"
-    - "emu"
   verbosity: 1
   luminosity: &Luminosity 46.3 # pb^-1
   # Ztautau sample can be further split categorizes below
@@ -15,10 +11,6 @@ GlobalConfigs:
     Ztautau_pirho: [12, 21]
     Ztautau_rhorho: [22]
     Ztautau_lephad: [13, 31, 14, 41, 23, 24, 42, 32]
-    Ztautau_ee: [33]
-    Ztautau_mumu: [44]
-    Ztautau_emu: [34]
-    Ztautau_mue: [43]
 
 DataLoaders:
   data94:
@@ -60,69 +52,19 @@ DataLoaders:
       - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*03_ttree.root"
 
 Processors:
-  # TruthMatchProcessor:
-  #   output_dir_name: "truth_match_pion"
-  #   target_recon_particle: "pion"
-  #   dl_to_load: 
-  #     - Ztautau_pipi
-  #     - Ztautau_pirho
-  #     - Ztautau_rhorho
-  #     - Ztautau_pilep
-  #     - Ztautau_leplep
-  #   regions:
-  #     - "pion"
-  # ElTruthMatchProcessor:
-  #   processor_name: "TruthMatchProcessor"
-  #   output_dir_name: "truth_match_el"
-  #   target_recon_particle: "electron"
-  #   dl_to_load: 
-  #     - Ztautau_pilep
-  #     - Ztautau_leplep
-  #   regions:
-  #     - "pion"
-  # MuonTruthMatchProcessor:
-  #   processor_name: "TruthMatchProcessor"
-  #   output_dir_name: "truth_match_mu"
-  #   target_recon_particle: "muon"
-  #   dl_to_load: 
-  #     - Ztautau_pilep
-  #     - Ztautau_leplep
-  #   regions:
-  #     - "pion"
   NeutrinoReconstructionProcessor:
     output_dir_name: "neutrino_reco"
-    mmc_regions: ["ee", "mumu", "emu"]
+    mmc_regions: []
     regions:
       - hadhad
-      - ee
-      - mumu
-      - emu
 
   QIProcessor:
     output_dir_name: "QI_analysis"
     dict_region_to_signals:
       hadhad: ["Ztautau_pipi", "Ztautau_pirho", "Ztautau_rhorho"]
-      ee: ["Ztautau_ee"]
-      mumu: ["Ztautau_mumu"]
-      emu: ["Ztautau_emu", "Ztautau_mue"]
 
   ControlPlotProcessor:
     output_dir_name: "control_plots"
     regions:
       - *RegionName
       - "hadhad"
-      - "ee"
-      - "mumu"
-      - "emu"
-
-  # IDAnaProcessor:
-  #   output_dir_name: "ID_analysis"
-  #   targeted_recon_pdgId: 
-  #     - 41
-  #     # - 6
-  #     # - 2
-  #   regions:
-  #     # - "pipi"
-  #     # - "leplep"
-  #     - "pipiLoose"
-  #     # - "raw"
