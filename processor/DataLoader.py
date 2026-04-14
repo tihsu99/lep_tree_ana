@@ -66,8 +66,8 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
         flag_passes = selection_results[cut_name] & flag_passes_baseline
         filtered_events_dict[channel] = raw_events[flag_passes]
 
-    if is_Ztautau:
-        raw_events = DefineVariables.define_region_specific_variables(raw_events)
+    # Store the raw events with all the defined variables 
+    filtered_events_dict['raw'] = raw_events
 
     return filtered_events_dict, filter_log_dict
 
@@ -243,6 +243,11 @@ class DataLoader:
                 self.data[key]['initial_total_num_events'] = initial_total_num_events
                 self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
                 self.data[key]['weight'] = self.weight * ak.ones_like(self.data[key]['evtNumber'], dtype=np.float32)
+
+            # reconstruct neutrinos of Ztautau raw events for later use in unfolding
+            if self.is_Ztautau:
+                raw_events = self.data['raw']
+                self.data['raw'] = DefineVariables.define_region_specific_variables(raw_events)
 
         # Log filter results
         if self.filter_results['initial_total_num_events'] > 0:

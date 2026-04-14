@@ -7,7 +7,7 @@ GlobalConfigs:
     - "ee"
     - "mumu"
     - "emu"
-  verbosity: 0
+  verbosity: 1
   luminosity: &Luminosity 46.3 # pb^-1
   # Ztautau sample can be further split categorizes below
   signal_categories:
@@ -93,7 +93,6 @@ Processors:
     output_dir_name: "neutrino_reco"
     mmc_regions: ["ee", "mumu", "emu"]
     regions:
-      - *RegionName
       - hadhad
       - ee
       - mumu
@@ -102,7 +101,6 @@ Processors:
   QIProcessor:
     output_dir_name: "QI_analysis"
     dict_region_to_signals:
-      *RegionName: ["Ztautau_pipi", "Ztautau_ee", "Ztautau_emu", "Ztautau_mumu"]
       hadhad: ["Ztautau_pipi", "Ztautau_pirho", "Ztautau_rhorho"]
       ee: ["Ztautau_ee"]
       mumu: ["Ztautau_mumu"]
