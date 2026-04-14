@@ -623,17 +623,19 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                 cur_output_dir = f"{self.output_dir}/{region_name}/"
                 output_file = f"{cur_output_dir}/{dl_name}_reconstructed_neutrinos.parquet"
 
-                solution_loaded = False
+                # Check if output file already exists and has the necessary fields; if so, load it to skip reconstruction
                 if os.path.exists(output_file):
                     events = ak.from_parquet(output_file)
-                    solution_loaded = True
-                    for key in self.fields_to_add:
-                        if key not in events.fields or len(events[key]) != len(dl.data[region_name]):
-                            print(f"Field {key} not found or length mismatch in loaded file for {dl_name} in region {region_name}. Recomputing neutrino reconstruction.")
-                            solution_loaded = False
-                            break
-                        if key.endswith('_p4') and len(events)>0:
-                            events[key] = rebuild_p4(events[key])
+
+                # The events may already contain reco variables
+                solution_loaded = True
+                for key in self.fields_to_add:
+                    if key not in events.fields or len(events[key]) != len(dl.data[region_name]):
+                        print(f"Field {key} not found or length mismatch in loaded file for {dl_name} in region {region_name}. Recomputing neutrino reconstruction.")
+                        solution_loaded = False
+                        break
+                    if key.endswith('_p4') and len(events)>0:
+                        events[key] = rebuild_p4(events[key])
 
                 if not solution_loaded:
                     if not os.path.exists(cur_output_dir):
