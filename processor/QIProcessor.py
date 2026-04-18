@@ -53,9 +53,8 @@ def binning_variable(var, bin_edges):
 def get_event_category_from_signal_name(signal_name: str):
     signal_name = signal_name.replace('Ztautau_', '').lower()
     dict_signal_to_category = {}
-    name_to_id = zip(['pi', 'rho', 'e', 'mu'], [1, 2, 3, 4])
-    for pos_name, pos_id in name_to_id:
-        for neg_name, neg_id in name_to_id:
+    for pos_name, pos_id in zip(['pi', 'rho', 'e', 'mu'], [1, 2, 3, 4]):
+        for neg_name, neg_id in zip(['pi', 'rho', 'e', 'mu'], [1, 2, 3, 4]):
             dict_signal_to_category[f"{pos_name}{neg_name}"] = pos_id * 10 + neg_id
     event_category = dict_signal_to_category.get(signal_name, -1)  # default to -1 if signal name not found
     return event_category
