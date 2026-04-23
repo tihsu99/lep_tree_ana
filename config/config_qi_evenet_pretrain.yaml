@@ -1,7 +1,8 @@
 GlobalConfigs:
-  default_output_dir: "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-pretrain/qi-export/evenet_pretrain"
-  region_of_interest: &RegionName "Ztautau_pipi"
+  default_output_dir: "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-pretrain/qi-export"
+  region_of_interest: &RegionName "raw"
   load_regions:
+    - "raw"
     - "Ztautau_pipi"
     - "Ztautau_pirho"
     - "Ztautau_pie"
