@@ -1,0 +1,107 @@
+import numpy as np
+import vector
+import awkward as ak
+import h5py
+import os
+from mmc.mmc_diunknown import MMCDiUnknown 
+from mmc.MMC_util import parallel_calculation
+from utils.common_functions import cme
+
+def load_h5_group(filepath, group_name):
+    if not filepath or not os.path.exists(filepath):
+        raise FileNotFoundError(f"PDF file missing: {filepath}")
+    with h5py.File(filepath, "r") as f:
+        if group_name in f:
+            grp = f[group_name]
+            return {k: grp[k][:] for k in grp.keys()}
+        raise KeyError(f"Could not find '{group_name}' in {filepath}")
+
+class MMC:
+    def __init__(self, config):
+        self.config = config
+        self.mmc_regions = self.config.get('mmc_regions', [])
+        self.mmc_workers = self.config.get('mmc_workers', 4)
+        
+        self.pdfs = {}
+        if len(self.mmc_regions) > 0:
+            this_dir = os.path.dirname(os.path.abspath(__file__))
+            default_pdf_path = os.path.join(this_dir, 'mmc_lep_lep_parameters.h5')
+            pdf_path = self.config.get('mmc_pdf_path', default_pdf_path)
+            print(f"[MMC] Loading Master PDF parameters from {pdf_path}...")
+            self.pdfs['electron'] = load_h5_group(pdf_path, 'electron')
+            self.pdfs['muon'] = load_h5_group(pdf_path, 'muon')
+
+    def calculate(self, vis_a_p4, vis_b_p4, region_name, events):
+        """
+        Executes the MMC calculation dynamically and returns reconstructed neutrino objects.
+        """
+        num_events = len(events)
+        
+        # Initialize output arrays
+        nu_a_px, nu_a_py, nu_a_pz, nu_a_E = np.zeros(num_events), np.zeros(num_events), np.zeros(num_events), np.zeros(num_events)
+        nu_b_px, nu_b_py, nu_b_pz, nu_b_E = np.zeros(num_events), np.zeros(num_events), np.zeros(num_events), np.zeros(num_events)
+        mmc_likelihood = np.zeros(num_events)
+
+        masks = []
+        pdf_list = []
+
+        # Setup configurations based on region
+        if region_name == 'ee':
+            masks = [np.ones(num_events, dtype=bool)]
+            pdf_list = [(self.pdfs['electron'], self.pdfs['electron'])]
+        elif region_name == 'mumu':
+            masks = [np.ones(num_events, dtype=bool)]
+            pdf_list = [(self.pdfs['muon'], self.pdfs['muon'])]
+        elif region_name == 'emu':
+            is_a_e = ak.to_numpy(events['lead_a_is_electron'])
+            is_a_mu = ak.to_numpy(events['lead_a_is_muon'])
+            masks = [is_a_e, is_a_mu]
+            pdf_list = [
+                (self.pdfs['electron'], self.pdfs['muon']),
+                (self.pdfs['muon'], self.pdfs['electron'])
+            ]
+        else:
+            raise ValueError(f"Unknown region {region_name}")
+
+        phi_grid_pts = 50
+        theta_grid_pts = 50
+
+        # Harmonized execution loop
+        for mask, pdfs in zip(masks, pdf_list):
+            if not np.any(mask):
+                continue
+                
+            engine = MMCDiUnknown(
+                hist_array_1=pdfs[0], hist_array_2=pdfs[1], sqrt_s=cme,
+                phi_grid_points=phi_grid_pts, theta_grid_points=theta_grid_pts,
+                phi_search_range=0.3, theta_search_range=0.3
+            )
+            
+            # Notice how we pass vis_a_p4[mask] directly without recreating it!
+            n1, n2, likelihood = parallel_calculation(
+                engine, vis_a_p4[mask], vis_b_p4[mask], num_workers=self.mmc_workers
+            )
+            
+            # Map the results back to the original array sizing using the mask
+            nu_a_px[mask], nu_a_py[mask], nu_a_pz[mask], nu_a_E[mask] = n1.px, n1.py, n1.pz, n1.E
+            nu_b_px[mask], nu_b_py[mask], nu_b_pz[mask], nu_b_E[mask] = n2.px, n2.py, n2.pz, n2.E
+            mmc_likelihood[mask] = likelihood
+
+        # Zip final contiguous arrays
+        reco_mis_positivep4 = vector.zip({
+            "px": np.ascontiguousarray(nu_a_px), 
+            "py": np.ascontiguousarray(nu_a_py), 
+            "pz": np.ascontiguousarray(nu_a_pz), 
+            "E":  np.ascontiguousarray(nu_a_E)
+        })
+        reco_mis_negativep4 = vector.zip({
+            "px": np.ascontiguousarray(nu_b_px), 
+            "py": np.ascontiguousarray(nu_b_py), 
+            "pz": np.ascontiguousarray(nu_b_pz), 
+            "E":  np.ascontiguousarray(nu_b_E)
+        })
+
+        mmc_likelihood = np.ascontiguousarray(mmc_likelihood)
+        flags_valid = np.ascontiguousarray(np.where((mmc_likelihood > 0) & np.isfinite(mmc_likelihood), 1, 0))
+        
+        return reco_mis_positivep4, reco_mis_negativep4, flags_valid, mmc_likelihood

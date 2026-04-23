@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
     import logging
     loglevel = logging.getLevelName(args.log_level.upper())
-    logging.basicConfig(level = loglevel, format = ">>> [%(levelname)s] %(module).s%(name)s: %(message)s")
+    logging.basicConfig(level = loglevel, format = ">>> [%(levelname)s] %(module)s.%(name)s: %(message)s")
     log = logging.getLogger("LepAna")
 
     analysis_config = read_yaml(args.config_yaml)
@@ -55,15 +55,16 @@ if __name__ == "__main__":
         dl_config_with_globals = copy.deepcopy(global_configs)
         dl_config_with_globals.update(dl_config)
         dl = DataLoader.DataLoader(dl_config_with_globals, output_dir=f"{output_dir}/{key}/")
-        dl.postprocess()
         data_loaders[key] = dl
 
-    data_loaders = {
-        'data94': data_loaders['data94'],
-        'Zqq': data_loaders['Zqq'],
-        'Zll': data_loaders['Zll'],
-        'Ztautau': data_loaders['Ztautau'],
-    }
+    ordered_loaders = {}
+    for key in ['data94', 'Zqq', 'Zll', 'Ztautau']:
+        if key not in data_loaders:
+            log.warning(f"Data loader for {key} not found in config, skipping.")
+        else:
+            log.info(f"Data loader for {key} loaded with {len(data_loaders[key].data)} regions.")
+            ordered_loaders[key] = data_loaders[key]
+    data_loaders = ordered_loaders
 
     # split signal categories from Ztautau data loader if specified
     if global_configs.get("signal_categories", None) is not None:
@@ -77,20 +78,43 @@ if __name__ == "__main__":
             if type(cat_list) is int or type(cat_list) is str:
                 cat_list = [int(cat_list)]
             dl_cat = copy.deepcopy(ztautau_dl)
+            dl_cat.name = cat_name
             for region, events in ztautau_dl.data.items():
-                mask_cat = ak.zeros_like(events['event_category'], dtype=bool)
-                for cat in cat_list:
-                    mask_cat = mask_cat | (events['event_category'] == cat)
+                mask_cat = np.isin(events['event_category'], cat_list)
                 cat_events = events[mask_cat]
                 other_events = events[~mask_cat]
 
                 dl_cat.data[region] = cat_events
                 ztautau_dl.data[region] = other_events
             split_ztautau_dls[cat_name] = dl_cat
+        ztautau_dl.name = "Ztautau_others"
         split_ztautau_dls['Ztautau_others'] = ztautau_dl
 
         data_loaders = {**data_loaders, **split_ztautau_dls}
 
+    # conduct postprocessing for all data loaders (e.g. define weights)
+    for dl in data_loaders.values():
+        dl.postprocess()
+
+    # record the number of events in each data loader after splitting
+    region_names = list(data_loaders.values())[0].data.keys()
+    with open(f"{output_dir}/yields.txt", "w") as f:
+        for region in region_names:
+            num_data, sum_MC_yields = 0, 0
+            f.write(f"Region: {region}\n")
+            for dl_name, dl in data_loaders.items():
+                yields = ak.sum(dl.data[region]['weight'])
+                f.write(f"  {dl_name}: {yields:.4f}\n")
+                log.info(f"Yield for {dl_name} in region {region}: {yields:.4f}")
+                if dl.is_data:
+                    num_data += yields
+                else:
+                    sum_MC_yields += yields
+            f.write(f"  Total MC: {sum_MC_yields:.4f}\n")
+            f.write(f"  Data/MC: {num_data/sum_MC_yields:.4f}\n")
+            log.info(f"Data/MC ratio in region {region}: {num_data/sum_MC_yields:.4f}")
+            f.write("\n")
+        
 
     for processor_title, processor_config in analysis_config['Processors'].items():
         processor_name = processor_config.pop("processor_name", processor_title)
