@@ -1,0 +1,84 @@
+GlobalConfigs:
+  default_output_dir: "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-scratch/qi-export"
+  region_of_interest: &RegionName "Ztautau_pipi"
+  load_regions:
+    - "Ztautau_pipi"
+    - "Ztautau_pirho"
+    - "Ztautau_pie"
+    - "Ztautau_pimu"
+    - "Ztautau_rhoe"
+    - "Ztautau_rhomu"
+    - "Ztautau_rhorho"
+    - "Ztautau_ee"
+    - "Ztautau_mumu"
+    - "Ztautau_emu"
+  verbosity: 1
+  luminosity: &Luminosity 46.3
+  signal_categories:
+    Ztautau_pipi: [11]
+    Ztautau_pirho: [12]
+    Ztautau_rhopi: [21]
+    Ztautau_pie: [13]
+    Ztautau_epi: [31]
+    Ztautau_pimu: [14]
+    Ztautau_mupi: [41]
+    Ztautau_rhoe: [23]
+    Ztautau_erho: [32]
+    Ztautau_rhomu: [24]
+    Ztautau_murho: [42]
+    Ztautau_rhorho: [22]
+    Ztautau_ee: [33]
+    Ztautau_mumu: [44]
+    Ztautau_emu: [34]
+    Ztautau_mue: [43]
+
+DataLoaders:
+  data94:
+    name: "data94"
+    tree_name: "t"
+    is_data: true
+    is_signal: false
+    input_files:
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-scratch/qi-export/data94/filtered___raw.parquet"
+
+  Ztautau:
+    name: "Ztautau"
+    tree_name: "t"
+    is_data: false
+    is_signal: false
+    norm_factor: 1458.9
+    input_files:
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-scratch/qi-export/Ztautau/filtered___raw.parquet"
+
+  Zll:
+    name: "Zll"
+    tree_name: "t"
+    is_data: false
+    is_signal: false
+    norm_factor: 2844.4
+    input_files:
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-scratch/qi-export/Zll/filtered___raw.parquet"
+
+  Zqq:
+    name: "Zqq"
+    tree_name: "t"
+    is_data: false
+    is_signal: false
+    norm_factor: 30511.2
+    input_files:
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-scratch/qi-export/Zqq/filtered___raw.parquet"
+
+Processors:
+  QIProcessor:
+    output_dir_name: "QI_analysis"
+    dict_region_to_signals:
+      Ztautau_pipi: ["Ztautau_pipi"]
+      Ztautau_pirho: ["Ztautau_pirho", "Ztautau_rhopi"]
+      Ztautau_pie: ["Ztautau_pie", "Ztautau_epi"]
+      Ztautau_pimu: ["Ztautau_pimu", "Ztautau_mupi"]
+      Ztautau_rhoe: ["Ztautau_rhoe", "Ztautau_erho"]
+      Ztautau_rhomu: ["Ztautau_rhomu", "Ztautau_murho"]
+      Ztautau_rhorho: ["Ztautau_rhorho"]
+      Ztautau_ee: ["Ztautau_ee"]
+      Ztautau_mumu: ["Ztautau_mumu"]
+      Ztautau_emu: ["Ztautau_emu", "Ztautau_mue"]
