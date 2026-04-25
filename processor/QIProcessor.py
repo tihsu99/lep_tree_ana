@@ -91,8 +91,7 @@ class QIProcessor(BaseProcessor):
         for signal_name in self.dict_region_to_signals.get(region, []):
             # mask for truth region and analysis region
             mask_truth_region = raw_events['truth_QI_region'] == 1
-            # mask_analysis_region = (raw_events[f'{region}_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['theta_cm']*2/np.pi > 0.6)
-            mask_analysis_region = (raw_events[f'{region}_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['truth_theta_cm']*2/np.pi > 0.6)
+            mask_analysis_region = (raw_events[f'{region}_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['theta_cm']*2/np.pi > 0.6)
             event_category = get_event_category_from_signal_name(signal_name)
             mask_target_signal = raw_events['event_category'] == event_category
 
