@@ -7,7 +7,7 @@ import vector
 import awkward as ak
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme, load_events_from_parquet, print_and_write_to_opened_file, get_event_category_from_signal_name
 from utils.plotter import do_control_plot
-from quantum.observables_builder import get_observable_names, get_mean_and_err_of_mean, derive_results
+from quantum.observables_builder import get_observable_names, get_mean_and_err_of_mean, derive_results, shift_SDM_element
 import quantum.unfold as unfold
 import ROOT
 
@@ -67,7 +67,9 @@ class QIProcessor(BaseProcessor):
         self.verbosity = config.get('verbosity', 0)
         
         # under development: unfolding results
-        self.path_raw_signal_events = f"{self.config.get('default_output_dir')}/Ztautau/filtered___raw.parquet"
+        default_output_dir = config['default_output_dir']
+        self.path_response_matrices = f"{default_output_dir}/response_matrices/"
+        self.path_raw_signal_events = f"{default_output_dir}/Ztautau/filtered___raw.parquet"
         self.response_matrix = {f"{region}_{signal_name}": {} for region in self.dict_region_to_signals.keys() for signal_name in self.dict_region_to_signals.get(region, [])}
         self.num_bins = 20
         self.bin_edges = np.linspace(-1, 1, self.num_bins + 1)
@@ -76,6 +78,7 @@ class QIProcessor(BaseProcessor):
 
     def initialize(self):
         self.raw_ztautau_events = load_events_from_parquet(self.path_raw_signal_events)
+        self.raw_ztautau_events['weight_nominal'] = self.raw_ztautau_events['weight']  # default 
         self.events_truth_region = self.raw_ztautau_events[(self.raw_ztautau_events['truth_QI_region'] == 1)]
         self.load_response_matrix()
 
@@ -105,7 +108,7 @@ class QIProcessor(BaseProcessor):
                 print(f"Building response matrix for {var}...")
                 binned_var_recon = self.get_binned_observable(var, events).astype(float)
                 binned_var_truth = self.get_binned_observable(f'truth_{var}', events).astype(float)
-                weight = ak.to_numpy(events['weight'], allow_missing=False)
+                weight = ak.to_numpy(events['weight_nominal'], allow_missing=False)
 
                 # set truth (recon) observable to np.nan if the event is outside of the truth (analysis) region
                 binned_var_truth[~mask_truth_region] = np.nan
@@ -114,7 +117,7 @@ class QIProcessor(BaseProcessor):
                 # build response matrix
                 self.response_matrix[f"{region}_{signal_name}"][var] = unfold.build_response(binned_var_recon, binned_var_truth, num_bins=self.num_bins, weight=weight, name=f"{region}_{signal_name}_{var}")
             
-        fout = ROOT.TFile(f"{self.output_dir}/response_{region}.root", "RECREATE")
+        fout = ROOT.TFile(f"{self.path_response_matrices}/response_{region}.root", "RECREATE")
         for signal_name in self.dict_region_to_signals.get(region, []):
             for var in get_observable_names():
                 self.response_matrix[f"{region}_{signal_name}"][var].Write()
@@ -125,7 +128,7 @@ class QIProcessor(BaseProcessor):
         for region in self.dict_region_to_signals.keys():
             signal_names = self.dict_region_to_signals.get(region, [])
             loaded = True
-            file_path = f"{self.output_dir}/response_{region}.root"
+            file_path = f"{self.path_response_matrices}/response_{region}.root"
             if not os.path.exists(file_path):
                 print(f"Response matrix file for {region} not found at {file_path}. Rebuilding all response matrices...")
                 loaded = False
@@ -133,7 +136,7 @@ class QIProcessor(BaseProcessor):
                 fin = ROOT.TFile(file_path, "READ")
                 for signal_name in signal_names:
                     for var in get_observable_names():
-                        if not fin.GetListOfKeys().Contains(f"{signal_name}_{var}"):
+                        if not fin.GetListOfKeys().Contains(f"{region}_{signal_name}_{var}"):
                             print(f"Response matrix for {signal_name} and {var} not found in file. Rebuilding all response matrices...")
                             loaded = False
                             break
@@ -190,6 +193,10 @@ class QIProcessor(BaseProcessor):
 
                 truth_events = self.events_truth_region[self.events_truth_region['event_category'] == event_category] 
                 truth_weight = ak.to_numpy(truth_events['weight'], allow_missing=False)
+                # shift SDM if the recon events are shifted
+                if dl_dict[signal_name].current_variation[0] != 'nominal':
+                    element_name, variation = dl_dict[signal_name].current_variation
+                    truth_weight = shift_SDM_element(truth_events, element_name=element_name, variation=variation)
 
                 # unfold the target variables
                 unfold_histograms = {}
@@ -213,8 +220,8 @@ class QIProcessor(BaseProcessor):
                     truth_histograms[var] = unfold.build_Hist_from_TH1D(h_truth, bin_edges=self.bin_edges)
 
                 # derive quantum results using unfolded histograms
-                analyzing_power_a = events_to_unfold['analyzing_power_a'][0]
-                analyzing_power_b = events_to_unfold['analyzing_power_b'][0] * -1
+                analyzing_power_a = events_to_unfold['analyzing_power_a'][0]*(-1)
+                analyzing_power_b = events_to_unfold['analyzing_power_b'][0]
                 unfolded_BC_matrices, unfolded_quantum_results = derive_results(unfold_histograms, analyzing_power_a=analyzing_power_a, analyzing_power_b=analyzing_power_b)
                 truth_BC_matrices, truth_quantum_results = derive_results(truth_histograms, analyzing_power_a=analyzing_power_a, analyzing_power_b=analyzing_power_b)
                 for res_type, results in zip(['Unfolded', 'Truth'], [unfolded_BC_matrices, truth_BC_matrices]):

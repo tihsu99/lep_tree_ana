@@ -10,7 +10,7 @@ import awkward as ak
 import copy
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
             get_all_p4_from_ak_events, cme, rebuild_p4, load_events_from_parquet
-from quantum.observables_builder import build_observables, get_mean_and_err_of_mean
+from quantum.observables_builder import build_observables, get_mean_and_err_of_mean, shift_SDM_element
 import RegionSelections.DefineVariables as DefineVariables
 import RegionSelections.BaselineSelections as BaselineSelections
 import RegionSelections.HadHadSelections as HadHadSelections
@@ -333,7 +333,10 @@ class DataLoader:
         # define weight for each event
         weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
         for ch, ch_events in self.data.items():
-            ch_events['weight'] = weight * ak.ones_like(ch_events['evtNumber'], dtype=np.float32)
+            ch_events['weight_nominal'] = weight * ak.ones_like(ch_events['evtNumber'], dtype=np.float32)
+            ch_events['weight'] = ch_events['weight_nominal'] # default weight is nominal weight
+        self.current_variation = ('nominal', 0.0)
+
 
         # # test some cuts for hadhad region
         # if 'hadhad' in self.data:
@@ -353,6 +356,22 @@ class DataLoader:
 
         #     self.data['hadhad'] = events[flag]
 
+    def shift_SDM_element(self, element_name, variation):
+        if element_name != 'nominal':
+            for ch, ch_events in self.data.items():
+                new_weight = shift_SDM_element(
+                    events = ch_events,
+                    element_name = element_name,
+                    variation = variation
+                )
+                ch_events['weight'] = new_weight
+        self.current_variation = (element_name, variation)
+
+            
+
+
+
+
 
     def finalize(self):
         log.info("DataLoader finalization complete.")
@@ -363,18 +382,6 @@ if __name__ == "__main__":
     config = {
         "tree_name": "t",
         "input_files": "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251029_Ztautau_singlePionDecay/simana_job_17827112_*_ttree.root",
-        # "input_files": "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251031_Ztautau_singlePi/simana_job_*_ttree.root",
-        # "input_files": "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251031_Ztautau_singlePi/simana_job_17841601_*_ttree.root",
-
-        # "input_files": "/eos/user/c/cmo/project/ZtautauLep/simulation/run/251031_Ztautau_singlePi/merged/simana_ttree.root",
     }
 
     loader = DataLoader(config)
-
-    # import numpy as np
-    # import pandas as pd
-    # # test reading output file
-    # df = pd.read_hdf("filtered_data.h5")
-    # print(df)
-    # ary = np.load("filtered_data_structured.npy", allow_pickle=True).item()
-    # print(ary)
