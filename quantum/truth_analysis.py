@@ -48,7 +48,7 @@ if __name__ == "__main__":
                     continue
                 obs_values = ak.to_numpy(selected_events[obs], allow_missing=False)
                 weights = ak.to_numpy(selected_events['weight'], allow_missing=False)
-                bin_edges = np.linspace(-1, 1, 21)
+                bin_edges = np.linspace(-1, 1, 51)
                 fig, ax = plt.subplots()
                 # get Hist
                 hist_values, _ = np.histogram(obs_values, bins=bin_edges, weights=weights)
@@ -58,8 +58,10 @@ if __name__ == "__main__":
 
                 # plot with error bars
                 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-                ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_values, histtype='step', label='Selected Events', color='black')
-                ax.errorbar(bin_centers, hist_values, yerr=hist_errors, fmt='.', label='Selected Events', color='black')
+                ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_values, histtype='step', color='black')
+                ax.errorbar(bin_centers, hist_values, yerr=hist_errors, fmt='.', color='black')
+                mean, err_of_mean = ob.get_mean_and_err_of_mean(bin_centers, hist_values, hist_errors)
+                ax.axvline(mean, linestyle='--', label=f'Weighted Mean: {mean:.4f} ± {err_of_mean:.4f}')
                 ax.set_xlabel(f'{obs}')
                 ax.set_ylabel('Weighted Counts')
                 ax.set_title(f'{channel_name} Channel: {obs} Distribution')
@@ -72,7 +74,7 @@ if __name__ == "__main__":
             # derive quantum results
             BC_matrices, quantum_results = ob.derive_results(hist_dict, selected_events['analyzing_power_a'][0], selected_events['analyzing_power_b'][0]*-1)
             dict_to_print = {**BC_matrices, **quantum_results}
-            channel_results[channel_name] = {key: value.value for key, value in dict_to_print.items()}
+            channel_results[channel_name] = dict_to_print
             for key, value in dict_to_print.items():
                 nominal, err_up, err_down = value.value, value.err_up, value.err_down
                 print_and_write_to_opened_file(f"    {key}: {nominal:.4f} +{err_up:.4f}/-{err_down:.4f}", f_out)
@@ -92,14 +94,15 @@ if __name__ == "__main__":
             for ax, result_key in zip(axes.flat, page_result_keys):
                 channels = list(channel_results.keys())
                 x_pos = np.arange(len(channels))
-                values = [channel_results[channel][result_key] for channel in channels]
-                values_up = [channel_results[channel][result_key] + dict_to_print[result_key].err_up for channel in channels]
-                values_down = [channel_results[channel][result_key] - dict_to_print[result_key].err_down for channel in channels]
+                values = [channel_results[channel][result_key].value for channel in channels]
+                values_up = [channel_results[channel][result_key].value + channel_results[channel][result_key].err_up for channel in channels]
+                values_down = [channel_results[channel][result_key].value - channel_results[channel][result_key].err_down for channel in channels]
                 ax.errorbar(x_pos, values, yerr=[np.array(values) - np.array(values_down), np.array(values_up) - np.array(values)], fmt='.', label=result_key, color='black', ecolor='black', capsize=3)
 
-                # plot mean and error of mean
-                mean = np.mean(values)
-                mean_err = np.sqrt(np.sum([(dict_to_print[result_key].err_up)**2 for channel in channels])) / len(channels)
+                # plot weighted mean and error of weighted mean. weight is 1/err^2
+                weights = [1/(channel_results[channel][result_key].err_up**2) for channel in channels]
+                mean = np.average(values, weights=weights)
+                mean_err = np.sqrt(1/np.sum(weights))
                 ax.axhspan(mean - mean_err, mean + mean_err, color='grey', alpha=0.2, label='Mean uncertainty')
                 ax.axhline(mean, color='grey', linestyle='--', label=f'Mean: {mean:.4f}±{mean_err:.4f}')
                 ax.set_xlim(-0.5, len(channels) - 0.5)
