@@ -90,15 +90,27 @@ if __name__ == "__main__":
             fig, axes = plt.subplots(n_rows, n_cols, figsize=(8.27, 11.69), squeeze=False)
             page_result_keys = result_keys[page_start:page_start + results_per_page]
             for ax, result_key in zip(axes.flat, page_result_keys):
-                values = [channel_results[channel][result_key] for channel in channel_results]
-                values_up = [channel_results[channel][result_key] + dict_to_print[result_key].err_up for channel in channel_results]
-                values_down = [channel_results[channel][result_key] - dict_to_print[result_key].err_down for channel in channel_results]
-                ax.errorbar(channel_results.keys(), values, yerr=[np.array(values) - np.array(values_down), np.array(values_up) - np.array(values)], fmt='o', label=result_key, color='black', ecolor='black', capsize=3)
+                channels = list(channel_results.keys())
+                x_pos = np.arange(len(channels))
+                values = [channel_results[channel][result_key] for channel in channels]
+                values_up = [channel_results[channel][result_key] + dict_to_print[result_key].err_up for channel in channels]
+                values_down = [channel_results[channel][result_key] - dict_to_print[result_key].err_down for channel in channels]
+                ax.errorbar(x_pos, values, yerr=[np.array(values) - np.array(values_down), np.array(values_up) - np.array(values)], fmt='.', label=result_key, color='black', ecolor='black', capsize=3)
+
+                # plot mean and error of mean
+                mean = np.mean(values)
+                mean_err = np.sqrt(np.sum([(dict_to_print[result_key].err_up)**2 for channel in channels])) / len(channels)
+                ax.axhspan(mean - mean_err, mean + mean_err, color='grey', alpha=0.2, label='Mean uncertainty')
+                ax.axhline(mean, color='grey', linestyle='--', label=f'Mean: {mean:.4f}±{mean_err:.4f}')
+                ax.set_xlim(-0.5, len(channels) - 0.5)
+                ax.set_xticks(x_pos)
+                ax.set_xticklabels(channels)
                 ax.set_xlabel('Decay Channel', fontsize=8)
                 ax.set_ylabel('Value', fontsize=8)
                 ax.set_title(result_key, fontsize=9)
                 ax.tick_params(axis='x', labelrotation=45, labelsize=7)
                 ax.tick_params(axis='y', labelsize=7)
+                ax.grid(axis='y', linestyle=':', linewidth=0.5, alpha=0.5)
                 ax.legend(fontsize=7)
             for ax in axes.flat[len(page_result_keys):]:
                 ax.axis('off')
