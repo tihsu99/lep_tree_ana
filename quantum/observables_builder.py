@@ -13,11 +13,21 @@ from utils.common_functions import get_p4_from_ak_events, get_sum_p4_from_ak_eve
 
 Hist = namedtuple('Hist', ['bin_edges', 'values', 'errors'])
 ValueWithUncertainty = namedtuple('ValueWithUncertainty', ['value', 'err_up', 'err_down'])
-
+AnalyzingPowerAry = np.array([0, 1, 0.41, -0.33, -0.34, 0]) # order: [notTauDecay, pi, rho, el, mu, others]
 
 def get_analyzing_power_ary():
     # order: [notTauDecay, pi, rho, el, mu, others]
-    return np.array([0, 1, 0.41, -0.33, -0.34, 0])
+    return AnalyzingPowerAry
+
+
+def reweight_correlation(ary_observable, ary_spin_analyzing_power, weight, param_original, param_target):
+    assert len(ary_observable) == len(weight)
+    assert len(ary_observable) == len(ary_spin_analyzing_power)
+
+    scale_factor = (1 + param_target * ary_spin_analyzing_power * ary_observable) / (1 + param_original * ary_spin_analyzing_power * ary_observable)
+    new_weight = weight * scale_factor
+    return new_weight
+
 
 def get_mean_and_err_of_mean(x, weights=None, err=None):
     weights = weights if weights is not None else np.ones_like(x)
