@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import os
 import vector
 import awkward as ak
-from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme, load_events_from_parquet, print_and_write_to_opened_file
+from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme, load_events_from_parquet, print_and_write_to_opened_file, get_event_category_from_signal_name
 from utils.plotter import do_control_plot
 from quantum.observables_builder import get_observable_names, get_mean_and_err_of_mean, derive_results
 import quantum.unfold as unfold
@@ -50,16 +50,6 @@ def binning_variable(var, bin_edges):
     return binned_var
 
 
-def get_event_category_from_signal_name(signal_name: str):
-    signal_name = signal_name.replace('Ztautau_', '').lower()
-    dict_signal_to_category = {}
-    for pos_name, pos_id in zip(['pi', 'rho', 'e', 'mu'], [1, 2, 3, 4]):
-        for neg_name, neg_id in zip(['pi', 'rho', 'e', 'mu'], [1, 2, 3, 4]):
-            dict_signal_to_category[f"{pos_name}{neg_name}"] = pos_id * 10 + neg_id
-    event_category = dict_signal_to_category.get(signal_name, -1)  # default to -1 if signal name not found
-    return event_category
-
-
 class QIProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
         """
@@ -101,7 +91,8 @@ class QIProcessor(BaseProcessor):
         for signal_name in self.dict_region_to_signals.get(region, []):
             # mask for truth region and analysis region
             mask_truth_region = raw_events['truth_QI_region'] == 1
-            mask_analysis_region = (raw_events[f'{region}_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['theta_cm']*2/np.pi > 0.6)
+            # mask_analysis_region = (raw_events[f'{region}_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['theta_cm']*2/np.pi > 0.6)
+            mask_analysis_region = (raw_events[f'{region}_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['truth_theta_cm']*2/np.pi > 0.6)
             event_category = get_event_category_from_signal_name(signal_name)
             mask_target_signal = raw_events['event_category'] == event_category
 
