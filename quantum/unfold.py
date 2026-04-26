@@ -80,6 +80,7 @@ def plot_unfolded_results(hUnfold, save_path, h_truth=None, h_reco=None, var_nam
         legend.AddEntry(h_truth, "Truth", "l")
 
 
+    hUnfold.Draw("SAME HIST E1") # redraw unfolded histogram to make sure it's on top of the legend
     legend.Draw("SAME")
 
     # draw ratio plot if truth is provided

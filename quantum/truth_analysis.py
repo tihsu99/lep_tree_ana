@@ -8,7 +8,7 @@ from utils.common_functions import print_and_write_to_opened_file, get_event_cat
 
 
 if __name__ == "__main__":
-    input_parquet = '/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/archive/20260413-baseline/Ztautau/filtered___raw.parquet'
+    input_parquet = '/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260426-hadhad/Ztautau/filtered___raw.parquet'
     events = ak.from_parquet(input_parquet)
     output_base_dir = f'example_plots/'
     output_text_file = os.path.join(output_base_dir, 'truth_analysis.txt')
@@ -34,7 +34,7 @@ if __name__ == "__main__":
             # channel selection
             mask = events['event_category'] == event_category
             # phase space selection
-            mask = mask & (events['truth_theta_cm']*2/np.pi > 0.6)
+            mask = mask & (events['truth_theta_cm'] > 0.6) & (events['truth_mtautau'] > 80)
 
             selected_events = events[mask]
             print_and_write_to_opened_file(f"Channel: {channel_name}, Number of selected events: {len(selected_events)}", f_out)

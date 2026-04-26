@@ -626,13 +626,14 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                 output_file = f"{solution_dir}/{dl_name}_reconstructed_neutrinos.parquet"
 
                 # Check if output file already exists and has the necessary fields; if so, load it to skip reconstruction
+                tmp_events = None
                 if os.path.exists(output_file):
                     tmp_events = ak.from_parquet(output_file)
 
                 # The events may already contain reco variables
                 solution_loaded = True
                 for key in self.fields_to_add:
-                    if key not in tmp_events.fields or len(tmp_events[key]) != len(dl.data[region_name]):
+                    if tmp_events is None or key not in tmp_events.fields or len(tmp_events[key]) != len(dl.data[region_name]):
                         print(f"Field {key} not found or length mismatch in loaded file for {dl_name} in region {region_name}. Recomputing neutrino reconstruction.")
                         solution_loaded = False
                         break

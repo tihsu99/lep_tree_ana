@@ -1,5 +1,5 @@
 GlobalConfigs:
-  default_output_dir: "./20260413-baseline"
+  default_output_dir: "./20260426-hadhad"
   region_of_interest: &RegionName "hadhad"
   load_regions:
     - *RegionName
@@ -8,9 +8,10 @@ GlobalConfigs:
   # Ztautau sample can be further split categorizes below
   signal_categories:
     Ztautau_pipi: [11]
-    Ztautau_pirho: [12, 21]
+    Ztautau_pirho: [12]
+    Ztautau_rhopi: [21]
     Ztautau_rhorho: [22]
-    Ztautau_lephad: [13, 31, 14, 41, 23, 24, 42, 32]
+    # Ztautau_lephad: [13, 31, 14, 41, 23, 24, 42, 32]
 
 DataLoaders:
   data94:
@@ -61,10 +62,9 @@ Processors:
   QIProcessor:
     output_dir_name: "QI_analysis"
     dict_region_to_signals:
-      hadhad: ["Ztautau_pipi", "Ztautau_pirho", "Ztautau_rhorho"]
+      hadhad: ["Ztautau_pipi", "Ztautau_pirho", "Ztautau_rhopi", "Ztautau_rhorho"]
 
   ControlPlotProcessor:
     output_dir_name: "control_plots"
     regions:
       - *RegionName
-      - "hadhad"
