@@ -65,6 +65,7 @@ class QIProcessor(BaseProcessor):
         os.makedirs(self.output_dir, exist_ok=True)
         self.dict_region_to_signals = config.get('dict_region_to_signals', {})
         self.verbosity = config.get('verbosity', 0)
+        self.asimov_data = config.get('asimov_data', True)
         
         # under development: unfolding results
         default_output_dir = config['default_output_dir']
@@ -85,7 +86,7 @@ class QIProcessor(BaseProcessor):
     def get_binned_observable(self, var, events):
         var_values = ak.to_numpy(events[var], allow_missing=False)
         binned_var = binning_variable(var_values, self.bin_edges)
-        return binned_var
+        return binned_var.astype(float)
 
     def build_response_matrix(self, region):
         # build response matrix using raw Ztautau events
@@ -94,7 +95,7 @@ class QIProcessor(BaseProcessor):
         for signal_name in self.dict_region_to_signals.get(region, []):
             # mask for truth region and analysis region
             mask_truth_region = raw_events['truth_QI_region'] == 1
-            mask_analysis_region = (raw_events[f'{region}_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['theta_cm']*2/np.pi > 0.6)
+            mask_analysis_region = (raw_events[f'{region}_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['theta_cm'] > 0.6) & (raw_events['mtautau'] > 80)
             event_category = get_event_category_from_signal_name(signal_name)
             mask_target_signal = raw_events['event_category'] == event_category
 
@@ -130,6 +131,7 @@ class QIProcessor(BaseProcessor):
             loaded = True
             file_path = f"{self.path_response_matrices}/response_{region}.root"
             if not os.path.exists(file_path):
+                os.makedirs(self.path_response_matrices, exist_ok=True)
                 print(f"Response matrix file for {region} not found at {file_path}. Rebuilding all response matrices...")
                 loaded = False
             else:
@@ -182,14 +184,34 @@ class QIProcessor(BaseProcessor):
 
                 event_category = get_event_category_from_signal_name(signal_name)
 
-                events_to_unfold = dl_dict[signal_name].data[region]
-                events_to_unfold = events_to_unfold[events_to_unfold['flags_valid'] > 0]  # only unfold valid events
-                events_to_unfold = events_to_unfold[events_to_unfold['theta_cm']*2/np.pi > 0.6] 
-                events_to_unfold = events_to_unfold[events_to_unfold['event_category'] == event_category] # only unfold events in the target signal category
-                if len(events_to_unfold) == 0:
-                    print_and_write_to_opened_file(f"No valid events to unfold for {signal_name} in region {region}. Skipping...", f_out)
-                    continue
-                weight = ak.to_numpy(events_to_unfold['weight'], allow_missing=False)
+                signal_events, background_events, data_events = [], [], []
+                for dl_name, dl in dl_dict.items():
+                    events = dl.data[region]
+                    events = events[events['flags_valid'] > 0]  # only unfold valid events
+                    events = events[events['theta_cm'] > 0.6] 
+                    events = events[events['mtautau'] > 80]
+                    # events = events[events['event_category'] == event_category] # only unfold events in the target signal category
+                    if len(events) == 0:
+                        print(f"No valid events to unfold for {dl_name} in region {region}. Skipping...")
+                        continue
+
+                    is_signal = dl_name == signal_name
+                    is_mc = not dl.is_data
+                    # Categorize MC samples into signal or background
+                    if is_signal:
+                        signal_events.append(events)
+                    elif is_mc:
+                        background_events.append(events)
+                    # Build data container:
+                    # - real data if not using Asimov data
+                    # - all MC components if using Asimov data
+                    if (dl.is_data and not self.asimov_data) or (self.asimov_data and is_mc):
+                        data_events.append(events)
+
+                # weight = ak.to_numpy(events_to_unfold['weight'], allow_missing=False)
+                weight_data = np.concatenate([ak.to_numpy(events['weight'], allow_missing=False) for events in data_events])
+                weight_bkg = np.concatenate([ak.to_numpy(events['weight'], allow_missing=False) for events in background_events])
+                weight_signal = np.concatenate([ak.to_numpy(events['weight'], allow_missing=False) for events in signal_events])
 
                 truth_events = self.events_truth_region[self.events_truth_region['event_category'] == event_category] 
                 truth_weight = ak.to_numpy(truth_events['weight'], allow_missing=False)
@@ -203,10 +225,30 @@ class QIProcessor(BaseProcessor):
                 truth_histograms = {}
                 for var in get_observable_names():
                     print(f"Unfolding {var}...")
-                    var_recon_binned = self.get_binned_observable(var, events_to_unfold)
 
                     # unfold the variable
-                    h_measure = unfold.build_TH1D(f"h_{var}_reco", var_recon_binned, num_bins=self.num_bins, weight=weight)
+                    # get binned_vars and weights for both data and background to be unfolded
+                    binned_var_data = np.concatenate([self.get_binned_observable(var, events) for events in data_events])
+                    h_measure_data = unfold.build_TH1D(f"h_{var}_data", binned_var_data, num_bins=self.num_bins, weight=weight_data)
+
+                    binned_var_bkg = np.concatenate([self.get_binned_observable(var, events) for events in background_events])
+                    h_measure_bkg = unfold.build_TH1D(f"h_{var}_bkg", binned_var_bkg, num_bins=self.num_bins, weight=weight_bkg)
+
+                    # set bin error to sqrt of bin content to mimic Poisson uncertainty for asimov data
+                    if self.asimov_data:
+                        for i in range(1, h_measure_data.GetNbinsX() + 1):
+                            content = h_measure_data.GetBinContent(i)
+                            h_measure_data.SetBinContent(i, content)
+                            error = np.sqrt(content)
+                            h_measure_data.SetBinError(i, error)
+                    h_measure = h_measure_data.Clone(f"h_{var}_measure")
+                    h_measure.Add(h_measure_bkg, -1.0)
+
+                    # # uncomment the following lines to only unfold the signal component (for testing purpose)
+                    # binned_var_signal = np.concatenate([self.get_binned_observable(var, events) for events in signal_events])
+                    # h_measure_signal = unfold.build_TH1D(f"h_{var}_signal", binned_var_signal, num_bins=self.num_bins, weight=weight_signal)
+                    # h_measure = h_measure_signal
+
                     unfold_result = ROOT.RooUnfoldSvd(self.response_matrix[f"{region}_{signal_name}"][var], h_measure, 5).Hunfold(2)
 
                     # build truth distribution using truth region events for comparison
@@ -220,8 +262,8 @@ class QIProcessor(BaseProcessor):
                     truth_histograms[var] = unfold.build_Hist_from_TH1D(h_truth, bin_edges=self.bin_edges)
 
                 # derive quantum results using unfolded histograms
-                analyzing_power_a = events_to_unfold['analyzing_power_a'][0]*(-1)
-                analyzing_power_b = events_to_unfold['analyzing_power_b'][0]
+                analyzing_power_a = truth_events['analyzing_power_a'][0]*(-1)
+                analyzing_power_b = truth_events['analyzing_power_b'][0]
                 unfolded_BC_matrices, unfolded_quantum_results = derive_results(unfold_histograms, analyzing_power_a=analyzing_power_a, analyzing_power_b=analyzing_power_b)
                 truth_BC_matrices, truth_quantum_results = derive_results(truth_histograms, analyzing_power_a=analyzing_power_a, analyzing_power_b=analyzing_power_b)
                 for res_type, results in zip(['Unfolded', 'Truth'], [unfolded_BC_matrices, truth_BC_matrices]):

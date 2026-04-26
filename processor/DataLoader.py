@@ -14,6 +14,7 @@ from quantum.observables_builder import build_observables, get_mean_and_err_of_m
 import RegionSelections.DefineVariables as DefineVariables
 import RegionSelections.BaselineSelections as BaselineSelections
 import RegionSelections.HadHadSelections as HadHadSelections
+import RegionSelections.PiPiSelections as PiPiSelections
 import RegionSelections.LepLepSelections as LepLepSelections
 
 log = logging.getLogger(__name__)
@@ -46,6 +47,16 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
         raw_events[cut_name] = flag_passes_cut
     flag_passes_hadhad = hadhad_selection_results[HadHadSelections.get_cut_name()] & flag_passes_baseline
     filtered_events_dict['hadhad'] = raw_events[flag_passes_hadhad]
+
+    # pi-pi selection on top of had-had selection
+    pipi_selection_results = PiPiSelections.get_flag_passes_hadhad_region(raw_events)
+    for cut_name, flag_passes_cut in pipi_selection_results.items():
+        cut_title = PiPiSelections.get_dict_of_hadhad_selection_names()[cut_name]
+        flag_passes_cut = flag_passes_cut & flag_passes_hadhad
+        filter_log_dict[cut_title] = filter_log_dict.get(cut_title, 0) + ak.sum(flag_passes_cut)
+        raw_events[cut_name] = flag_passes_cut
+    flag_passes_pipi = pipi_selection_results[PiPiSelections.get_cut_name()] & flag_passes_hadhad
+    filtered_events_dict['pipi'] = raw_events[flag_passes_pipi]
 
     # ---------------------------------------------------------
     # Unified Leptonic Selections (ee, mumu, emu)
@@ -150,6 +161,7 @@ class DataLoader:
             log.info(f"Loading existing raw data from {self.output_dir}/filtered___raw.parquet")
             self.data['raw'] = ak.from_parquet(self.output_dir + f"/filtered___raw.parquet")
             self.initial_total_num_events = self.data['raw']['initial_total_num_events'][0]
+            self.filter_results['initial_total_num_events'] = self.initial_total_num_events
             filtered_events, self.filter_results = filter_event(self.data['raw'], self.filter_results, is_Ztautau=self.is_Ztautau)
             for key, evt in filtered_events.items():
                 self.data[key] = evt
@@ -244,10 +256,11 @@ class DataLoader:
                 self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
                 self.data[key]['weight'] = self.weight * ak.ones_like(self.data[key]['evtNumber'], dtype=np.float32)
 
-            # reconstruct neutrinos of Ztautau raw events for later use in unfolding
-            if self.is_Ztautau:
-                raw_events = self.data['raw']
-                self.data['raw'] = DefineVariables.define_region_specific_variables(raw_events)
+        self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
+        # reconstruct neutrinos of Ztautau raw events for later use in unfolding
+        if self.is_Ztautau:
+            raw_events = self.data['raw']
+            self.data['raw'] = DefineVariables.define_region_specific_variables(raw_events)
 
         # Log filter results
         if self.filter_results['initial_total_num_events'] > 0:
@@ -331,33 +344,19 @@ class DataLoader:
 
     def postprocess(self):
         # define weight for each event
-        weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
+        if self.initial_total_num_events == 0:
+            log.warning("Initial total number of events is 0. This may be due to all events being filtered out or an issue in loading data. Setting weight to 1 for all events to avoid division by zero.")
+            weight = 1
+        else:
+            weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
         for ch, ch_events in self.data.items():
             ch_events['weight_nominal'] = weight * ak.ones_like(ch_events['evtNumber'], dtype=np.float32)
             ch_events['weight'] = ch_events['weight_nominal'] # default weight is nominal weight
         self.current_variation = ('nominal', 0.0)
 
 
-        # # test some cuts for hadhad region
-        # if 'hadhad' in self.data:
-        #     events = self.data['hadhad']
-        #     flag = ak.ones_like(events['evtNumber'], dtype=bool)
-
-        #     # number of photons near leading pion == 0
-        #     flag = flag & (ak.sum(events['is_photon_near_lead_a'], axis=1) == 0) & (ak.sum(events['is_photon_near_lead_b'], axis=1) == 0)
-        #     log.info(f"Cut efficiency for zero photon near lead in hadhad region: {ak.sum(flag) / len(events):.4f}")
-
-        #     # E/p for both leading particles < 0.75
-        #     for key in ['a', 'b']:
-        #         lead_mask = events[f'is_lead_{key}'] == 1
-        #         lead_E = events['Part_hpcTotalShowerEnergy'][lead_mask]
-        #         lead_p = events['Part_p4'][lead_mask].p
-        #         flag = flag & ak.firsts(lead_E / lead_p < 0.75)
-
-        #     self.data['hadhad'] = events[flag]
-
     def shift_SDM_element(self, element_name, variation):
-        if element_name != 'nominal':
+        if (element_name != 'nominal') and self.is_Ztautau:
             for ch, ch_events in self.data.items():
                 new_weight = shift_SDM_element(
                     events = ch_events,
