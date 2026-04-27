@@ -25,7 +25,7 @@ def plot_quantum_observables(dl_dict, output_dir, region_name="hadhad", log_scal
             obs_values = obs_values[flag_valid]
             weights = events['weight'][flag_valid]
             return obs_values, weights
-        bin_edges = np.linspace(-1, 1, 101)
+        bin_edges = np.linspace(-1, 1, 11)
         fig, ax, ax_ratio = do_control_plot(
             dl_dict,
             region_name=region_name,
@@ -72,7 +72,7 @@ class QIProcessor(BaseProcessor):
         self.path_response_matrices = f"{default_output_dir}/response_matrices/"
         self.path_raw_signal_events = f"{default_output_dir}/Ztautau/filtered___raw.parquet"
         self.response_matrix = {f"{region}_{signal_name}": {} for region in self.dict_region_to_signals.keys() for signal_name in self.dict_region_to_signals.get(region, [])}
-        self.num_bins = 20
+        self.num_bins = 10
         self.bin_edges = np.linspace(-1, 1, self.num_bins + 1)
 
         self.initialize()
