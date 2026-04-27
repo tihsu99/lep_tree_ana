@@ -1,8 +1,9 @@
 GlobalConfigs:
-  default_output_dir: "./20260426-pirho"
+  default_output_dir: "./20260427-pirho"
   region_of_interest: &RegionName "hadhad"
   load_regions:
     - *RegionName
+    - "pipi"
     - "pirho"
     - "rhopi"
 
@@ -70,12 +71,14 @@ Processors:
     regions:
       - pirho
       - rhopi
+      - pipi
 
   QIProcessor:
     output_dir_name: "QI_analysis"
     dict_region_to_signals:
       pirho: ["Ztautau_pirho"]
       rhopi: ["Ztautau_rhopi"]
+      pipi: ["Ztautau_pipi"]
 
   ControlPlotProcessor:
     output_dir_name: "control_plots"

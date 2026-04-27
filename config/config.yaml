@@ -1,9 +1,11 @@
 GlobalConfigs:
-  default_output_dir: "./20260426-baseline"
+  default_output_dir: "./20260427-baseline"
   region_of_interest: &RegionName "baseline"
   load_regions:
     - *RegionName
     - "pipi"
+    - "pirho"
+    - "rhopi"
     - "ee"
     - "mumu"
     - "emu"
@@ -95,6 +97,8 @@ Processors:
     mmc_regions: ["ee", "mumu", "emu"]
     regions:
       - pipi
+      - pirho
+      - rhopi
       - ee
       - mumu
       - emu
@@ -103,6 +107,8 @@ Processors:
     output_dir_name: "QI_analysis"
     dict_region_to_signals:
       pipi: ["Ztautau_pipi"]
+      pirho: ["Ztautau_pirho"]
+      rhopi: ["Ztautau_rhopi"]
       ee: ["Ztautau_ee"]
       mumu: ["Ztautau_mumu"]
       emu: ["Ztautau_emu", "Ztautau_mue"]
@@ -112,6 +118,8 @@ Processors:
     regions:
       - *RegionName
       - "pipi"
+      - "pirho"
+      - "rhopi"
       - "ee"
       - "mumu"
       - "emu"
