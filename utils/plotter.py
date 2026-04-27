@@ -358,6 +358,10 @@ def plot_y_vs_x(
     else:
         fig = ax.figure if fig is None else fig
 
+    if len(x) == 0 or len(y) == 0:
+        print("Warning: no valid data points to plot. Returning empty plot.")
+        return fig, ax
+
     # optional scatter of points
     if draw_points:
         pk = dict(s=8, alpha=0.25)
