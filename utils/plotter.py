@@ -213,6 +213,10 @@ def do_control_plot(
     hist_data = np.zeros(len(bin_edges)-1)
     for dl_name, dl in dl_dict.items():
         events = dl.data[region_name]
+        # mask = (events['flags_valid'] > 0) & (events['theta_cm'] > 0.6) & (events['mtautau'] > 80)
+        # import awkward as ak
+        # mask = ak.fill_none(mask, False)
+        # events = events[mask]
         weights = events['weight'].to_numpy() if 'weight' in events.fields else np.ones(len(events))
         variable_values = np.array([])
         if len(events) > 0:
