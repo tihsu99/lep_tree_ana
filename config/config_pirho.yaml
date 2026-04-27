@@ -5,9 +5,8 @@ GlobalConfigs:
     - *RegionName
     - "pirho"
     - "rhopi"
-    - "pipi"
 
-  verbosity: 1
+  verbosity: 0
   luminosity: &Luminosity 46.3 # pb^-1
   # Ztautau sample can be further split categorizes below
   signal_categories:
@@ -71,18 +70,15 @@ Processors:
     regions:
       - pirho
       - rhopi
-      - pipi
 
   QIProcessor:
     output_dir_name: "QI_analysis"
     dict_region_to_signals:
       pirho: ["Ztautau_pirho"]
       rhopi: ["Ztautau_rhopi"]
-      pipi: ["Ztautau_pipi"]
 
   ControlPlotProcessor:
     output_dir_name: "control_plots"
     regions:
       - pirho
       - rhopi
-      - pipi
