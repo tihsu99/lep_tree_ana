@@ -16,6 +16,7 @@ import RegionSelections.BaselineSelections as BaselineSelections
 import RegionSelections.HadHadSelections as HadHadSelections
 import RegionSelections.PiPiSelections as PiPiSelections
 import RegionSelections.LepLepSelections as LepLepSelections
+import RegionSelections.PiRhoSelections as PiRhoSelections
 
 log = logging.getLogger(__name__)
 
@@ -49,14 +50,25 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
     filtered_events_dict['hadhad'] = raw_events[flag_passes_hadhad]
 
     # pi-pi selection on top of had-had selection
-    pipi_selection_results = PiPiSelections.get_flag_passes_hadhad_region(raw_events)
+    pipi_selection_results = PiPiSelections.get_flag_passes_pipi_region(raw_events)
     for cut_name, flag_passes_cut in pipi_selection_results.items():
-        cut_title = PiPiSelections.get_dict_of_hadhad_selection_names()[cut_name]
+        cut_title = PiPiSelections.get_dict_of_pipi_selection_names()[cut_name]
         flag_passes_cut = flag_passes_cut & flag_passes_hadhad
         filter_log_dict[cut_title] = filter_log_dict.get(cut_title, 0) + ak.sum(flag_passes_cut)
         raw_events[cut_name] = flag_passes_cut
     flag_passes_pipi = pipi_selection_results[PiPiSelections.get_cut_name()] & flag_passes_hadhad
     filtered_events_dict['pipi'] = raw_events[flag_passes_pipi]
+
+    # pi-rho selection on top of had-had selection
+    for region_name, is_pion_positive in [('pirho', True), ('rhopi', False)]:
+        pirho_selection_results = PiRhoSelections.get_flag_passes_pirho_region(raw_events, is_pion_positive)
+        for cut_name, flag_passes_cut in pirho_selection_results.items():
+            cut_title = PiRhoSelections.get_dict_of_pirho_selection_names(is_pion_positive)[cut_name]
+            flag_passes_cut = flag_passes_cut & flag_passes_hadhad
+            filter_log_dict[cut_title] = filter_log_dict.get(cut_title, 0) + ak.sum(flag_passes_cut)
+            raw_events[cut_name] = flag_passes_cut
+        flag_passes_pirho = pirho_selection_results[PiRhoSelections.get_cut_name(is_pion_positive)] & flag_passes_hadhad
+        filtered_events_dict[region_name] = raw_events[flag_passes_pirho]
 
     # ---------------------------------------------------------
     # Unified Leptonic Selections (ee, mumu, emu)

@@ -93,7 +93,8 @@ def plot_unfolded_results(hUnfold, save_path, h_truth=None, h_reco=None, var_nam
         hRatio.GetXaxis().SetTitleSize(12/(ratioPad.GetWh()*ratioPad.GetAbsHNDC()))
         hRatio.GetXaxis().SetLabelSize(12/(ratioPad.GetWh()*ratioPad.GetAbsHNDC()))
         hRatio.GetYaxis().SetTitle("Unfolded / Truth")
-        hRatio.GetYaxis().SetRangeUser(0.71, 1.29)
+        # hRatio.GetYaxis().SetRangeUser(0.71, 1.29)
+        hRatio.GetYaxis().SetRangeUser(0., 2)
         hRatio.GetYaxis().SetTitleSize(12/(ratioPad.GetWh()*ratioPad.GetAbsHNDC()))
         hRatio.GetYaxis().SetLabelSize(11/(ratioPad.GetWh()*ratioPad.GetAbsHNDC()))
 
