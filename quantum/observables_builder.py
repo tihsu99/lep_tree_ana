@@ -13,17 +13,71 @@ from utils.common_functions import get_p4_from_ak_events, get_sum_p4_from_ak_eve
 
 Hist = namedtuple('Hist', ['bin_edges', 'values', 'errors'])
 ValueWithUncertainty = namedtuple('ValueWithUncertainty', ['value', 'err_up', 'err_down'])
-
+AnalyzingPowerAry = np.array([0, 1, 0.41, -0.33, -0.34, 0]) # order: [notTauDecay, pi, rho, el, mu, others]
+NominalBCValues = {
+    'B_An': 0.0,
+    'B_Ar': 0.0,
+    'B_Ak': 0.1444,
+    'B_Bn': 0.0,
+    'B_Br': 0.0,
+    'B_Bk': 0.1474,
+    'C_nn': 0.8446,
+    'C_rr': -0.7971,
+    'C_kk': 1.0345,
+    'C_nr': 0.0,
+    'C_nk': 0.0,
+    'C_rk': 0.0,
+    'C_rn': 0.0,
+    'C_kn': 0.0,
+    'C_kr': 0.0,
+}
 
 def get_analyzing_power_ary():
     # order: [notTauDecay, pi, rho, el, mu, others]
-    return np.array([0, 1, 0.41, -0.33, -0.34, 0])
+    return AnalyzingPowerAry
+
+
+def reweight_correlation(ary_observable, ary_spin_analyzing_power, weight, element_name, variation):
+    assert len(ary_observable) == len(weight)
+    assert len(ary_observable) == len(ary_spin_analyzing_power)
+    assert element_name in NominalBCValues, f"Element name {element_name} not found in nominal BC values"
+    original_value = NominalBCValues[element_name]
+    target_value = original_value + variation
+    scale_factor = (1 + target_value * ary_spin_analyzing_power * ary_observable) / (1 + original_value * ary_spin_analyzing_power * ary_observable)
+    new_weight = weight * scale_factor
+    return new_weight
+
+
+def shift_SDM_element(events, element_name, variation):
+    observable_name, analyzing_power = None, None
+    if element_name.startswith('C_'):
+        observable_name = f'truth_cos_theta_A_{element_name[-2]}_times_cos_theta_B_{element_name[-1]}'
+        analyzing_power = ak.to_numpy(events[f'analyzing_power_a'])*(-1) * ak.to_numpy(events[f'analyzing_power_b'])
+    elif element_name.startswith('B_'):
+        target_object = element_name[-2].upper()  # 'A' or 'B'
+        axis = element_name[-1].lower()  # 'n', 'r', or 'k'
+        observable_name = f'truth_cos_theta_{target_object}_{axis}'
+        sign = -1 if target_object == 'A' else 1
+        analyzing_power = ak.to_numpy(events[f'analyzing_power_{target_object.lower()}'] * sign)
+    else:
+        raise ValueError(f"Unknown SDM element name: {element_name}")
+    
+    new_weight = reweight_correlation(
+        ary_observable = ak.to_numpy(events[observable_name]),
+        ary_spin_analyzing_power = analyzing_power,
+        weight = ak.to_numpy(events['weight_nominal']),
+        element_name = element_name,
+        variation = variation
+    )
+    return new_weight
+
+
 
 def get_mean_and_err_of_mean(x, weights=None, err=None):
     weights = weights if weights is not None else np.ones_like(x)
     if weights.sum() == 0:
         return 0, 0
-    err = err if err is not None else weights
+    err = err if err is not None else weights**0.5
     mean = np.average(x, weights=weights)
     err_of_mean = np.sqrt(np.sum( ((x - mean) / np.sum(weights) * err)**2))
     return mean, err_of_mean
@@ -32,7 +86,7 @@ def get_observable_names():
     """
     Get the names of the observables that we will build
     """
-    observable_names = ['theta_cm']
+    observable_names = ['theta_cm', 'mtautau']
     observable_names += [f'cos_theta_A_{axis}' for axis in ['n', 'r', 'k']]
     observable_names += [f'cos_theta_B_{axis}' for axis in ['n', 'r', 'k']]
     for axis_a, axis_b in product(['n', 'r', 'k'], repeat=2):
@@ -105,7 +159,8 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
 
 
     observables = {}
-    observables['theta_cm'] = np.arccos(tau_a_p4_cm.costheta)
+    observables['theta_cm'] = np.arccos(abs(tau_a_p4_cm.costheta)) * 2 / np.pi
+    observables['mtautau'] = cm_p4.mass
     for axis in ['n', 'r', 'k']:
         observables[f'cos_theta_A_{axis}'] = vis_a_p4_a_rest.to_pxpypz().unit().dot(helicity_basis_a[axis])
         observables[f'cos_theta_B_{axis}'] = vis_b_p4_b_rest.to_pxpypz().unit().dot(helicity_basis_a[axis])

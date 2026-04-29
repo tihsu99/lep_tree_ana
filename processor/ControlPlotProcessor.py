@@ -888,18 +888,19 @@ class ControlPlotProcessor(BaseProcessor):
                     log_scale=False,
                 )
             
-            if 'hadhad' in self.regions:
-                print(f"Processing hadhad region")
-                output_dir_hadhad = f"{self.output_dir}/hadhad/"
-                os.makedirs(output_dir_hadhad, exist_ok=True)
-                make_control_plots_pion(
-                    dl_dict,
-                    luminosity=self.luminosity,
-                    normalize=self.normalize,
-                    output_dir=output_dir_hadhad,
-                    region_name="hadhad",
-                    log_scale=False,
-                )
+            for hadhad_region_name in ['hadhad', 'pipi', 'pirho', 'rhopi']:
+                if hadhad_region_name in self.regions:
+                    print(f"Processing {hadhad_region_name} region")
+                    output_dir_hadhad = f"{self.output_dir}/{hadhad_region_name}/"
+                    os.makedirs(output_dir_hadhad, exist_ok=True)
+                    make_control_plots_pion(
+                        dl_dict,
+                        luminosity=self.luminosity,
+                        normalize=self.normalize,
+                        output_dir=output_dir_hadhad,
+                        region_name=hadhad_region_name,
+                        log_scale=False,
+                    )
 
             # pilep regions
             for pilep_region_name in ['pilep', 'piele', 'pimu']:

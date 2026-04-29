@@ -601,6 +601,7 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
             'reco_tau_a_p4', 'reco_tau_b_p4',
             'flags_valid', 'mmc_likelihood' 
         ] + get_observable_names()
+        self.path_solutions = f"{self.default_output_dir}/neutrino_solutions/"
 
         # Instantiate the new MMC Engine Wrapper
         self.mmc_regions = self.config.get('mmc_regions', [])
@@ -621,25 +622,33 @@ class NeutrinoReconstructionProcessor(BaseProcessor):
                 print(f"Processing {dl_name} for region {region_name} with {len(events)} events")
 
                 cur_output_dir = f"{self.output_dir}/{region_name}/"
-                output_file = f"{cur_output_dir}/{dl_name}_reconstructed_neutrinos.parquet"
+                solution_dir = f"{self.path_solutions}/{region_name}/"
+                output_file = f"{solution_dir}/{dl_name}_reconstructed_neutrinos.parquet"
 
                 # Check if output file already exists and has the necessary fields; if so, load it to skip reconstruction
+                tmp_events = None
                 if os.path.exists(output_file):
-                    events = ak.from_parquet(output_file)
+                    tmp_events = ak.from_parquet(output_file)
 
                 # The events may already contain reco variables
                 solution_loaded = True
                 for key in self.fields_to_add:
-                    if key not in events.fields or len(events[key]) != len(dl.data[region_name]):
+                    if tmp_events is None or key not in tmp_events.fields or len(tmp_events[key]) != len(dl.data[region_name]):
                         print(f"Field {key} not found or length mismatch in loaded file for {dl_name} in region {region_name}. Recomputing neutrino reconstruction.")
                         solution_loaded = False
                         break
-                    if key.endswith('_p4') and len(events)>0:
-                        events[key] = rebuild_p4(events[key])
+                    if key.endswith('_p4') and len(tmp_events)>0:
+                        tmp_events[key] = rebuild_p4(tmp_events[key])
 
-                if not solution_loaded:
+                # if not solution_loaded:
+                if solution_loaded:
+                    print(f"Loaded existing neutrino reconstruction solution from {output_file} for {dl_name} in region {region_name}. Skipping reconstruction.")
+                    events = tmp_events
+                else:
                     if not os.path.exists(cur_output_dir):
                         os.makedirs(cur_output_dir, exist_ok=True)
+                    if not os.path.exists(solution_dir):
+                        os.makedirs(solution_dir, exist_ok=True)
                     if region_name not in dl.data:
                         raise ValueError(f"Region {region_name} not found in dataloader {dl_name}. Available regions: {list(dl.data.keys())}")
 

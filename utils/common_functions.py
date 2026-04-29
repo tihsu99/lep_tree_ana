@@ -7,6 +7,17 @@ m_tau = 1.77686 # GeV
 deltaR_nearby = 0.3 # reconstructed particles within this dR is considered nearby
 deltaR_truth_matching = 0.05 # reconstructed particle and truth particle within this dR is considered matched
 
+
+def get_event_category_from_signal_name(signal_name: str):
+    signal_name = signal_name.replace('Ztautau_', '').lower()
+    dict_signal_to_category = {}
+    for pos_name, pos_id in zip(['pi', 'rho', 'e', 'mu'], [1, 2, 3, 4]):
+        for neg_name, neg_id in zip(['pi', 'rho', 'e', 'mu'], [1, 2, 3, 4]):
+            dict_signal_to_category[f"{pos_name}{neg_name}"] = pos_id * 10 + neg_id
+    event_category = dict_signal_to_category.get(signal_name, -1)  # default to -1 if signal name not found
+    return event_category
+
+
 def print_and_write_to_opened_file(text, f_to_write):
     print(text)
     f_to_write.write(text + '\n')
