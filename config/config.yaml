@@ -1,9 +1,11 @@
 GlobalConfigs:
-  default_output_dir: "./20260413-baseline"
+  default_output_dir: "./20260427-baseline"
   region_of_interest: &RegionName "baseline"
   load_regions:
     - *RegionName
-    - "hadhad"
+    - "pipi"
+    - "pirho"
+    - "rhopi"
     - "ee"
     - "mumu"
     - "emu"
@@ -12,7 +14,8 @@ GlobalConfigs:
   # Ztautau sample can be further split categorizes below
   signal_categories:
     Ztautau_pipi: [11]
-    Ztautau_pirho: [12, 21]
+    Ztautau_pirho: [12]
+    Ztautau_rhopi: [21]
     Ztautau_rhorho: [22]
     Ztautau_lephad: [13, 31, 14, 41, 23, 24, 42, 32]
     Ztautau_ee: [33]
@@ -93,7 +96,9 @@ Processors:
     output_dir_name: "neutrino_reco"
     mmc_regions: ["ee", "mumu", "emu"]
     regions:
-      - hadhad
+      - pipi
+      - pirho
+      - rhopi
       - ee
       - mumu
       - emu
@@ -101,7 +106,9 @@ Processors:
   QIProcessor:
     output_dir_name: "QI_analysis"
     dict_region_to_signals:
-      hadhad: ["Ztautau_pipi", "Ztautau_pirho", "Ztautau_rhorho"]
+      pipi: ["Ztautau_pipi"]
+      pirho: ["Ztautau_pirho"]
+      rhopi: ["Ztautau_rhopi"]
       ee: ["Ztautau_ee"]
       mumu: ["Ztautau_mumu"]
       emu: ["Ztautau_emu", "Ztautau_mue"]
@@ -110,7 +117,9 @@ Processors:
     output_dir_name: "control_plots"
     regions:
       - *RegionName
-      - "hadhad"
+      - "pipi"
+      - "pirho"
+      - "rhopi"
       - "ee"
       - "mumu"
       - "emu"

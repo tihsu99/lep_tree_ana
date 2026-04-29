@@ -96,34 +96,47 @@ if __name__ == "__main__":
     for dl in data_loaders.values():
         dl.postprocess()
 
-    # record the number of events in each data loader after splitting
-    region_names = list(data_loaders.values())[0].data.keys()
-    with open(f"{output_dir}/yields.txt", "w") as f:
-        for region in region_names:
-            num_data, sum_MC_yields = 0, 0
-            f.write(f"Region: {region}\n")
-            for dl_name, dl in data_loaders.items():
-                yields = ak.sum(dl.data[region]['weight'])
-                f.write(f"  {dl_name}: {yields:.4f}\n")
-                log.info(f"Yield for {dl_name} in region {region}: {yields:.4f}")
-                if dl.is_data:
-                    num_data += yields
-                else:
-                    sum_MC_yields += yields
-            f.write(f"  Total MC: {sum_MC_yields:.4f}\n")
-            f.write(f"  Data/MC: {num_data/sum_MC_yields:.4f}\n")
-            log.info(f"Data/MC ratio in region {region}: {num_data/sum_MC_yields:.4f}")
-            f.write("\n")
-        
 
-    for processor_title, processor_config in analysis_config['Processors'].items():
-        processor_name = processor_config.pop("processor_name", processor_title)
-        processor_config_with_globals = copy.deepcopy(global_configs)
-        processor_config_with_globals.update(processor_config)
-        processor_class = getattr(import_module(f"processor.{processor_name}"), processor_name)
-        processor = processor_class(processor_config_with_globals, output_dir=output_dir)
-        processor.run(data_loaders)
-        processor.finalize()
+    shift_SDM = global_configs.get('shift_SDM', [['nominal', 0.0]])
+    # loop over all variations of SDM elements
+    for element_name, variation in shift_SDM:
+        cur_output_dir = output_dir
+        if element_name != 'nominal':
+            cur_output_dir = f"{output_dir}/SDM_{element_name}_{variation:+.3f}"
+            os.makedirs(cur_output_dir, exist_ok=True)
+            for dl_name, dl in data_loaders.items():
+                if dl.is_data: continue
+                log.info(f"Reweighting data loader {dl_name} for SDM element {element_name} with variation {variation}.")
+                dl.shift_SDM_element(element_name, variation)
+
+        # record the number of events in each data loader after splitting
+        region_names = list(data_loaders.values())[0].data.keys()
+        with open(f"{cur_output_dir}/yields.txt", "w") as f:
+            for region in region_names:
+                num_data, sum_MC_yields = 0, 0
+                f.write(f"Region: {region}\n")
+                for dl_name, dl in data_loaders.items():
+                    yields = ak.sum(dl.data[region]['weight'])
+                    f.write(f"  {dl_name}: {yields:.4f}\n")
+                    log.info(f"Yield for {dl_name} in region {region}: {yields:.4f}")
+                    if dl.is_data:
+                        num_data += yields
+                    else:
+                        sum_MC_yields += yields
+                f.write(f"  Total MC: {sum_MC_yields:.4f}\n")
+                f.write(f"  Data/MC: {num_data/sum_MC_yields:.4f}\n")
+                log.info(f"Data/MC ratio in region {region}: {num_data/sum_MC_yields:.4f}")
+                f.write("\n")
+            
+
+        for processor_title, processor_config in analysis_config['Processors'].items():
+            processor_name = processor_config.pop("processor_name", processor_title)
+            processor_config_with_globals = copy.deepcopy(global_configs)
+            processor_config_with_globals.update(processor_config)
+            processor_class = getattr(import_module(f"processor.{processor_name}"), processor_name)
+            processor = processor_class(processor_config_with_globals, output_dir=cur_output_dir)
+            processor.run(data_loaders)
+            processor.finalize()
 
     log.info("Done")
     os._exit(0)

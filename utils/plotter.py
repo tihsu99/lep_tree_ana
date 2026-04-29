@@ -213,6 +213,10 @@ def do_control_plot(
     hist_data = np.zeros(len(bin_edges)-1)
     for dl_name, dl in dl_dict.items():
         events = dl.data[region_name]
+        # mask = (events['flags_valid'] > 0) & (events['theta_cm'] > 0.6) & (events['mtautau'] > 80)
+        # import awkward as ak
+        # mask = ak.fill_none(mask, False)
+        # events = events[mask]
         weights = events['weight'].to_numpy() if 'weight' in events.fields else np.ones(len(events))
         variable_values = np.array([])
         if len(events) > 0:
@@ -353,6 +357,10 @@ def plot_y_vs_x(
         fig, ax = plt.subplots(figsize=(7, 5), dpi=200)
     else:
         fig = ax.figure if fig is None else fig
+
+    if len(x) == 0 or len(y) == 0:
+        print("Warning: no valid data points to plot. Returning empty plot.")
+        return fig, ax
 
     # optional scatter of points
     if draw_points:

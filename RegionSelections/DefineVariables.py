@@ -259,7 +259,7 @@ def define_signal_exclusive_variables(events: ak.Array):
         events[f'truth_{obs_name}'] = obs_value
 
     # truth-level selection for QI region
-    events['truth_QI_region'] = events['truth_theta_cm'] * 2 / np.pi > 0.6
+    events['truth_QI_region'] = (events['truth_theta_cm'] > 0.6) & (events['truth_mtautau'] > 80)
 
     # analyzing power
     # non-tau, pion, rho, ele, mu, other
