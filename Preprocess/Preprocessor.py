@@ -13,6 +13,8 @@ import Preprocess.BaselineSelections as BaselineSelections
 import Preprocess.HadHadSelections as HadHadSelections
 import Preprocess.LepLepSelections as LepLepSelections
 
+from tqdm import tqdm
+
 log = logging.getLogger(__name__)
 
 def apply_selection(raw_events, filter_log_dict, selection, parent_flag=None):
@@ -251,13 +253,22 @@ class Preprocessor:
                     executor.submit(process_input_file, job): idx
                     for idx, job in enumerate(jobs)
                 }
-                for future in as_completed(future_to_index):
+                completed_futures = as_completed(future_to_index)
+                completed_futures = tqdm(
+                    completed_futures,
+                    total=len(future_to_index),
+                    desc=f"Preprocessing {self.name}",
+                    unit="file",
+                )
+
+                for future in completed_futures:
                     idx = future_to_index[future]
                     file = files_to_process[idx]
                     try:
                         results[idx] = future.result()
                     except Exception as e:
                         log.error(f"Error processing file {file} or tree {self.tree_name}: {e}")
+                    log.info(f"Processed {len(results)}/{len(future_to_index)} files for {self.name}.")
 
             for idx in sorted(results):
                 events_pass_filter, file_filter_results, _ = results[idx]
@@ -355,4 +366,3 @@ class Preprocessor:
             ak.to_parquet(evt, output_file, compression='snappy')
 
             log.info(f"Data saved to {output_file}.")
-
