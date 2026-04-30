@@ -90,19 +90,12 @@ if __name__ == "__main__":
         input_slices, file_sizes = split_files_by_size(input_files, max_slice_size_bytes)
         total_input_size = sum(file_sizes.values())
 
-        if total_input_size <= max_slice_size_bytes:
-            log.info(f"DataLoader {key}: total input size {total_input_size / 1024**3:.2f} GB. Processing in one folder.")
-            dl_config_with_globals["input_files"] = input_files
-            dl = Preprocessor.Preprocessor(dl_config_with_globals, output_dir=f"{output_dir}/{key}/")
-            dl.load_data()
-            dl.save_data()
-            del dl
-            continue
 
-        log.info(
-            f"DataLoader {key}: total input size {total_input_size / 1024**3:.2f} GB exceeds "
-            f"{max_slice_size_gb:.2f} GB. Splitting into {len(input_slices)} slices."
-        )
+        if total_input_size > max_slice_size_bytes:
+            log.info(
+                f"DataLoader {key}: total input size {total_input_size / 1024**3:.2f} GB exceeds "
+                f"{max_slice_size_gb:.2f} GB. Splitting into {len(input_slices)} slices."
+            )
         for slice_idx, input_slice in enumerate(input_slices):
             slice_size = sum(file_sizes[file] for file in input_slice)
             if slice_size > max_slice_size_bytes:
