@@ -23,7 +23,6 @@ def apply_selection(raw_events, filter_log_dict, selection, parent_flag=None):
         if parent_flag is not None:
             flag_passes_cut = flag_passes_cut & parent_flag
         filter_log_dict[description] = filter_log_dict.get(description, 0) + ak.sum(flag_passes_cut)
-        raw_events[description] = flag_passes_cut
 
     final_flag = selection_results[selection.end_description]
     if parent_flag is not None:
@@ -41,23 +40,23 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
     flags = {}
     baseline_selection = BaselineSelections.BaselineSelection()
     flag_passes_baseline = apply_selection(raw_events, filter_log_dict, baseline_selection)
-    # filtered_events_dict['baseline'] = raw_events[flag_passes_baseline]
+    raw_events['baseline_cut'] = flag_passes_baseline
     flags['baseline'] = flag_passes_baseline
 
     hadhad_selection = HadHadSelections.HadHadSelection()
     flag_passes_hadhad = apply_selection(raw_events, filter_log_dict, hadhad_selection, flag_passes_baseline)
-    # filtered_events_dict['hadhad'] = raw_events[flag_passes_hadhad]
+    raw_events['hadhad_cut'] = flag_passes_hadhad
     flags['hadhad'] = flag_passes_hadhad
 
     pipi_selection = HadHadSelections.PiPiSelection()
     flag_passes_pipi = apply_selection(raw_events, filter_log_dict, pipi_selection, flag_passes_hadhad)
-    # filtered_events_dict['pipi'] = raw_events[flag_passes_pipi]
+    raw_events['pipi_cut'] = flag_passes_pipi
     flags['pipi'] = flag_passes_pipi
 
     for region_name, is_pion_positive in [('pirho', True), ('rhopi', False)]:
         pirho_selection = HadHadSelections.PiRhoSelection(is_pion_positive)
         flag_passes_pirho = apply_selection(raw_events, filter_log_dict, pirho_selection, flag_passes_hadhad)
-        # filtered_events_dict[region_name] = raw_events[flag_passes_pirho]
+        raw_events[f'{region_name}_cut'] = flag_passes_pirho
         flags[region_name] = flag_passes_pirho
 
     leplep_selection = LepLepSelections.LepLepSelection()
@@ -70,22 +69,10 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
     }
     for channel, selection in lepton_channel_selections.items():
         flag_passes = apply_selection(raw_events, filter_log_dict, selection, flag_passes_leplep)
-        # filtered_events_dict[channel] = raw_events[flag_passes]
+        raw_events[f'{channel}_cut'] = flag_passes
         flags[channel] = flag_passes
 
-    # reconstruct neutrinos of Ztautau raw events for later use in unfolding
-    if is_Ztautau:
-        raw_events = DefineVariables.define_region_specific_variables(raw_events)
-
-    # Store the raw events with all the defined variables 
-    filtered_events_dict = {
-        'raw': raw_events,
-    }
-    # Store the filtered events for each region defined by the selections
-    for region_name, flag in flags.items():
-        filtered_events_dict[region_name] = raw_events[flag]
-
-    return filtered_events_dict, filter_log_dict
+    return raw_events, filter_log_dict, flags
 
 
 def get_tree_num_entries(file, tree_name):
@@ -161,12 +148,11 @@ class Preprocessor:
             all_files = sorted(all_files)
             self.input_files = all_files
 
-        self.data = {}
         self.filter_results = {
             'initial_total_num_events': 0,
         }
 
-        # self.load_data()
+        self.load_data()
         # self.save_data()
 
     
@@ -174,13 +160,11 @@ class Preprocessor:
     def load_data(self) -> pd.DataFrame:
         if os.path.exists(self.output_dir + f"/filtered___raw.parquet"):
             log.info(f"Loading existing raw data from {self.output_dir}/filtered___raw.parquet")
-            self.data['raw'] = ak.from_parquet(self.output_dir + f"/filtered___raw.parquet")
-            self.initial_total_num_events = self.data['raw']['initial_total_num_events'][0]
+            self.raw_events = ak.from_parquet(self.output_dir + f"/filtered___raw.parquet")
+            self.initial_total_num_events = self.raw_events['initial_total_num_events'][0]
             self.filter_results['initial_total_num_events'] = self.initial_total_num_events
-            filtered_events, self.filter_results = filter_event(self.data['raw'], self.filter_results, is_Ztautau=self.is_Ztautau)
-            for key, evt in filtered_events.items():
-                self.data[key] = evt
-                self.data[key]['initial_total_num_events'] = self.initial_total_num_events
+            self.raw_events, self.filter_results, flags = filter_event(self.raw_events, self.filter_results, is_Ztautau=self.is_Ztautau)
+            self.regions = list(flags.keys())
         else:
             log.info("Loading data from input files.")
             # Identify branches to load
@@ -239,6 +223,7 @@ class Preprocessor:
                 files_to_process.append(file)
                 initial_total_num_events += num_entries
 
+            self.initial_total_num_events = initial_total_num_events
             max_workers = self.config.get("num_workers", os.cpu_count() or 1)
             max_workers = min(max_workers, len(files_to_process)) if files_to_process else 1
             log.info(f"Processing {len(files_to_process)} input files with {max_workers} workers.")
@@ -270,21 +255,36 @@ class Preprocessor:
                         log.error(f"Error processing file {file} or tree {self.tree_name}: {e}")
                     log.info(f"Processed {len(results)}/{len(future_to_index)} files for {self.name}.")
 
+            self.raw_events = []
+            self.regions = None
             for idx in sorted(results):
-                events_pass_filter, file_filter_results, _ = results[idx]
+                raw_events, file_filter_results, flags, init_num_events = results[idx]
 
                 for key, value in file_filter_results.items():
                     self.filter_results[key] = self.filter_results.get(key, 0) + value
 
-                for key, evt in events_pass_filter.items():
-                    self.data.setdefault(key, []).append(evt)
+                self.raw_events.append(raw_events)
+                if self.regions is None and flags is not None:
+                    self.regions = list(flags.keys())
 
-            # Concatenate data from all files
-            for key in self.data:
-                self.data[key] = ak.concatenate(self.data[key], axis=0)
-                self.initial_total_num_events = initial_total_num_events
-                self.data[key]['initial_total_num_events'] = initial_total_num_events
-                self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
+            self.raw_events = ak.concatenate(self.raw_events, axis=0)
+        # reconstruct neutrinos of Ztautau raw events for later use in unfolding
+        if self.is_Ztautau:
+            self.raw_events = DefineVariables.define_region_specific_variables(self.raw_events)
+
+        # Store the raw events with all the defined variables
+        self.raw_events['initial_total_num_events'] = self.initial_total_num_events
+        output_file_name = self.output_dir + f"/filtered___raw.parquet"
+        ak.to_parquet(self.raw_events, output_file_name, compression='snappy')
+        log.info(f"Raw data saved to {output_file_name}.")
+
+        # Concatenate data from all files
+        for key in self.regions:
+            data = self.raw_events[self.raw_events[f'{key}_cut']]
+            output_file_name = self.output_dir + f"/filtered___{key}.parquet"
+            ak.to_parquet(data, output_file_name, compression='snappy')
+            log.info(f"Data for region {key} saved to {output_file_name}.")
+
 
         self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
 
@@ -315,7 +315,7 @@ class Preprocessor:
             cutflow_values = [self.filter_results[key] * self.weight for key in cutflow_labels]
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
             p = ax.bar(cutflow_labels, cutflow_values)
-            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_values], padding=3, fontsize=4)
+            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_values], padding=3, fontsize=4, rotation=90)
             ax.set_ylabel('Number of Events')
             ax.set_title('Event Cutflow')
             ax.set_yscale('log')
@@ -327,7 +327,7 @@ class Preprocessor:
             cutflow_normalized = [v / cutflow_values[0] for v in cutflow_values]
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
             p = ax.bar(cutflow_labels, cutflow_normalized)
-            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_normalized], padding=3, fontsize=4)
+            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_normalized], padding=3, fontsize=4, rotation=90)
             ax.set_ylabel('Efficiency')
             ax.set_title('Event Cutflow Efficiency')
             plt.xticks(rotation=45, ha='right', fontsize=8)
@@ -348,21 +348,11 @@ class Preprocessor:
 
             fig, ax = plt.subplots(dpi=300, figsize=(8,8))
             p = ax.bar(tmp_cutflow_label, cutflow_relative)
-            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_relative], padding=3, fontsize=4)
+            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_relative], padding=3, fontsize=4, rotation=90)
             ax.set_ylabel('Relative Efficiency')
             ax.set_title('Event Cutflow Relative Efficiency')
             plt.xticks(rotation=45, ha='right', fontsize=8)
             fig.tight_layout()
             fig.savefig(self.output_dir + f"/cutflow_relative_efficiency_{self.name}.pdf")
 
-        return self.data
 
-    
-    def save_data(self):
-        output_file_prefix = self.output_dir + "/filtered"
-        for key, evt in self.data.items():
-            output_file = output_file_prefix + f"___{key}.parquet"
-            log.info(f"Saving data for region {key} to {output_file}.")
-            ak.to_parquet(evt, output_file, compression='snappy')
-
-            log.info(f"Data saved to {output_file}.")

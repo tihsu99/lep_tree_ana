@@ -112,10 +112,7 @@ if __name__ == "__main__":
                 f"Processing DataLoader {key} slice {slice_idx}: "
                 f"{len(input_slice)} files, {slice_size / 1024**3:.2f} GB -> {slice_output_dir}"
             )
-            dl = Preprocessor.Preprocessor(slice_config, output_dir=slice_output_dir)
-            dl.load_data()
-            dl.save_data()
-            del dl
+            Preprocessor.Preprocessor(slice_config, output_dir=slice_output_dir)
 
 
     log.info("Done")
