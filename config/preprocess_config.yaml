@@ -1,6 +1,7 @@
 GlobalConfigs:
   default_output_dir: "./20260427-dataset/"
   max_input_slice_size_gb: 50
+  num_workers: 8
   luminosity: &Luminosity 46.3 # pb^-1
 
 DataLoaders:
