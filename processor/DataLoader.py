@@ -145,7 +145,7 @@ class DataLoader:
                     if len(self.data[region]) == 0:
                         log.warning(f"Filtered data for region {region} is empty. This may be due to previous filtering steps removing all events. Creating empty array for this region.")
                         empty_events = next(iter(self.data.values())) # get the structure of events from any existing region
-                        filter_events = ak.zeros_like(empty_events['evtNumber'], dtype=bool)
+                        filter_events = np.zeros(len(empty_events), dtype=bool)
                         self.data[region] = empty_events[filter_events]
                     if self.initial_total_num_events == 0 and len(self.data[region]) > 0:
                         self.initial_total_num_events = self.data[region]['initial_total_num_events'][0]
@@ -362,7 +362,7 @@ class DataLoader:
         else:
             weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
         for ch, ch_events in self.data.items():
-            ch_events['weight_nominal'] = weight * ak.ones_like(ch_events['evtNumber'], dtype=np.float32)
+            ch_events['weight_nominal'] = ak.Array(np.full(len(ch_events), weight, dtype=np.float32))
             ch_events['weight'] = ch_events['weight_nominal'] # default weight is nominal weight
         self.current_variation = ('nominal', 0.0)
 
