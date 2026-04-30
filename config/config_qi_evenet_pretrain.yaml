@@ -1,10 +1,11 @@
 GlobalConfigs:
-  default_output_dir: "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-pretrain/qi-export"
+  default_output_dir: "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-evenet-pretrain/qi-export"
   region_of_interest: &RegionName "raw"
   load_regions:
     - "raw"
     - "Ztautau_pipi"
     - "Ztautau_pirho"
+    - "Ztautau_rhopi"
     - "Ztautau_pie"
     - "Ztautau_pimu"
     - "Ztautau_rhoe"
@@ -13,6 +14,7 @@ GlobalConfigs:
     - "Ztautau_ee"
     - "Ztautau_mumu"
     - "Ztautau_emu"
+    - "Ztautau_mue"
   verbosity: 1
   luminosity: &Luminosity 46.3
   signal_categories:
@@ -40,7 +42,7 @@ DataLoaders:
     is_data: true
     is_signal: false
     input_files:
-      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-pretrain/qi-export/data94/filtered___raw.parquet"
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-evenet-pretrain/qi-export/data94/filtered___raw.parquet"
 
   Ztautau:
     name: "Ztautau"
@@ -49,7 +51,7 @@ DataLoaders:
     is_signal: false
     norm_factor: 1458.9
     input_files:
-      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-pretrain/qi-export/Ztautau/filtered___raw.parquet"
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-evenet-pretrain/qi-export/Ztautau/filtered___raw.parquet"
 
   Zll:
     name: "Zll"
@@ -58,7 +60,7 @@ DataLoaders:
     is_signal: false
     norm_factor: 2844.4
     input_files:
-      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-pretrain/qi-export/Zll/filtered___raw.parquet"
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-evenet-pretrain/qi-export/Zll/filtered___raw.parquet"
 
   Zqq:
     name: "Zqq"
@@ -67,14 +69,15 @@ DataLoaders:
     is_signal: false
     norm_factor: 30511.2
     input_files:
-      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-pretrain/qi-export/Zqq/filtered___raw.parquet"
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/predict-evenet-pretrain/qi-export/Zqq/filtered___raw.parquet"
 
 Processors:
   QIProcessor:
     output_dir_name: "QI_analysis"
     dict_region_to_signals:
       Ztautau_pipi: ["Ztautau_pipi"]
-      Ztautau_pirho: ["Ztautau_pirho", "Ztautau_rhopi"]
+      Ztautau_pirho: ["Ztautau_pirho"]
+      Ztautau_rhopi: ["Ztautau_rhopi"]
       Ztautau_pie: ["Ztautau_pie", "Ztautau_epi"]
       Ztautau_pimu: ["Ztautau_pimu", "Ztautau_mupi"]
       Ztautau_rhoe: ["Ztautau_rhoe", "Ztautau_erho"]
@@ -82,4 +85,5 @@ Processors:
       Ztautau_rhorho: ["Ztautau_rhorho"]
       Ztautau_ee: ["Ztautau_ee"]
       Ztautau_mumu: ["Ztautau_mumu"]
-      Ztautau_emu: ["Ztautau_emu", "Ztautau_mue"]
+      Ztautau_emu: ["Ztautau_emu"]
+      Ztautau_mue: ["Ztautau_mue"]
