@@ -1,0 +1,13 @@
+# Python dependencies for tree_ana.
+ROOT
+h5py
+matplotlib
+numpy
+pandas
+pyarrow
+PyYAML
+tqdm
+awkward>=2.6.4
+scipy>=1.17.0
+uproot>=5.7.3
+vector>=1.6.1
