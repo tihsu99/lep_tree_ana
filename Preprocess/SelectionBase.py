@@ -15,7 +15,7 @@ class RegionSelection(ABC):
 
     @property
     def end_description(self):
-        return f'end of {self.selection_name} selection'
+        return self.cut_descriptions[-1]
 
     def get_flags(self, events: ak.Array):
         cuts = self.get_cuts(events)
@@ -34,7 +34,6 @@ class RegionSelection(ABC):
             pass_filter = ak.fill_none(cut & pass_filter, False)
             flags[description] = pass_filter
 
-        flags[self.end_description] = pass_filter
         return flags
 
     @abstractmethod

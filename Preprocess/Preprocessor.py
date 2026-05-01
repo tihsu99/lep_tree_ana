@@ -18,15 +18,17 @@ from tqdm import tqdm
 log = logging.getLogger(__name__)
 
 def apply_selection(raw_events, filter_log_dict, selection, parent_flag=None):
+    selection_name = selection.selection_name if selection.selection_name is not None else selection.__class__.__name__
     selection_results = selection.get_flags(raw_events)
-    for description, flag_passes_cut in selection_results.items():
+
+    final_flag = None
+    for i_cut, description in enumerate(selection.cut_descriptions):
+        flag_passes_cut = selection_results[description]
         if parent_flag is not None:
             flag_passes_cut = flag_passes_cut & parent_flag
         filter_log_dict[description] = filter_log_dict.get(description, 0) + ak.sum(flag_passes_cut)
-
-    final_flag = selection_results[selection.end_description]
-    if parent_flag is not None:
-        final_flag = final_flag & parent_flag
+        raw_events[f'{selection_name}_cut_{i_cut}'] = flag_passes_cut
+        final_flag = flag_passes_cut
     return final_flag
 
 
@@ -119,9 +121,6 @@ def process_input_file(args):
 class Preprocessor:
     def __init__(self, config, output_dir):
         self.config = config
-        # load all config into member variables
-        for key, value in config.items():
-            setattr(self, key, value)
         self.norm_factor = config.get("norm_factor", 1.0)
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
@@ -153,7 +152,6 @@ class Preprocessor:
         }
 
         self.load_data()
-        # self.save_data()
 
     
 
@@ -290,25 +288,37 @@ class Preprocessor:
 
         # Log filter results
         if self.filter_results['initial_total_num_events'] > 0:
-            with open(self.output_dir + f"/cutflow_{self.name}.txt", "w") as f:
-                f.write(f"{'Cut':<40} {'Events':<20} {'Efficiency':<20} {'Relative Efficiency':<20}\n")
-                previous_count = self.filter_results['initial_total_num_events']
-                for key, value in self.filter_results.items():
-                    log.info(f"Filter result - {key}: {value}. Filter efficiency: {value / self.filter_results['initial_total_num_events']:.4f}")
-                    efficiency = value / self.filter_results['initial_total_num_events']
-                    relative_efficiency = value / previous_count if previous_count > 0 else 1.0
-                    f.write(f"{key:<40} {value:<20} {efficiency:<20.4f} {relative_efficiency:<20.4f}\n")
-                    previous_count = value
+            initial_count = self.filter_results['initial_total_num_events']
+            initial_weighted_count = self.weight * initial_count
+            previous_count = initial_count
+            previous_weighted_count = initial_weighted_count
+            cutflow_records = []
 
-            with open(self.output_dir + f"/cutflow_{self.name}_weighted.txt", "w") as f:
-                f.write(f"{'Cut':<40} {'Weighted Events':<20} {'Efficiency':<20} {'Relative Efficiency':<20}\n")
-                previous_count = self.weight * self.filter_results['initial_total_num_events']
-                for key, value in self.filter_results.items():
-                    weighted_value = self.weight * value
-                    efficiency = weighted_value / (self.weight * self.filter_results['initial_total_num_events'])
-                    relative_efficiency = weighted_value / previous_count if previous_count > 0 else 1.0
-                    f.write(f"{key:<40} {weighted_value:<20.4f} {efficiency:<20.4f} {relative_efficiency:<20.4f}\n")
-                    previous_count = weighted_value
+            for step, (key, value) in enumerate(self.filter_results.items()):
+                weighted_value = self.weight * value
+                efficiency = value / initial_count
+                weighted_efficiency = weighted_value / initial_weighted_count if initial_weighted_count > 0 else 0
+                relative_efficiency = value / previous_count if previous_count > 0 else 1.0
+                weighted_relative_efficiency = weighted_value / previous_weighted_count if previous_weighted_count > 0 else 1.0
+
+                log.info(f"Filter result - {key}: {value}. Filter efficiency: {efficiency:.4f}")
+                cutflow_records.append({
+                    "step": step,
+                    "cut": key,
+                    "events": int(value),
+                    "weighted_events": float(weighted_value),
+                    "efficiency": float(efficiency),
+                    "weighted_efficiency": float(weighted_efficiency),
+                    "relative_efficiency": float(relative_efficiency),
+                    "weighted_relative_efficiency": float(weighted_relative_efficiency),
+                })
+
+                previous_count = value
+                previous_weighted_count = weighted_value
+
+            cutflow_df = pd.DataFrame(cutflow_records)
+            # cutflow_df.to_csv(self.output_dir + f"/cutflow_{self.name}.csv", index=False)
+            cutflow_df.to_json(self.output_dir + f"/cutflow_{self.name}.json", orient="records", indent=2)
 
             # plot filter results
             cutflow_labels = list(self.filter_results.keys())
