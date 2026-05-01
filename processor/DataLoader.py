@@ -30,6 +30,7 @@ class DataLoader:
         if self.luminosity == 0 and not self.is_data:
             log.warning("Luminosity is set to 0 for MC sample. Please set luminosity in config for proper normalization.")
         self.is_Ztautau = "Ztautau" in self.name
+        self.is_signal = self.is_Ztautau
 
         self.data = {}
         self.load_data()

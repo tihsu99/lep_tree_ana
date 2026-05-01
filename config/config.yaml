@@ -104,7 +104,6 @@ Processors:
   ControlPlotProcessor:
     output_dir_name: "control_plots"
     regions:
-      - *RegionName
       - "pipi"
       - "pirho"
       - "rhopi"
