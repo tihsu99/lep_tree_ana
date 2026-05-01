@@ -13,6 +13,7 @@ class PlotProcessor(BaseProcessor):
         super().__init__(config)
         self.config = config
         self.output_dir = output_dir
+        self.region_of_interest = config.get("region_of_interest", "baseline")
         os.makedirs(self.output_dir, exist_ok=True)
 
     def run(self, dl_dict):
@@ -21,8 +22,7 @@ class PlotProcessor(BaseProcessor):
 
     def process_dataloader(self, dl: DataLoader.DataLoader, dl_name: str = ""):
         events_dict = dl.data
-        # events_dict.pop('raw')
-        RegionNameOfInterest = dl.region_of_interest
+        RegionNameOfInterest = self.region_of_interest
         events_sr = events_dict.get(RegionNameOfInterest)
         cur_output_dir = f"{self.output_dir}/{dl_name}/plots/"
         os.makedirs(cur_output_dir, exist_ok=True)

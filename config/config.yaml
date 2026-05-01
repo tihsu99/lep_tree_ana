@@ -1,8 +1,8 @@
 GlobalConfigs:
   default_output_dir: "./20260427-baseline"
-  region_of_interest: &RegionName "baseline"
+  processed_data_dir: "./20260427-dataset/"
   load_regions:
-    - *RegionName
+    - "baseline"
     - "pipi"
     - "pirho"
     - "rhopi"
@@ -29,17 +29,12 @@ DataLoaders:
     tree_name: "t"
     is_data: true
     is_signal: false
-    input_files:
-      - "/eos/home-y/yulei/Ztautau/ntuple/collision_data_v3/v94c/91.25/nanoaod_*.al_ttree.root"
   
   Ztautau:
     name: "Ztautau"
-    tree_name: "t"
     is_data: false
     is_signal: false
     norm_factor: 1458.9 # pb
-    input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_tautau_v3/simana_*_ttree.root"
       
   Zll:
     name: "Zll"
@@ -47,8 +42,6 @@ DataLoaders:
     is_data: false
     is_signal: false
     norm_factor:  2844.4 # pb
-    input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_ll_v3/simana_*_ttree.root"
 
   Zqq:
     name: "Zqq"
@@ -56,11 +49,6 @@ DataLoaders:
     is_data: false
     is_signal: false
     norm_factor: 30511.2 # pb
-    input_files:
-      # Only load a subset of samples for testing, can load all samples for final analysis
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*01_ttree.root"
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*02_ttree.root"
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*03_ttree.root"
 
 Processors:
   # TruthMatchProcessor:
