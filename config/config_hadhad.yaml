@@ -1,9 +1,12 @@
 GlobalConfigs:
-  default_output_dir: "./20260426-hadhad"
-  region_of_interest: &RegionName "hadhad"
+  default_output_dir: "./20260427-pirho"
+  processed_data_dir: "./20260427-dataset/"
   load_regions:
-    - *RegionName
-  verbosity: 1
+    - "pipi"
+    - "pirho"
+    - "rhopi"
+
+  verbosity: 0
   luminosity: &Luminosity 46.3 # pb^-1
   # Ztautau sample can be further split categorizes below
   signal_categories:
@@ -12,6 +15,14 @@ GlobalConfigs:
     Ztautau_rhopi: [21]
     Ztautau_rhorho: [22]
     # Ztautau_lephad: [13, 31, 14, 41, 23, 24, 42, 32]
+  shift_SDM:
+    - ["nominal", 0.0]
+    # - ["C_rr", 0.25]
+    # - ["C_rr", -0.25]
+    # - ["C_nn", 0.25]
+    # - ["C_rn", -0.25]
+    # - ["B_Ak", 0.25]
+    # - ["B_Bn", -0.25]
 
 DataLoaders:
   data94:
@@ -19,17 +30,12 @@ DataLoaders:
     tree_name: "t"
     is_data: true
     is_signal: false
-    input_files:
-      - "/eos/home-y/yulei/Ztautau/ntuple/collision_data_v3/v94c/91.25/nanoaod_*.al_ttree.root"
   
   Ztautau:
     name: "Ztautau"
-    tree_name: "t"
     is_data: false
     is_signal: false
     norm_factor: 1458.9 # pb
-    input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_tautau_v3/simana_*_ttree.root"
       
   Zll:
     name: "Zll"
@@ -37,8 +43,6 @@ DataLoaders:
     is_data: false
     is_signal: false
     norm_factor:  2844.4 # pb
-    input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_ll_v3/simana_*_ttree.root"
 
   Zqq:
     name: "Zqq"
@@ -46,25 +50,26 @@ DataLoaders:
     is_data: false
     is_signal: false
     norm_factor: 30511.2 # pb
-    input_files:
-      # Only load a subset of samples for testing, can load all samples for final analysis
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*01_ttree.root"
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*02_ttree.root"
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_qq_v3/simana_*03_ttree.root"
 
 Processors:
   NeutrinoReconstructionProcessor:
     output_dir_name: "neutrino_reco"
     mmc_regions: []
     regions:
-      - hadhad
+      - pirho
+      - rhopi
+      - pipi
 
   QIProcessor:
     output_dir_name: "QI_analysis"
     dict_region_to_signals:
-      hadhad: ["Ztautau_pipi", "Ztautau_pirho", "Ztautau_rhopi", "Ztautau_rhorho"]
+      pirho: ["Ztautau_pirho"]
+      rhopi: ["Ztautau_rhopi"]
+      pipi: ["Ztautau_pipi"]
 
   ControlPlotProcessor:
     output_dir_name: "control_plots"
     regions:
-      - *RegionName
+      - pirho
+      - rhopi
+      - pipi

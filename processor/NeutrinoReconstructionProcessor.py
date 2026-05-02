@@ -1,6 +1,5 @@
 import numpy as np
 from BaseProcessor import BaseProcessor
-import DataLoader
 import matplotlib.pyplot as plt
 import os
 import copy

@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import os
 import vector
 import awkward as ak
-from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events, get_all_p4_from_ak_events, cme, load_events_from_parquet, print_and_write_to_opened_file, get_event_category_from_signal_name
+from utils.common_functions import load_events_from_parquet, print_and_write_to_opened_file, get_event_category_from_signal_name
 from utils.plotter import do_control_plot
-from quantum.observables_builder import get_observable_names, get_mean_and_err_of_mean, derive_results, shift_SDM_element
+from quantum.observables_builder import get_observable_names, derive_results, shift_SDM_element
 import quantum.unfold as unfold
 import ROOT
 
@@ -70,7 +70,6 @@ class QIProcessor(BaseProcessor):
         # under development: unfolding results
         default_output_dir = config['default_output_dir']
         self.path_response_matrices = f"{default_output_dir}/response_matrices/"
-        self.path_raw_signal_events = f"{default_output_dir}/Ztautau/filtered___raw.parquet"
         self.response_matrix = {f"{region}_{signal_name}": {} for region in self.dict_region_to_signals.keys() for signal_name in self.dict_region_to_signals.get(region, [])}
         self.num_bins = 10
         self.bin_edges = np.linspace(-1, 1, self.num_bins + 1)
@@ -78,8 +77,7 @@ class QIProcessor(BaseProcessor):
         self.initialize()
 
     def initialize(self):
-        self.raw_ztautau_events = load_events_from_parquet(self.path_raw_signal_events)
-        self.raw_ztautau_events['weight_nominal'] = self.raw_ztautau_events['weight']  # default 
+        self.raw_ztautau_events, _ = DataLoader.DataLoader.load_processed_data(self.config['processed_data_dir'], "Ztautau", region_name='raw')
         self.events_truth_region = self.raw_ztautau_events[(self.raw_ztautau_events['truth_QI_region'] == 1)]
         self.load_response_matrix()
 
