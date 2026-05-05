@@ -194,6 +194,22 @@ class DataLoader:
         return np.full(len(events), np.float32(value), dtype=np.float32)
 
 
+    def _initial_total_num_events_from_loaded_parquets(self, parquet_arrays: list[ak.Array]) -> int:
+        if not parquet_arrays:
+            return 0
+        totals: list[int] = []
+        for events in parquet_arrays:
+            if len(events) == 0:
+                continue
+            if "initial_total_num_events" in events.fields:
+                totals.append(int(ak.to_numpy(events["initial_total_num_events"][:1], allow_missing=False)[0]))
+            else:
+                totals.append(int(len(events)))
+        if not totals:
+            return 0
+        return int(sum(totals))
+
+
     def _split_loaded_parquet_regions(self, raw_events: ak.Array) -> bool:
         requested_regions = [region for region in self.load_regions if region != "raw"]
         if not requested_regions:
@@ -273,11 +289,8 @@ class DataLoader:
 
                 raw_events = parquet_arrays[0] if len(parquet_arrays) == 1 else ak.concatenate(parquet_arrays, axis=0)
                 self.data['raw'] = raw_events
-                if len(raw_events) > 0 and "initial_total_num_events" in raw_events.fields:
-                    self.initial_total_num_events = int(
-                        ak.to_numpy(raw_events["initial_total_num_events"][:1], allow_missing=False)[0]
-                    )
-                else:
+                self.initial_total_num_events = self._initial_total_num_events_from_loaded_parquets(parquet_arrays)
+                if self.initial_total_num_events <= 0:
                     self.initial_total_num_events = int(len(raw_events))
                 self.filter_results['initial_total_num_events'] = self.initial_total_num_events
 
