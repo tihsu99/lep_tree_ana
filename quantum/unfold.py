@@ -3,6 +3,22 @@ import numpy as np
 import awkward as ak
 from quantum.observables_builder import Hist
 
+NUM_BINS = 10
+BIN_EDGES = np.linspace(-1, 1, NUM_BINS + 1)
+
+def get_bin_edges():
+    return BIN_EDGES
+
+def get_num_bins():
+    return NUM_BINS
+
+def bin_variable(var, bin_edges):
+    # bin the variable according to the provided bin edges
+    var = np.asarray(var)
+    binned_var = np.digitize(var, bin_edges) - 1  # digitize returns indices starting from 1
+    binned_var[var < bin_edges[0]] = -1  # underflow
+    binned_var[var >= bin_edges[-1]] = len(bin_edges) - 1  # overflow
+    return binned_var
 
 def build_response(var_recon, var_truth, num_bins, weight=None, name="response"):
     try:
