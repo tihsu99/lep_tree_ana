@@ -1,6 +1,7 @@
 import awkward as ak
 import matplotlib.pyplot as plt
 import vector
+import pyarrow.parquet as pq
 
 cme = 91.25 # GeV
 m_tau = 1.77686 # GeV
@@ -83,3 +84,22 @@ def load_events_from_parquet(file_path, columns=None):
         if col.endswith('_p4'):
             events[col] = rebuild_p4(events[col])
     return events
+
+
+def iter_events_from_parquet(file_path, columns=None, batch_size=50_000, max_entries=None):
+    parquet = pq.ParquetFile(file_path)
+    remaining = None if max_entries is None else max(0, int(max_entries))
+    for record_batch in parquet.iter_batches(batch_size=batch_size, columns=columns):
+        events = ak.from_arrow(record_batch)
+        for col in events.fields:
+            if col.endswith("_p4"):
+                events[col] = rebuild_p4(events[col])
+        if remaining is not None and len(events) > remaining:
+            events = events[:remaining]
+        if len(events) == 0:
+            continue
+        yield events
+        if remaining is not None:
+            remaining -= len(events)
+            if remaining <= 0:
+                break

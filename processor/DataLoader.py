@@ -8,6 +8,7 @@ import glob
 import os
 import awkward as ak
 import copy
+import pyarrow.parquet as pq
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
             get_all_p4_from_ak_events, cme, rebuild_p4, load_events_from_parquet
 from quantum.observables_builder import build_observables, get_mean_and_err_of_mean, shift_SDM_element
@@ -110,6 +111,7 @@ class DataLoader:
         self.region_of_interest = self.config.get("region_of_interest", "pipi")
         self.load_regions = self.config.get("load_regions", [self.region_of_interest])
         self.load_regions = list(set(self.load_regions)) # remove duplicates
+        self.root_step_size = int(self.config.get("root_step_size", os.environ.get("TREE_ANA_ROOT_STEP_SIZE", 50000)))
         self.is_data = self.config.get("is_data", False)
         self.initial_total_num_events = 0
         self.luminosity = self.config.get("luminosity", 0)
@@ -167,6 +169,26 @@ class DataLoader:
         log.info(f"DataLoader initialization complete. Loaded {len(self.input_files)} files.")
 
     
+    def _stream_write_parquet_chunk(self, path: str, events: ak.Array) -> None:
+        if len(events) == 0:
+            return
+        table = ak.to_arrow_table(events, extensionarray=False)
+        writer = getattr(self, "_parquet_writers", {}).get(path)
+        if writer is None:
+            if not hasattr(self, "_parquet_writers"):
+                self._parquet_writers = {}
+            writer = pq.ParquetWriter(path, table.schema, compression="snappy")
+            self._parquet_writers[path] = writer
+        else:
+            table = table.cast(writer.schema, safe=False)
+        writer.write_table(table)
+
+
+    def _close_stream_writers(self) -> None:
+        for writer in getattr(self, "_parquet_writers", {}).values():
+            writer.close()
+        self._parquet_writers = {}
+
 
     def load_data(self) -> pd.DataFrame:
         if os.path.exists(self.output_dir + f"/filtered___raw.parquet"):
@@ -222,55 +244,56 @@ class DataLoader:
             if not self.is_data:
                 branches_to_load += gen_part_branches
 
-            # Load data from all files
+            persist_regions = set(self.load_regions)
+            persist_regions.add('raw')
+            raw_output_file = self.output_dir + "/filtered___raw.parquet"
+
             initial_total_num_events = 0
             for file in self.input_files:
                 log.info(f"Loading data from file: {file}")
                 try:
-                # if True:
                     f = ur.open(file)
                     tree = f[self.tree_name]
-                    # load all events as awkward array 
-                    events = tree.arrays(branches_to_load, library="ak")
                 except Exception as e:
                     log.error(f"Error reading file {file} or tree {self.tree_name}: {e}")
                     continue
 
-                # adjust event index to be unique across files
-                # the original Event_evtNumber starts from 1 for each file
-                if len(events) == 0:
-                    continue
-                events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
-                # events['initial_total_num_events'] = len(events)
-                initial_total_num_events += len(events)
+                for events in tree.iterate(expressions=branches_to_load, step_size=self.root_step_size, library="ak"):
+                    if len(events) == 0:
+                        continue
+                    events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
+                    initial_total_num_events += len(events)
 
-                # select Part_xxx via isGood flag
-                part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
-                flag_not_0pdgid = (events['Part_pdgId'] != 0)
-                events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) & (part_abscosth > 0.035) # & flag_not_0pdgid
-                for part_branch in part_branches:
-                    if part_branch != 'Part_isGood':
-                        events[part_branch] = events[part_branch][events['Part_isGood']] 
+                    part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
+                    events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) & (part_abscosth > 0.035)
+                    for part_branch in part_branches:
+                        if part_branch != 'Part_isGood':
+                            events[part_branch] = events[part_branch][events['Part_isGood']]
 
-                # filter events
-                self.filter_results['initial_total_num_events'] += len(events)
-                events_pass_filter, self.filter_results = filter_event(events, self.filter_results, is_Ztautau=self.is_Ztautau)
+                    self.filter_results['initial_total_num_events'] += len(events)
+                    events_pass_filter, self.filter_results = filter_event(events, self.filter_results, is_Ztautau=self.is_Ztautau)
+                    if self.is_Ztautau and 'raw' in events_pass_filter:
+                        events_pass_filter['raw'] = DefineVariables.define_region_specific_variables(events_pass_filter['raw'])
 
-                # record filtered events into self.data
-                for key, evt in events_pass_filter.items():
-                    self.data.setdefault(key, []).append(evt)
+                    for key, evt in events_pass_filter.items():
+                        if key not in persist_regions:
+                            continue
+                        if key == 'raw' and key not in self.load_regions:
+                            self._stream_write_parquet_chunk(raw_output_file, evt)
+                            continue
+                        self.data.setdefault(key, []).append(evt)
 
-            # Concatenate data from all files
             for key in self.data:
                 self.data[key] = ak.concatenate(self.data[key], axis=0)
                 self.initial_total_num_events = initial_total_num_events
                 self.data[key]['initial_total_num_events'] = initial_total_num_events
                 self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
                 self.data[key]['weight'] = self.weight * ak.ones_like(self.data[key]['evtNumber'], dtype=np.float32)
+            self._close_stream_writers()
 
         self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
         # reconstruct neutrinos of Ztautau raw events for later use in unfolding
-        if self.is_Ztautau:
+        if self.is_Ztautau and 'raw' in self.data:
             raw_events = self.data['raw']
             self.data['raw'] = DefineVariables.define_region_specific_variables(raw_events)
 
