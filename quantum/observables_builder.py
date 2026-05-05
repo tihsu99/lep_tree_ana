@@ -133,6 +133,7 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
 
     # define helicity basis in cm frame using tau a momentum
     helicity_basis_a = helicity_basis(tau_a_p4_cm)
+    # helicity_basis_b = helicity_basis(tau_b_p4_cm)
 
     # boost visible momenta to tau a rest frame
     boost_to_a_rest = -tau_a_p4_cm.to_beta3()
@@ -153,9 +154,6 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
         })
         helicity_basis_a_a_rest = helicity_basis_a_tmp.boost(boost_to_a_rest)
         helicity_basis_a[axis] = helicity_basis_a_a_rest.to_pxpypz().unit()
-
-        helicity_basis_a_b_rest = helicity_basis_a_tmp.boost(boost_to_b_rest)
-        helicity_basis_a[axis] = helicity_basis_a_b_rest.to_pxpypz().unit()
 
 
     observables = {}

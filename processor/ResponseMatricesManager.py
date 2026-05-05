@@ -33,6 +33,7 @@ class ResponseMatricesManager:
 
 
     def initialize(self):
+        self.raw_ztautau_events = None
         for region in self.dict_region_to_signals.keys():
             for signal_name in self.dict_region_to_signals.get(region, []):
                 self.response_matrices[f"{region}_{signal_name}"] = {var: None for var in self.unfold_vars}
@@ -86,7 +87,7 @@ class ResponseMatricesManager:
             mask_truth_region = mask_truth_region[mask_unfolding_events]
             mask_analysis_region = mask_analysis_region[mask_unfolding_events]
 
-            for var in get_observable_names():
+            for var in self.unfold_vars:
                 print(f"Building response matrix for {var}...")
                 binned_var_recon = self.get_binned_observable(var, events)
                 binned_var_truth = self.get_binned_observable(f'truth_{var}', events)
@@ -101,7 +102,7 @@ class ResponseMatricesManager:
             
         fout = ROOT.TFile(f"{self.path_response_matrices}/response_{region}.root", "RECREATE")
         for signal_name in self.dict_region_to_signals.get(region, []):
-            for var in get_observable_names():
+            for var in self.unfold_vars:
                 self.response_matrices[f"{region}_{signal_name}"][var].Write()
         fout.Close()
 
