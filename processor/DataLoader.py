@@ -190,106 +190,170 @@ class DataLoader:
         self._parquet_writers = {}
 
 
+    def _split_loaded_parquet_regions(self, raw_events: ak.Array) -> bool:
+        requested_regions = [region for region in self.load_regions if region != "raw"]
+        if not requested_regions:
+            return True
+
+        missing_cut_fields = [
+            f"{region}_cut"
+            for region in requested_regions
+            if f"{region}_cut" not in raw_events.fields
+        ]
+        if missing_cut_fields:
+            log.info(
+                "Parquet input is missing region cut fields %s; falling back to filter_event.",
+                missing_cut_fields[:8],
+            )
+            return False
+
+        for region in requested_regions:
+            cut_field = f"{region}_cut"
+            region_mask = ak.to_numpy(raw_events[cut_field], allow_missing=False).astype(bool)
+            self.data[region] = raw_events[region_mask]
+            self.data[region]['initial_total_num_events'] = self.initial_total_num_events
+            if "weight" not in self.data[region].fields:
+                region_weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
+                self.data[region]['weight'] = region_weight * ak.ones_like(self.data[region]['evtNumber'], dtype=np.float32)
+        return True
+
+
     def load_data(self) -> pd.DataFrame:
         if os.path.exists(self.output_dir + f"/filtered___raw.parquet"):
             log.info(f"Loading existing raw data from {self.output_dir}/filtered___raw.parquet")
             self.data['raw'] = ak.from_parquet(self.output_dir + f"/filtered___raw.parquet")
             self.initial_total_num_events = self.data['raw']['initial_total_num_events'][0]
             self.filter_results['initial_total_num_events'] = self.initial_total_num_events
-            filtered_events, self.filter_results = filter_event(self.data['raw'], self.filter_results, is_Ztautau=self.is_Ztautau)
-            for key, evt in filtered_events.items():
-                self.data[key] = evt
-                self.data[key]['initial_total_num_events'] = self.initial_total_num_events
+            if not self._split_loaded_parquet_regions(self.data['raw']):
+                filtered_events, self.filter_results = filter_event(self.data['raw'], self.filter_results, is_Ztautau=self.is_Ztautau)
+                for key, evt in filtered_events.items():
+                    self.data[key] = evt
+                    self.data[key]['initial_total_num_events'] = self.initial_total_num_events
         else:
             log.info("Loading data from input files.")
-            # Identify branches to load
-            f = ur.open(self.input_files[0])
-            tree = f[self.tree_name]
-
-            common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart", 
-                "event_category"
-            ]
-            gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
-            gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
-            
-            part_branches = [
-                "charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood", "vtxIdx", 
-                "hpcShowerEnergy", "hpcShowerTheta", "hpcShowerPhi", "hpcParticleCode", "hpcNumLayers", "hpcLayerHitPattern", "hpcNumAssociatedShowers", "hpcTotalShowerEnergy", 
-                "hacShowerEnergy", "hacShowerTheta", "hacShowerPhi", "hacParticleCode", "hacNumTowers", "hacTowerHitPattern", "hacNumAssociatedShowers", "hacTotalShowerEnergy", 
-                "sticShowerEnergy", "sticShowerTheta", "sticShowerPhi", "sticNumTowers", "sticChargedTag", "sticSiliconVertexPos",  
-                "lock",
-            ]
-            part_branches = [f'Part_{b}' for b in part_branches]
-            id_branches = [
-                "Elid_partIdx", "Elid_tag", "Elid_gammaConversion",
-                "Muid_partIdx", "Muid_tag", "Muid_hitPattern",
-                "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
-            ]
-            track_branches = [ f'Trac_{b}' for b in 
-                [
-                    "originVtxIdx", "impParToVertexRPhi", "impParToVertexZ", "impParRPhi", "impParZ",
-                ]
-            ]
-            
-            # Dedx branches are not Part_ prefixed, they are top-level
-            dedx_branches = ["Dedx_value", "Dedx_error", "Dedx_nrWires"]
-
-            part_branches = part_branches + id_branches + track_branches
-
-            vertex_branches = [ f'Vtx_{b}' for b in 
-                ["position_fCoordinates_fX", "position_fCoordinates_fY", "position_fCoordinates_fZ",]
-            ]
-
-            branches_to_load = common_evt_branches + part_branches + vertex_branches + dedx_branches
-            if not self.is_data:
-                branches_to_load += gen_part_branches
-
-            persist_regions = set(self.load_regions)
-            persist_regions.add('raw')
-            raw_output_file = self.output_dir + "/filtered___raw.parquet"
-
-            initial_total_num_events = 0
-            for file in self.input_files:
-                log.info(f"Loading data from file: {file}")
-                try:
-                    f = ur.open(file)
-                    tree = f[self.tree_name]
-                except Exception as e:
-                    log.error(f"Error reading file {file} or tree {self.tree_name}: {e}")
-                    continue
-
-                for events in tree.iterate(expressions=branches_to_load, step_size=self.root_step_size, library="ak"):
+            parquet_inputs = all(str(path).endswith(".parquet") for path in self.input_files)
+            if parquet_inputs:
+                parquet_arrays = []
+                for file in self.input_files:
+                    log.info(f"Loading parquet data from file: {file}")
+                    events = load_events_from_parquet(file)
                     if len(events) == 0:
                         continue
-                    events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
-                    initial_total_num_events += len(events)
+                    parquet_arrays.append(events)
+                if not parquet_arrays:
+                    raise ValueError("No events were loaded from parquet input files.")
 
-                    part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
-                    events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) & (part_abscosth > 0.035)
-                    for part_branch in part_branches:
-                        if part_branch != 'Part_isGood':
-                            events[part_branch] = events[part_branch][events['Part_isGood']]
+                raw_events = parquet_arrays[0] if len(parquet_arrays) == 1 else ak.concatenate(parquet_arrays, axis=0)
+                self.data['raw'] = raw_events
+                if len(raw_events) > 0 and "initial_total_num_events" in raw_events.fields:
+                    self.initial_total_num_events = int(
+                        ak.to_numpy(raw_events["initial_total_num_events"][:1], allow_missing=False)[0]
+                    )
+                else:
+                    self.initial_total_num_events = int(len(raw_events))
+                self.filter_results['initial_total_num_events'] = self.initial_total_num_events
 
-                    self.filter_results['initial_total_num_events'] += len(events)
-                    events_pass_filter, self.filter_results = filter_event(events, self.filter_results, is_Ztautau=self.is_Ztautau)
-                    if self.is_Ztautau and 'raw' in events_pass_filter:
-                        events_pass_filter['raw'] = DefineVariables.define_region_specific_variables(events_pass_filter['raw'])
+                if not self._split_loaded_parquet_regions(raw_events):
+                    filtered_events, self.filter_results = filter_event(
+                        raw_events,
+                        self.filter_results,
+                        is_Ztautau=self.is_Ztautau,
+                    )
+                    for key, evt in filtered_events.items():
+                        self.data[key] = evt
+                        self.data[key]['initial_total_num_events'] = self.initial_total_num_events
+                if "weight" not in self.data['raw'].fields:
+                    self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
+                    self.data['raw']['weight'] = self.weight * ak.ones_like(self.data['raw']['evtNumber'], dtype=np.float32)
+            else:
+            # Identify branches to load
+                f = ur.open(self.input_files[0])
+                tree = f[self.tree_name]
 
-                    for key, evt in events_pass_filter.items():
-                        if key not in persist_regions:
+                common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart",
+                    "event_category"
+                ]
+                gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
+                gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
+
+                part_branches = [
+                    "charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood", "vtxIdx",
+                    "hpcShowerEnergy", "hpcShowerTheta", "hpcShowerPhi", "hpcParticleCode", "hpcNumLayers", "hpcLayerHitPattern", "hpcNumAssociatedShowers", "hpcTotalShowerEnergy",
+                    "hacShowerEnergy", "hacShowerTheta", "hacShowerPhi", "hacParticleCode", "hacNumTowers", "hacTowerHitPattern", "hacNumAssociatedShowers", "hacTotalShowerEnergy",
+                    "sticShowerEnergy", "sticShowerTheta", "sticShowerPhi", "sticNumTowers", "sticChargedTag", "sticSiliconVertexPos",
+                    "lock",
+                ]
+                part_branches = [f'Part_{b}' for b in part_branches]
+                id_branches = [
+                    "Elid_partIdx", "Elid_tag", "Elid_gammaConversion",
+                    "Muid_partIdx", "Muid_tag", "Muid_hitPattern",
+                    "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
+                ]
+                track_branches = [ f'Trac_{b}' for b in
+                    [
+                        "originVtxIdx", "impParToVertexRPhi", "impParToVertexZ", "impParRPhi", "impParZ",
+                    ]
+                ]
+
+                # Dedx branches are not Part_ prefixed, they are top-level
+                dedx_branches = ["Dedx_value", "Dedx_error", "Dedx_nrWires"]
+
+                part_branches = part_branches + id_branches + track_branches
+
+                vertex_branches = [ f'Vtx_{b}' for b in
+                    ["position_fCoordinates_fX", "position_fCoordinates_fY", "position_fCoordinates_fZ",]
+                ]
+
+                branches_to_load = common_evt_branches + part_branches + vertex_branches + dedx_branches
+                if not self.is_data:
+                    branches_to_load += gen_part_branches
+
+                persist_regions = set(self.load_regions)
+                persist_regions.add('raw')
+                raw_output_file = self.output_dir + "/filtered___raw.parquet"
+
+                initial_total_num_events = 0
+                for file in self.input_files:
+                    log.info(f"Loading data from file: {file}")
+                    try:
+                        f = ur.open(file)
+                        tree = f[self.tree_name]
+                    except Exception as e:
+                        log.error(f"Error reading file {file} or tree {self.tree_name}: {e}")
+                        continue
+
+                    for events in tree.iterate(expressions=branches_to_load, step_size=self.root_step_size, library="ak"):
+                        if len(events) == 0:
                             continue
-                        if key == 'raw' and key not in self.load_regions:
-                            self._stream_write_parquet_chunk(raw_output_file, evt)
-                            continue
-                        self.data.setdefault(key, []).append(evt)
+                        events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
+                        initial_total_num_events += len(events)
 
-            for key in self.data:
-                self.data[key] = ak.concatenate(self.data[key], axis=0)
-                self.initial_total_num_events = initial_total_num_events
-                self.data[key]['initial_total_num_events'] = initial_total_num_events
-                self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
-                self.data[key]['weight'] = self.weight * ak.ones_like(self.data[key]['evtNumber'], dtype=np.float32)
-            self._close_stream_writers()
+                        part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
+                        events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) & (part_abscosth > 0.035)
+                        for part_branch in part_branches:
+                            if part_branch != 'Part_isGood':
+                                events[part_branch] = events[part_branch][events['Part_isGood']]
+
+                        self.filter_results['initial_total_num_events'] += len(events)
+                        events_pass_filter, self.filter_results = filter_event(events, self.filter_results, is_Ztautau=self.is_Ztautau)
+                        if self.is_Ztautau and 'raw' in events_pass_filter:
+                            events_pass_filter['raw'] = DefineVariables.define_region_specific_variables(events_pass_filter['raw'])
+
+                        for key, evt in events_pass_filter.items():
+                            if key not in persist_regions:
+                                continue
+                            if key == 'raw' and key not in self.load_regions:
+                                self._stream_write_parquet_chunk(raw_output_file, evt)
+                                continue
+                            self.data.setdefault(key, []).append(evt)
+
+                for key in self.data:
+                    self.data[key] = ak.concatenate(self.data[key], axis=0)
+                    self.initial_total_num_events = initial_total_num_events
+                    self.data[key]['initial_total_num_events'] = initial_total_num_events
+                    self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
+                    self.data[key]['weight'] = self.weight * ak.ones_like(self.data[key]['evtNumber'], dtype=np.float32)
+                self._close_stream_writers()
 
         self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
         # reconstruct neutrinos of Ztautau raw events for later use in unfolding
