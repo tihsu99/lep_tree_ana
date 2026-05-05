@@ -62,6 +62,7 @@ class QIProcessor(BaseProcessor):
         self.num_bins = unfold.get_num_bins()
         self.bin_edges = unfold.get_bin_edges()
         self.response_manager = ResponseMatricesManager(self.config['processed_data_dir'], self.config['default_output_dir'], self.dict_region_to_signals)
+        self.unfold_vars = self.response_manager.unfold_vars
         self.initialize()
 
     def initialize(self):
@@ -147,7 +148,7 @@ class QIProcessor(BaseProcessor):
                 # unfold the target variables
                 unfold_histograms = {}
                 truth_histograms = {}
-                for var in get_observable_names():
+                for var in self.unfold_vars:
                     print(f"Unfolding {var}...")
 
                     # unfold the variable
