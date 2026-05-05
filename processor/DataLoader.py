@@ -190,6 +190,10 @@ class DataLoader:
         self._parquet_writers = {}
 
 
+    def _constant_weight_array(self, events: ak.Array, value: float) -> np.ndarray:
+        return np.full(len(events), np.float32(value), dtype=np.float32)
+
+
     def _split_loaded_parquet_regions(self, raw_events: ak.Array) -> bool:
         requested_regions = [region for region in self.load_regions if region != "raw"]
         if not requested_regions:
@@ -214,8 +218,32 @@ class DataLoader:
             self.data[region]['initial_total_num_events'] = self.initial_total_num_events
             if "weight" not in self.data[region].fields:
                 region_weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
-                self.data[region]['weight'] = region_weight * ak.ones_like(self.data[region]['evtNumber'], dtype=np.float32)
+                self.data[region]['weight'] = self._constant_weight_array(self.data[region], region_weight)
         return True
+
+
+    def _maybe_define_region_specific_variables(self, events: ak.Array) -> ak.Array:
+        observable_fields = {"theta_cm", "mtautau", "cos_theta_A_n", "cos_theta_B_n"}
+        if observable_fields.issubset(set(events.fields)):
+            return events
+
+        required_input_fields = {
+            "lead_a_visible_p4",
+            "lead_b_visible_p4",
+            "ee_cut",
+            "mumu_cut",
+            "emu_cut",
+        }
+        if not required_input_fields.issubset(set(events.fields)):
+            missing = sorted(required_input_fields.difference(set(events.fields)))
+            log.info(
+                "Skipping define_region_specific_variables for %s because required fields are missing: %s",
+                self.name,
+                missing[:8],
+            )
+            return events
+
+        return DefineVariables.define_region_specific_variables(events)
 
 
     def load_data(self) -> pd.DataFrame:
@@ -264,7 +292,7 @@ class DataLoader:
                         self.data[key]['initial_total_num_events'] = self.initial_total_num_events
                 if "weight" not in self.data['raw'].fields:
                     self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
-                    self.data['raw']['weight'] = self.weight * ak.ones_like(self.data['raw']['evtNumber'], dtype=np.float32)
+                    self.data['raw']['weight'] = self._constant_weight_array(self.data['raw'], self.weight)
             else:
             # Identify branches to load
                 f = ur.open(self.input_files[0])
@@ -352,14 +380,14 @@ class DataLoader:
                     self.initial_total_num_events = initial_total_num_events
                     self.data[key]['initial_total_num_events'] = initial_total_num_events
                     self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
-                    self.data[key]['weight'] = self.weight * ak.ones_like(self.data[key]['evtNumber'], dtype=np.float32)
+                    self.data[key]['weight'] = self._constant_weight_array(self.data[key], self.weight)
                 self._close_stream_writers()
 
         self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
         # reconstruct neutrinos of Ztautau raw events for later use in unfolding
         if self.is_Ztautau and 'raw' in self.data:
             raw_events = self.data['raw']
-            self.data['raw'] = DefineVariables.define_region_specific_variables(raw_events)
+            self.data['raw'] = self._maybe_define_region_specific_variables(raw_events)
 
         # Log filter results
         if self.filter_results['initial_total_num_events'] > 0:
