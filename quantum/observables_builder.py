@@ -142,28 +142,28 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
     boost_to_b_rest = -tau_b_p4_cm.to_beta3()
     vis_b_p4_b_rest = vis_b_p4_cm.boost(boost_to_b_rest)
 
-    # boost helicity basis to tau a rest frame. This actually should be the same as pre-boost helicity basis since they are all perpendicular or parallel to the boost direction, but we do it for consistency.
+    # Boost the common CM-frame helicity basis into each tau rest frame separately.
+    # The A and B observables must use the basis vectors evaluated in their own rest frames.
+    helicity_basis_a_rest = {}
+    helicity_basis_b_rest = {}
     for axis in ['n', 'r', 'k']:
         axis_vector = helicity_basis_a[axis]
-        helicity_basis_a_tmp = vector.zip({
+        helicity_basis_tmp = vector.zip({
             "x": axis_vector.x,
             "y": axis_vector.y,
             "z": axis_vector.z,
             "t": np.zeros_like(axis_vector.x),
         })
-        helicity_basis_a_a_rest = helicity_basis_a_tmp.boost(boost_to_a_rest)
-        helicity_basis_a[axis] = helicity_basis_a_a_rest.to_pxpypz().unit()
-
-        helicity_basis_a_b_rest = helicity_basis_a_tmp.boost(boost_to_b_rest)
-        helicity_basis_a[axis] = helicity_basis_a_b_rest.to_pxpypz().unit()
+        helicity_basis_a_rest[axis] = helicity_basis_tmp.boost(boost_to_a_rest).to_pxpypz().unit()
+        helicity_basis_b_rest[axis] = helicity_basis_tmp.boost(boost_to_b_rest).to_pxpypz().unit()
 
 
     observables = {}
     observables['theta_cm'] = np.arccos(abs(tau_a_p4_cm.costheta)) * 2 / np.pi
     observables['mtautau'] = cm_p4.mass
     for axis in ['n', 'r', 'k']:
-        observables[f'cos_theta_A_{axis}'] = vis_a_p4_a_rest.to_pxpypz().unit().dot(helicity_basis_a[axis])
-        observables[f'cos_theta_B_{axis}'] = vis_b_p4_b_rest.to_pxpypz().unit().dot(helicity_basis_a[axis])
+        observables[f'cos_theta_A_{axis}'] = vis_a_p4_a_rest.to_pxpypz().unit().dot(helicity_basis_a_rest[axis])
+        observables[f'cos_theta_B_{axis}'] = vis_b_p4_b_rest.to_pxpypz().unit().dot(helicity_basis_b_rest[axis])
     
     # product observables
     for axis_a, axis_b in product(['n', 'r', 'k'], repeat=2):
@@ -391,4 +391,3 @@ if __name__ == "__main__":
         plt.ylim(0, None)
         plt.legend()
         plt.savefig(f'{output_dir}/{obs_name}.png')
-
