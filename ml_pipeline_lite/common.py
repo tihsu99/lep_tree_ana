@@ -155,6 +155,8 @@ def classification_targets_for_sample(
             np.asarray(["data"] * num_rows, dtype=object),
         )
 
+    print(lookup.sample_event_category_to_label)
+
     if sample_key in lookup.sample_event_category_to_label:
         if event_categories is None:
             raise ValueError(f"Sample '{sample_key}' needs event_category to build classification targets.")
