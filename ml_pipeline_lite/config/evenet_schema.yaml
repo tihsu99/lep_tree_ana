@@ -87,7 +87,7 @@ Processes:
       - "vis-"
     "tau+":
       - "vis+"
-  Ztautau_others:
+  Ztautau_other:
     "tau-":
       - "vis-"
     "tau+":
