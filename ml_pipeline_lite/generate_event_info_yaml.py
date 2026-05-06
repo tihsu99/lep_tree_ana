@@ -197,7 +197,8 @@ def parse_feature_config(config: dict[str, Any]) -> FeatureConfig:
         final_fields = []
         for x_element in x:
             if isinstance(x_element, dict):
-                final_fields.extend(recursive_find_filds(x_element["input"]))
+                for k, v in x_element.items():
+                    final_fields.extend(recursive_find_filds(k["input"]))
             else:
                 final_fields.append(str(x_element))
         return final_fields
