@@ -57,14 +57,29 @@ If a required `Global` feature is not stored directly, `missing_p4` is used for
 the nominal fallback, including `missing_pz`.
 
 
-## `build evenet config`
-To generate the `generated_event_info.yaml` schema, we need to provide two input yaml files:
+## `generate_event_info_yaml.py`
+
+Generate the `generated_event_info.yaml` schema consumed by:
+
+- `ml_pipeline/config/preprocess_config.yaml`
+- `ml_pipeline/config/train.yaml`
+- `ml_pipeline/config/train_pretrain.yaml`
+
+Example:
+
+```bash
+python3 ml_pipeline_lite/generate_event_info_yaml.py \
+  --analysis-config ml_pipeline/config/analysis.yaml \
+  --evenet-config ml_pipeline/config/evenet_schema.yaml \
+  --output ml_pipeline_lite/generated_event_info.yaml
 ```
-python3 generate_event_info_yaml.py \
-  --analysis-config config/analysis.yaml \
-  --evenet-config config/evenet_schema.yaml \ 
-  --output config/generated_event_info.yaml
-```
+
+This writes:
+
+- `generated_event_info.yaml`
+- `generated_event_info.summary.json`
+
+
 ## `preprocess_evenet_parquet.py`
 
 Preprocess the lite parquet shards into shuffled train/val/test parquet files
@@ -101,24 +116,15 @@ Outputs:
 - `normalization.pt`
 - `preprocess_manifest.json`
 
-## `generate_event_info_yaml.py`
-
-Generate the `generated_event_info.yaml` schema consumed by:
-
-- `ml_pipeline/config/preprocess_config.yaml`
-- `ml_pipeline/config/train.yaml`
-- `ml_pipeline/config/train_pretrain.yaml`
-
-Example:
-
+## Shuffle the processed EveNet input files
+This is an optional step to further shuffle the preprocessed EveNet input files. 
+This is useful for training stability when the number of input files is small and each file contains a large number of events. 
+The shuffling is done by reading the input parquet files in batches and writing out new parquet files with shuffled rows.
 ```bash
-python3 ml_pipeline_lite/generate_event_info_yaml.py \
-  --analysis-config ml_pipeline/config/analysis.yaml \
-  --evenet-config ml_pipeline/config/evenet_schema.yaml \
-  --output ml_pipeline_lite/generated_event_info.yaml
+python3 mix_evenet_train_parquets.py \
+  --input-dir /pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_baseline_v2/evenet_input/ \
+  --output-dir /pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_baseline_v2/evenet_input_shuffled \
+  --rows-per-output 100000 \
+  --read-batch-size 8192  \
+  --seed 42
 ```
-
-This writes:
-
-- `generated_event_info.yaml`
-- `generated_event_info.summary.json`
