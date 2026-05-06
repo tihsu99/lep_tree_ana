@@ -191,28 +191,30 @@ def parse_feature_config(config: dict[str, Any]) -> FeatureConfig:
             "Inputs.Part.Momentum must expose exactly ['energy', 'pt', 'eta', 'phi'] for ml_pipeline_lite."
         )
 
-    raw_sequential_fields: list[str] = [normalize_part_feature_name(name) for name in momentum_fields]
-    all_sequential_fields: list[str] = [normalize_part_feature_name(name) for name in momentum_fields]
-    def recursive_find_filds(x):
-        final_fields = []
-        for x_element in x:
-            if isinstance(x_element, dict):
-                for k, v in x_element.items():
-                    if isinstance(v, dict):
-                        final_fields.extend(recursive_find_filds(v["input"]))
+    def recursive_leaf_fields(values: list[Any]) -> list[str]:
+        output: list[str] = []
+        for item in values:
+            if isinstance(item, dict):
+                for nested_value in item.values():
+                    if isinstance(nested_value, dict):
+                        output.extend(recursive_leaf_fields(nested_value.get("input", [])))
+                    elif isinstance(nested_value, list):
+                        output.extend(recursive_leaf_fields(nested_value))
                     else:
-                        final_fields.append(v)
+                        output.append(str(nested_value))
             else:
-                final_fields.append(str(x_element))
-        return final_fields
+                output.append(str(item))
+        return output
 
-    print(part_cfg)
+    raw_sequential_fields: list[str] = [normalize_part_feature_name(name) for name in momentum_fields]
     for key, value in part_cfg.items():
         if key == "Momentum":
             continue
-        all_sequential_fields.extend(normalize_part_feature_name(str(item)) for item in recursive_find_filds(part_cfg[key]["input"]))
         if isinstance(value, dict):
-            raw_sequential_fields.append(key)
+            raw_sequential_fields.extend(
+                normalize_part_feature_name(field_name)
+                for field_name in recursive_leaf_fields(value.get("input", []))
+            )
         elif isinstance(value, list):
             raw_sequential_fields.extend(normalize_part_feature_name(str(item)) for item in value)
 
@@ -244,7 +246,7 @@ def parse_feature_config(config: dict[str, Any]) -> FeatureConfig:
         raw_sequential_fields=tuple(deduped_fields),
         global_fields=global_fields,
         grouped_sequential_config=grouped_sequential_config,
-        all_sequential_fields=tuple(all_sequential_fields)
+        all_sequential_fields=tuple(deduped_fields)
     )
 
 

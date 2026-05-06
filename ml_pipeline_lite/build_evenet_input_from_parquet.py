@@ -40,6 +40,15 @@ PART_MOMENTUM_SOURCE_FIELDS = (
     "Part_fourMomentum_fCoordinates_fZ",
     "Part_fourMomentum_fCoordinates_fT",
 )
+DEFAULT_INVISIBLE_FEATURES = ("pt", "eta", "phi")
+CORE_MODEL_KEYS = {
+    "x",
+    "x_mask",
+    "conditions",
+    "conditions_mask",
+    "x_invisible",
+    "x_invisible_mask",
+}
 COMPARISON_1D_KEYS = (
     "nprong",
     "visible_energy",
@@ -224,6 +233,16 @@ def infer_luminosity(samples: list[Sample]) -> float | None:
     return sum(data_lumis) if data_lumis else None
 
 
+def infer_remove_neutral_non_photon(config: dict[str, Any]) -> bool:
+    return bool((config.get("EveNetInput") or {}).get("remove_neutral_non_photon", False))
+
+
+def infer_invisible_features(config: dict[str, Any]) -> tuple[str, ...]:
+    invisible_cfg = ((config.get("Normalization") or {}).get("Invisible") or {})
+    features = tuple(str(key) for key in invisible_cfg if key != "default")
+    return features or DEFAULT_INVISIBLE_FEATURES
+
+
 def rebuild_vector(values: ak.Array) -> ak.Array:
     fields = set(getattr(values, "fields", []))
     if {"px", "py", "pz", "E"}.issubset(fields):
@@ -233,13 +252,19 @@ def rebuild_vector(values: ak.Array) -> ak.Array:
     raise ValueError(f"Unsupported four-vector fields: {sorted(fields)}")
 
 
-def build_momentum4d(px: np.ndarray, py: np.ndarray, pz: np.ndarray, energy: np.ndarray) -> ak.Array:
+def cast_array_like(values: Any, dtype=np.float64):
+    if isinstance(values, ak.Array):
+        return ak.values_astype(values, dtype)
+    return np.asarray(values, dtype=dtype)
+
+
+def build_momentum4d(px: Any, py: Any, pz: Any, energy: Any) -> ak.Array:
     return ak.zip(
         {
-            "px": np.asarray(px, dtype=np.float64),
-            "py": np.asarray(py, dtype=np.float64),
-            "pz": np.asarray(pz, dtype=np.float64),
-            "E": np.asarray(energy, dtype=np.float64),
+            "px": cast_array_like(px, np.float64),
+            "py": cast_array_like(py, np.float64),
+            "pz": cast_array_like(pz, np.float64),
+            "E": cast_array_like(energy, np.float64),
         },
         with_name="Momentum4D",
     )
@@ -270,6 +295,16 @@ def to_numpy(values: Any, dtype=np.float64) -> np.ndarray:
     return ak.to_numpy(values, allow_missing=False).astype(dtype)
 
 
+def to_numpy_array(values: Any, dtype=None) -> np.ndarray:
+    if isinstance(values, ak.Array):
+        values = ak.to_numpy(values, allow_missing=False)
+    else:
+        values = np.asarray(values)
+    if dtype is not None:
+        values = values.astype(dtype)
+    return values
+
+
 def part_input_mask(events: ak.Array) -> ak.Array:
     if "Part_fourMomentum_fCoordinates_fT" not in events.fields:
         reference_field = next(field for field in events.fields if field.startswith("Part_"))
@@ -278,8 +313,24 @@ def part_input_mask(events: ak.Array) -> ak.Array:
     return ak.values_astype(np.isfinite(energy) & (energy <= MAX_VISIBLE_ENERGY_GEV), bool)
 
 
-def filtered_part_momentum(events: ak.Array) -> ak.Array:
+def build_input_particle_mask(events: ak.Array, remove_neutral_non_photon: bool) -> ak.Array:
     mask = part_input_mask(events)
+    if not remove_neutral_non_photon:
+        return mask
+    missing_fields = [field for field in ("Part_charge", "Part_pdgId") if field not in events.fields]
+    if missing_fields:
+        raise ValueError(
+            "Cannot remove neutral non-photon particles because required fields are missing: "
+            f"{missing_fields}."
+        )
+    charge = events["Part_charge"]
+    abs_pdg_id = abs(events["Part_pdgId"])
+    keep_particle = (charge != 0) | (abs_pdg_id == 21)
+    return mask & ak.values_astype(keep_particle, bool)
+
+
+def filtered_part_momentum(events: ak.Array, input_part_mask: ak.Array | None = None) -> ak.Array:
+    mask = input_part_mask if input_part_mask is not None else part_input_mask(events)
     return build_momentum4d(
         events["Part_fourMomentum_fCoordinates_fX"][mask],
         events["Part_fourMomentum_fCoordinates_fY"][mask],
@@ -288,9 +339,8 @@ def filtered_part_momentum(events: ak.Array) -> ak.Array:
     )
 
 
-def build_part_inputs(events: ak.Array, feature_config) -> tuple[dict[str, ak.Array], np.ndarray]:
-    mask = part_input_mask(events)
-    part_p4 = filtered_part_momentum(events)
+def build_part_inputs(events: ak.Array, feature_config, input_part_mask: ak.Array) -> tuple[dict[str, ak.Array], np.ndarray]:
+    part_p4 = filtered_part_momentum(events, input_part_mask=input_part_mask)
     momentum_lookup = {
         "Part_energy": part_p4.E,
         "Part_pt": part_p4.pt,
@@ -303,9 +353,52 @@ def build_part_inputs(events: ak.Array, feature_config) -> tuple[dict[str, ak.Ar
         if feature_name in momentum_lookup:
             fields[feature_name] = momentum_lookup[feature_name]
         else:
-            fields[feature_name] = events[feature_name][mask]
+            fields[feature_name] = events[feature_name][input_part_mask]
     num_vectors = ak.to_numpy(ak.num(next(iter(fields.values())), axis=1), allow_missing=False).astype(np.int32)
     return fields, num_vectors
+
+
+def pad_and_flatten_part_feature(values: ak.Array, max_particles: int) -> ak.Array:
+    padded = ak.pad_none(values, max_particles, axis=1, clip=True)
+    filled = ak.fill_none(padded, 0)
+    regular = ak.to_regular(filled, axis=1)
+    return ak.values_astype(regular, np.float32)[..., np.newaxis]
+
+
+def flatten_global_feature(values: ak.Array) -> ak.Array:
+    filled = ak.fill_none(values, 0)
+    return ak.values_astype(filled, np.float32)[..., np.newaxis]
+
+
+def build_point_cloud(
+    events: ak.Array,
+    max_particles: int,
+    feature_config,
+    remove_neutral_non_photon: bool,
+) -> tuple[ak.Array, ak.Array, np.ndarray, ak.Array, list[str]]:
+    input_part_mask = build_input_particle_mask(events, remove_neutral_non_photon)
+    part_p4 = filtered_part_momentum(events, input_part_mask=input_part_mask)
+    eta = ak.where(np.isfinite(part_p4.eta), part_p4.eta, 0)
+
+    available_momentum_features = {
+        "Part_energy": part_p4.E,
+        "Part_pt": part_p4.pt,
+        "Part_eta": eta,
+        "Part_phi": part_p4.phi,
+    }
+    features = []
+    feature_names: list[str] = []
+    for feature_name in feature_config.raw_sequential_fields:
+        if feature_name in available_momentum_features:
+            values = available_momentum_features[feature_name]
+        else:
+            values = events[feature_name][input_part_mask]
+        features.append(pad_and_flatten_part_feature(values, max_particles))
+        feature_names.append(feature_name)
+    x = ak.concatenate(features, axis=2)
+    num_particles = ak.to_numpy(ak.num(events["Part_pdgId"][input_part_mask], axis=1), allow_missing=False).astype(np.float32)
+    x_mask = ak.Array(np.arange(max_particles)[None, :] < num_particles[:, None])
+    return x, x_mask, num_particles, input_part_mask, feature_names
 
 
 def _p4_component(p4: ak.Array, component: str) -> ak.Array:
@@ -350,6 +443,60 @@ def build_global_inputs(events: ak.Array, feature_config) -> dict[str, np.ndarra
     }
 
 
+def build_global_conditions(events: ak.Array, feature_config) -> tuple[ak.Array, ak.Array, list[str]]:
+    features = []
+    feature_names: list[str] = []
+    for field_name in feature_config.global_fields:
+        features.append(flatten_global_feature(resolve_global_feature(events, field_name)))
+        feature_names.append(field_name)
+    conditions = ak.concatenate(features, axis=1)
+    conditions_mask = ak.Array(np.ones((len(events), 1), dtype=bool))
+    return conditions, conditions_mask, feature_names
+
+
+def compute_event_totals(num_sequential_vectors: np.ndarray, conditions_mask: ak.Array) -> np.ndarray:
+    return num_sequential_vectors + ak.to_numpy(ak.values_astype(conditions_mask[:, 0], np.float32), allow_missing=False)
+
+
+def source_event_key_array(events: ak.Array, fallback_index: np.ndarray) -> np.ndarray:
+    for key in ("evtNumber", "Event_evtNumber"):
+        if key in events.fields:
+            return to_numpy_array(events[key], np.int64)
+    return fallback_index.astype(np.int64, copy=False)
+
+
+def validate_output_contract(
+    output_events: ak.Array,
+    feature_config,
+    invisible_features: tuple[str, ...],
+    max_particles: int,
+) -> None:
+    missing = sorted(CORE_MODEL_KEYS - set(output_events.fields))
+    if missing:
+        raise ValueError(f"Lite builder output is missing core model keys: {missing}")
+
+    x = to_numpy_array(output_events["x"], np.float32)
+    x_mask = to_numpy_array(output_events["x_mask"], bool)
+    conditions = to_numpy_array(output_events["conditions"], np.float32)
+    conditions_mask = to_numpy_array(output_events["conditions_mask"], bool)
+    x_invisible = to_numpy_array(output_events["x_invisible"], np.float32)
+    x_invisible_mask = to_numpy_array(output_events["x_invisible_mask"], bool)
+
+    expected_x_shape = (len(output_events), max_particles, len(feature_config.raw_sequential_fields))
+    if x.shape != expected_x_shape:
+        raise ValueError(f"Output x shape mismatch: got {x.shape}, expected {expected_x_shape}")
+    if x_mask.shape != (len(output_events), max_particles):
+        raise ValueError(f"Output x_mask shape mismatch: got {x_mask.shape}")
+    if conditions.shape != (len(output_events), len(feature_config.global_fields)):
+        raise ValueError(f"Output conditions shape mismatch: got {conditions.shape}")
+    if conditions_mask.shape != (len(output_events), 1):
+        raise ValueError(f"Output conditions_mask shape mismatch: got {conditions_mask.shape}")
+    if x_invisible.shape != (len(output_events), 2, len(invisible_features)):
+        raise ValueError(f"Output x_invisible shape mismatch: got {x_invisible.shape}")
+    if x_invisible_mask.shape != (len(output_events), 2):
+        raise ValueError(f"Output x_invisible_mask shape mismatch: got {x_invisible_mask.shape}")
+
+
 def required_columns(schema_names: set[str], feature_config, sample: Sample) -> list[str]:
     columns = {
         "lead_a_visible_p4",
@@ -358,7 +505,12 @@ def required_columns(schema_names: set[str], feature_config, sample: Sample) -> 
         "initial_total_num_events",
         "weight",
         "central_weight",
+        "Part_pdgId",
     }
+    if "evtNumber" in schema_names:
+        columns.add("evtNumber")
+    if "Event_evtNumber" in schema_names:
+        columns.add("Event_evtNumber")
     if sample.is_signal:
         columns.update(
             {
@@ -461,6 +613,93 @@ def build_truth_observables(truth_tau_a: ak.Array, truth_tau_b: ak.Array, visibl
         vis_b_p4=visible_b,
     )
     return {f"truth_{name}": np.asarray(values, dtype=np.float32) for name, values in observables.items()}
+
+
+def stack_tau_pair(values_a: ak.Array, values_b: ak.Array) -> ak.Array:
+    return ak.concatenate([values_a[:, np.newaxis], values_b[:, np.newaxis]], axis=1)
+
+
+def stack_tau_pair_mask(mask_a: np.ndarray, mask_b: np.ndarray) -> ak.Array:
+    return ak.Array(np.stack([mask_a, mask_b], axis=1))
+
+
+def zero_p4(num_events: int, num_slots: int = 2) -> ak.Array:
+    zeros = np.zeros((num_events, num_slots), dtype=np.float32)
+    return build_momentum4d(zeros, zeros, zeros, zeros)
+
+
+def features_from_p4_local(p4: ak.Array, feature_names: tuple[str, ...]) -> np.ndarray:
+    components: list[np.ndarray] = []
+    for feature_name in feature_names:
+        if feature_name in {"energy", "E"}:
+            values = ak.to_numpy(p4.E, allow_missing=False)
+        elif feature_name == "px":
+            values = ak.to_numpy(p4.px, allow_missing=False)
+        elif feature_name == "py":
+            values = ak.to_numpy(p4.py, allow_missing=False)
+        elif feature_name == "pz":
+            values = ak.to_numpy(p4.pz, allow_missing=False)
+        elif feature_name == "pt":
+            values = ak.to_numpy(p4.pt, allow_missing=False)
+        elif feature_name == "eta":
+            values = ak.to_numpy(ak.where(np.isfinite(p4.eta), p4.eta, 0.0), allow_missing=False)
+        elif feature_name == "phi":
+            values = ak.to_numpy(ak.where(np.isfinite(p4.phi), p4.phi, 0.0), allow_missing=False)
+        elif feature_name == "mass":
+            values = ak.to_numpy(ak.where(np.isfinite(p4.mass), p4.mass, 0.0), allow_missing=False)
+        else:
+            raise ValueError(f"Unsupported four-vector feature '{feature_name}'.")
+        components.append(values.astype(np.float32))
+    return np.stack(components, axis=-1).astype(np.float32)
+
+
+def build_visible_tau_targets(selected_events: ak.Array) -> tuple[ak.Array, ak.Array, ak.Array, ak.Array]:
+    visible_a = rebuild_vector(selected_events["lead_a_visible_p4"])
+    visible_b = rebuild_vector(selected_events["lead_b_visible_p4"])
+    visible_pair = stack_tau_pair(visible_a, visible_b)
+    visible_mask = stack_tau_pair_mask(finite_p4_mask(visible_a), finite_p4_mask(visible_b))
+    return visible_pair, visible_mask, visible_pair, visible_mask
+
+
+def build_invisible_targets_simple(
+    sample: Sample,
+    selected_events: ak.Array,
+    visible_pair: ak.Array,
+    visible_mask: ak.Array,
+) -> tuple[ak.Array, ak.Array, np.ndarray, np.ndarray, ak.Array, ak.Array]:
+    num_events = len(selected_events)
+    tau_vis_target_p4 = visible_pair
+    tau_vis_target_mask = visible_mask
+    if not sample.is_signal:
+        return (
+            zero_p4(num_events),
+            ak.Array(np.zeros((num_events, 2), dtype=bool)),
+            np.zeros(num_events, dtype=np.int64),
+            np.zeros(num_events, dtype=np.int64),
+            tau_vis_target_p4,
+            tau_vis_target_mask,
+        )
+
+    truth_tau_a = rebuild_vector(selected_events["truth_tau_a_p4"])
+    truth_tau_b = rebuild_vector(selected_events["truth_tau_b_p4"])
+    truth_pair = stack_tau_pair(truth_tau_a, truth_tau_b)
+    truth_mask = stack_tau_pair_mask(finite_p4_mask(truth_tau_a), finite_p4_mask(truth_tau_b))
+    x_invisible_p4 = truth_pair - tau_vis_target_p4
+    x_invisible_mask = ak.Array(
+        np.logical_and(
+            ak.to_numpy(truth_mask, allow_missing=False),
+            ak.to_numpy(tau_vis_target_mask, allow_missing=False),
+        )
+    )
+    valid_counts = np.sum(ak.to_numpy(x_invisible_mask, allow_missing=False).astype(np.int64), axis=1).astype(np.int64)
+    return (
+        x_invisible_p4,
+        x_invisible_mask,
+        np.full(num_events, 2, dtype=np.int64),
+        valid_counts,
+        tau_vis_target_p4,
+        tau_vis_target_mask,
+    )
 
 
 def histogram1d(
@@ -746,6 +985,10 @@ def build_output_events(
     luminosity: float | None,
     classification_lookup,
     feature_config,
+    invisible_features: tuple[str, ...],
+    max_particles: int,
+    remove_neutral_non_photon: bool,
+    source_sample_index: int,
     source_file_index: int,
     source_row_index: np.ndarray,
 ) -> ak.Array:
@@ -769,24 +1012,66 @@ def build_output_events(
         central_weight = to_numpy(selected_events["central_weight"], np.float32)
     else:
         central_weight = event_weight.copy()
-    part_inputs, num_sequential_vectors = build_part_inputs(selected_events, feature_config)
+    x, x_mask, num_sequential_vectors, input_part_mask, point_cloud_feature_names = build_point_cloud(
+        selected_events,
+        max_particles,
+        feature_config,
+        remove_neutral_non_photon,
+    )
+    if tuple(point_cloud_feature_names) != tuple(feature_config.raw_sequential_fields):
+        raise ValueError("Point-cloud feature ordering drifted from feature_config.raw_sequential_fields.")
+    part_inputs, _ = build_part_inputs(selected_events, feature_config, input_part_mask)
+    conditions, conditions_mask, condition_names = build_global_conditions(selected_events, feature_config)
+    if tuple(condition_names) != tuple(feature_config.global_fields):
+        raise ValueError("Global condition feature ordering drifted from feature_config.global_fields.")
+    num_vectors = compute_event_totals(num_sequential_vectors, conditions_mask)
     global_inputs = build_global_inputs(selected_events, feature_config)
+    tau_vis_prong_p4, tau_vis_prong_mask, tau_vis_rho_p4, tau_vis_rho_mask = build_visible_tau_targets(selected_events)
+    slot_for_a = np.zeros(len(selected_events), dtype=np.int8)
+    slot_for_b = np.ones(len(selected_events), dtype=np.int8)
+    x_invisible_p4, x_invisible_mask, num_invisible_raw, num_invisible_valid, tau_vis_target_p4, tau_vis_target_mask = build_invisible_targets_simple(
+        sample,
+        selected_events,
+        tau_vis_prong_p4,
+        tau_vis_prong_mask,
+    )
+    tau_vis_prong = features_from_p4_local(tau_vis_prong_p4, ("energy", "pt", "eta", "phi"))
+    tau_vis_rho = features_from_p4_local(tau_vis_rho_p4, ("energy", "pt", "eta", "phi"))
+    tau_vis_target = features_from_p4_local(tau_vis_target_p4, ("energy", "pt", "eta", "phi"))
+    x_invisible = features_from_p4_local(x_invisible_p4, invisible_features)
 
     fields: dict[str, Any] = {
         "sample_key": ak.Array([sample.key] * len(selected_events)),
         "sample_name": ak.Array([sample.name] * len(selected_events)),
         "sample_is_data": np.full(len(selected_events), sample.is_data, dtype=bool),
         "sample_is_signal": np.full(len(selected_events), sample.is_signal, dtype=bool),
+        "source_sample_index": np.full(len(selected_events), source_sample_index, dtype=np.int64),
         "source_file_index": np.full(len(selected_events), source_file_index, dtype=np.int32),
         "source_event_index": source_row_index.astype(np.int64),
-        "source_slot_for_a": np.zeros(len(selected_events), dtype=np.int8),
-        "source_slot_for_b": np.ones(len(selected_events), dtype=np.int8),
-        "classification": classification_indices,
+        "source_event_key": source_event_key_array(selected_events, source_row_index),
+        "source_slot_for_a": slot_for_a,
+        "source_slot_for_b": slot_for_b,
+        "classification": classification_indices.astype(np.int64),
         "classification_target_index": classification_indices,
         "classification_target_name": ak.Array(classification_names.tolist()),
         "event_weight": event_weight.astype(np.float32),
         "central_weight": central_weight.astype(np.float32),
-        "num_sequential_vectors": num_sequential_vectors,
+        "x": to_numpy_array(x, np.float32),
+        "x_mask": to_numpy_array(x_mask, bool),
+        "conditions": to_numpy_array(conditions, np.float32),
+        "conditions_mask": to_numpy_array(conditions_mask, bool),
+        "num_vectors": num_vectors.astype(np.float32),
+        "num_sequential_vectors": num_sequential_vectors.astype(np.float32),
+        "x_invisible": to_numpy_array(x_invisible, np.float32),
+        "x_invisible_mask": to_numpy_array(x_invisible_mask, bool),
+        "num_invisible_raw": num_invisible_raw.astype(np.int64),
+        "num_invisible_valid": num_invisible_valid.astype(np.int64),
+        "tau_vis_prong": to_numpy_array(tau_vis_prong, np.float32),
+        "tau_vis_prong_mask": to_numpy_array(tau_vis_prong_mask, bool),
+        "tau_vis_rho": to_numpy_array(tau_vis_rho, np.float32),
+        "tau_vis_rho_mask": to_numpy_array(tau_vis_rho_mask, bool),
+        "tau_vis_target": to_numpy_array(tau_vis_target, np.float32),
+        "tau_vis_target_mask": to_numpy_array(tau_vis_target_mask, bool),
         "lead_a_visible_p4": materialize_p4(visible_a),
         "lead_b_visible_p4": materialize_p4(visible_b),
         "tau_vis_prong_slot0_valid": finite_p4_mask(visible_a),
@@ -857,6 +1142,10 @@ def worker_process_file(
     luminosity: float | None,
     classification_lookup,
     feature_config,
+    invisible_features: tuple[str, ...],
+    max_particles: int,
+    remove_neutral_non_photon: bool,
+    source_sample_index: int,
     file_path: str,
     source_file_index: int,
     output_dir: str,
@@ -923,9 +1212,14 @@ def worker_process_file(
             luminosity=luminosity,
             classification_lookup=classification_lookup,
             feature_config=feature_config,
+            invisible_features=invisible_features,
+            max_particles=max_particles,
+            remove_neutral_non_photon=remove_neutral_non_photon,
+            source_sample_index=source_sample_index,
             source_file_index=source_file_index,
             source_row_index=selected_indices,
         )
+        validate_output_contract(output_events, feature_config, invisible_features, max_particles)
         if do_monitoring:
             fill_monitor_state(state, selected, output_events)
         shard_buffers.append(output_events)
@@ -951,6 +1245,9 @@ def write_manifest(
     luminosity: float | None,
     classification_lookup,
     feature_config,
+    invisible_features: tuple[str, ...],
+    max_particles: int,
+    remove_neutral_non_photon: bool,
     worker_results: list[dict[str, Any]],
     monitoring_outputs: dict[str, dict[str, str]],
 ) -> None:
@@ -969,15 +1266,18 @@ def write_manifest(
     for result in worker_results:
         shards_by_sample[result["sample_key"]].extend(result["shards"])
     payload = {
-        "format": "ml_pipeline_lite_evenet_input_v1",
+        "format": "ml_pipeline_lite_evenet_input_v2",
         "analysis_config": str(args.analysis_config),
         "batch_size": args.batch_size,
         "rows_per_shard": args.rows_per_shard,
         "num_workers": args.num_workers,
         "luminosity": luminosity,
+        "max_particles": max_particles,
+        "remove_neutral_non_photon": remove_neutral_non_photon,
         "class_labels": list(classification_lookup.class_labels),
         "sequential_features": list(feature_config.all_sequential_fields),
         "global_condition_features": list(feature_config.global_fields),
+        "invisible_features": list(invisible_features),
         "samples": sample_manifest,
         "shards": shards_by_sample,
         "monitoring": monitoring_outputs,
@@ -994,6 +1294,8 @@ def main() -> None:
 
     config = read_yaml(args.analysis_config)
     feature_config = parse_feature_config(config)
+    invisible_features = infer_invisible_features(config)
+    remove_neutral_non_photon = infer_remove_neutral_non_photon(config)
     samples = attach_sample_total_initial_events(parse_samples(config, args.samples))
 
     if not samples:
@@ -1001,6 +1303,7 @@ def main() -> None:
 
     selected_keys = {sample.key for sample in samples}
     classification_lookup = build_classification_lookup(config, selected_keys)
+    sample_index_lookup = {sample.key: index for index, sample in enumerate(samples)}
 
     luminosity = infer_luminosity(samples)
     jobs: list[tuple[Sample, str, int]] = []
@@ -1009,10 +1312,38 @@ def main() -> None:
         for file_index, file_path in enumerate(files):
             jobs.append((sample, file_path, file_index))
 
+    max_particles = 0
+    max_scan_columns = sorted(set(PART_MOMENTUM_SOURCE_FIELDS + ("Part_pdgId", "nprong", "lead_a_visible_p4", "lead_b_visible_p4", "Part_charge")))
+    for sample in samples:
+        if sample.is_data:
+            continue
+        for file_path in expand_files(sample.files):
+            parquet = pq.ParquetFile(file_path)
+            schema_names = {field.name for field in parquet.schema_arrow}
+            scan_columns = [column for column in max_scan_columns if column in schema_names]
+            row_offset = 0
+            for record_batch in parquet.iter_batches(batch_size=args.batch_size, columns=scan_columns):
+                events = ak.from_arrow(record_batch)
+                events["lead_a_visible_p4"] = rebuild_vector(events["lead_a_visible_p4"])
+                events["lead_b_visible_p4"] = rebuild_vector(events["lead_b_visible_p4"])
+                mask = preselection_mask(events)
+                if np.any(mask):
+                    selected = events[mask]
+                    input_part_mask = build_input_particle_mask(selected, remove_neutral_non_photon)
+                    if len(selected) > 0:
+                        batch_max = int(ak.max(ak.num(selected["Part_pdgId"][input_part_mask], axis=1)))
+                        max_particles = max(max_particles, batch_max)
+                row_offset += len(events)
+    if max_particles <= 0:
+        raise ValueError("Unable to infer a positive max_particles from MC inputs.")
+
     print(f"[ml_pipeline_lite] output_dir={output_dir}")
     print(f"[ml_pipeline_lite] samples={[sample.key for sample in samples]}")
     print(f"[ml_pipeline_lite] class_labels={list(classification_lookup.class_labels)}")
     print(f"[ml_pipeline_lite] jobs={len(jobs)} workers={args.num_workers}")
+    print(f"[ml_pipeline_lite] invisible_features={list(invisible_features)}")
+    print(f"[ml_pipeline_lite] remove_neutral_non_photon={remove_neutral_non_photon}")
+    print(f"[ml_pipeline_lite] max_particles={max_particles}")
     for sample in samples:
         print(
             f"[ml_pipeline_lite] sample={sample.key} source={sample.file_source} "
@@ -1040,6 +1371,10 @@ def main() -> None:
                 luminosity=luminosity,
                 classification_lookup=classification_lookup,
                 feature_config=feature_config,
+                invisible_features=invisible_features,
+                max_particles=max_particles,
+                remove_neutral_non_photon=remove_neutral_non_photon,
+                source_sample_index=sample_index_lookup[sample.key],
                 file_path=file_path,
                 source_file_index=file_index,
                 output_dir=str(output_dir),
@@ -1080,6 +1415,9 @@ def main() -> None:
         luminosity,
         classification_lookup,
         feature_config,
+        invisible_features,
+        max_particles,
+        remove_neutral_non_photon,
         worker_results,
         monitoring_outputs,
     )
