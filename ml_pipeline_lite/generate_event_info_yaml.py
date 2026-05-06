@@ -206,7 +206,7 @@ def parse_feature_config(config: dict[str, Any]) -> FeatureConfig:
     for key, value in part_cfg.items():
         if key == "Momentum":
             continue
-        all_sequential_fields.extend(normalize_part_feature_name(str(item)) for item in key)
+        all_sequential_fields.extend(normalize_part_feature_name(str(item)) for item in recursive_find_filds(part_cfg[key]))
         if isinstance(value, dict):
             raw_sequential_fields.append(key)
         elif isinstance(value, list):
