@@ -86,16 +86,18 @@ EveNetInput:
 Inputs:
   Part:
     Momentum:
-      dim: 4
+      output_dim: 4
       index: [0, 1, 2, 3]
       input: [energy, pt, eta, phi]
     ObjectTag:
-      dim: 2
+      output_dim: 2
+      name: ObjectTag
       index: [4, 5]
       input:
         - Part_pdgId
         - hpc:
-            dim: 2
+            output_dim: 2
+            name: hpc
             input:
               - Part_hpcShowerEnergy
               - Part_hpcShowerTheta
@@ -104,7 +106,8 @@ Inputs:
               - Part_hpcNumAssociatedShowers
               - Part_hpcTotalShowerEnergy
         - hac:
-            dim: 2
+            output_dim: 2
+            name: hac
             input:
               - Part_hacShowerEnergy
               - Part_hacShowerTheta
@@ -113,7 +116,8 @@ Inputs:
               - Part_hacNumAssociatedShowers
               - Part_hacTotalShowerEnergy
         - stic:
-            dim: 2
+            output_dim: 2
+            name: stic
             input:
               - Part_sticShowerEnergy
               - Part_sticShowerTheta
@@ -121,7 +125,7 @@ Inputs:
               - Part_sticNumTowers
               - Part_sticChargedTag
     Charge:
-      dim: 1
+      output_dim: 1
       index: [6]
       input:
         - Part_charge

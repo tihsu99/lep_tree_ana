@@ -38,6 +38,7 @@ DEFAULT_GLOBAL_FIELDS = (
 @dataclass(frozen=True)
 class FeatureConfig:
     raw_sequential_fields: tuple[str, ...]
+    projected_sequential_feature_names: tuple[str, ...]
     global_fields: tuple[str, ...]
     grouped_sequential_config: dict[str, Any] | None
     all_sequential_fields: tuple[str, ...]
@@ -104,6 +105,175 @@ def normalize_part_feature_name(raw_name: str) -> str:
     if raw_name in FOUR_VECTOR_FEATURES:
         return f"Part_{raw_name}"
     return raw_name
+
+
+def is_group_config(raw_value: Any) -> bool:
+    return isinstance(raw_value, dict) and "input" in raw_value
+
+
+def flatten_leaf_features(raw_inputs: list[Any], *, allow_top_level_groups: bool) -> list[str]:
+    leaves: list[str] = []
+    for child in raw_inputs:
+        if isinstance(child, str):
+            leaves.append(normalize_part_feature_name(child))
+            continue
+
+        if not isinstance(child, dict) or len(child) != 1:
+            raise ValueError("Grouped sequential inputs must contain strings or single-key subgroup mappings.")
+
+        _, child_value = next(iter(child.items()))
+        if is_group_config(child_value):
+            child_inputs = child_value.get("input", [])
+        elif isinstance(child_value, list):
+            child_inputs = child_value
+        else:
+            raise ValueError("Subgroup definitions must be a list or a dict with an 'input' field.")
+        leaves.extend(flatten_leaf_features(child_inputs, allow_top_level_groups=False))
+    return leaves
+
+
+def normalize_group_children(raw_inputs: list[Any]) -> list[Any]:
+    normalized = []
+    for child in raw_inputs:
+        if isinstance(child, str):
+            normalized.append(normalize_part_feature_name(child))
+            continue
+        if not isinstance(child, dict) or len(child) != 1:
+            raise ValueError("Grouped input children must contain strings or single-key subgroup mappings.")
+        child_name, child_value = next(iter(child.items()))
+        if is_group_config(child_value):
+            normalized_child = normalize_group_node(child_name, child_value, top_level=False)
+        elif isinstance(child_value, list):
+            normalized_child = {
+                "name": child_name,
+                "output_dim": 1,
+                "input": normalize_group_children(child_value),
+            }
+        else:
+            raise ValueError(
+                f"Subgroup '{child_name}' must be a list or a dict with an 'input' field."
+            )
+        normalized.append({child_name: normalized_child})
+    return normalized
+
+
+def normalize_group_node(name: str, raw_value: Any, *, top_level: bool) -> dict[str, Any]:
+    if not is_group_config(raw_value):
+        raise ValueError(f"Top-level grouped input '{name}' must define 'index' and 'input'.")
+
+    raw_indices = raw_value.get("index")
+    if raw_indices is None:
+        if top_level:
+            raise ValueError(f"Top-level grouped input '{name}' is missing 'index'.")
+        indices: tuple[int, ...] = ()
+    else:
+        indices = tuple(int(index) for index in raw_indices)
+
+    if top_level and len(indices) == 0:
+        raise ValueError(f"Top-level grouped input '{name}' must project to at least one slot.")
+
+    raw_inputs = raw_value.get("input", [])
+    if not isinstance(raw_inputs, list) or len(raw_inputs) == 0:
+        raise ValueError(f"Grouped input '{name}' must contain a non-empty 'input' list.")
+
+    explicit_dim = raw_value.get("dim", raw_value.get("output_dim"))
+    if explicit_dim is None:
+        output_dim = len(indices) if top_level else 1
+    else:
+        output_dim = int(explicit_dim)
+
+    if output_dim <= 0:
+        raise ValueError(f"Grouped input '{name}' must have a positive 'dim'.")
+    if top_level and len(indices) > 0 and output_dim != len(indices):
+        raise ValueError(
+            f"Top-level grouped input '{name}' has dim={output_dim} but index width={len(indices)}."
+        )
+
+    normalized = {
+        "name": name,
+        "output_dim": output_dim,
+        "input": normalize_group_children(raw_inputs),
+    }
+    if len(indices) > 0:
+        normalized["index"] = list(indices)
+    return normalized
+
+
+def build_grouped_sequential_config(part_cfg: dict[str, Any]) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    grouped_roots = []
+    for root_name, raw_value in part_cfg.items():
+        if isinstance(raw_value, list):
+            continue
+        grouped_roots.append(normalize_group_node(root_name, raw_value, top_level=True))
+
+    if not grouped_roots:
+        return None
+
+    for root_name, raw_value in part_cfg.items():
+        if isinstance(raw_value, list):
+            raise ValueError(
+                f"Inputs.Part.{root_name} still uses the legacy flat list while grouped mode is enabled."
+            )
+
+    raw_sequential_fields: list[str] = []
+    seen_raw_fields: set[str] = set()
+    for root in grouped_roots:
+        for raw_name in flatten_leaf_features(root["input"], allow_top_level_groups=True):
+            if raw_name in seen_raw_fields:
+                raise ValueError(f"Raw sequential feature '{raw_name}' is used multiple times in grouped inputs.")
+            seen_raw_fields.add(raw_name)
+            raw_sequential_fields.append(raw_name)
+
+    occupied_slots: dict[int, str] = {}
+    for root in grouped_roots:
+        for slot in root["index"]:
+            if slot < 0:
+                raise ValueError(f"Projected sequential slot {slot} for '{root['name']}' must be non-negative.")
+            if slot in occupied_slots:
+                raise ValueError(
+                    f"Projected sequential slot {slot} is assigned to both '{occupied_slots[slot]}' and '{root['name']}'."
+                )
+            occupied_slots[slot] = root["name"]
+
+    projected_dim = max(occupied_slots) + 1
+    actual_slots = sorted(occupied_slots)
+    expected_slots = list(range(projected_dim))
+    if actual_slots != expected_slots:
+        raise ValueError(
+            "Projected sequential slots must cover a dense range starting at 0. "
+            f"Expected {expected_slots}, got {actual_slots}."
+        )
+
+    projected_feature_names = [f"grouped_{index}" for index in range(projected_dim)]
+    for root in grouped_roots:
+        root_leaves = flatten_leaf_features(root["input"], allow_top_level_groups=True)
+        if root["name"] == "Momentum":
+            expected_momentum = [f"Part_{field}" for field in FOUR_VECTOR_FEATURES]
+            if root_leaves == expected_momentum and len(root["index"]) == len(expected_momentum):
+                for slot, feature_name in zip(root["index"], expected_momentum):
+                    projected_feature_names[slot] = feature_name
+                continue
+        for local_index, slot in enumerate(root["index"]):
+            projected_feature_names[slot] = (
+                root["name"] if len(root["index"]) == 1 else f"{root['name']}_{local_index}"
+            )
+
+    grouped_config = {
+        "SEQUENTIAL": {
+            "Source": {
+                "projected_feature_names": projected_feature_names,
+                "groups": {
+                    root["name"]: {
+                        key: value
+                        for key, value in root.items()
+                        if key != "name"
+                    }
+                    for root in grouped_roots
+                },
+            }
+        }
+    }
+    return grouped_config, tuple(raw_sequential_fields), tuple(projected_feature_names)
 
 
 def default_sequential_tags(raw_sequential_fields: tuple[str, ...]) -> dict[str, str]:
@@ -180,73 +350,42 @@ def parse_feature_config(config: dict[str, Any]) -> FeatureConfig:
     part_cfg = inputs_cfg.get("Part") or {}
     global_cfg = inputs_cfg.get("Global") or {}
 
-    momentum_cfg = part_cfg.get("Momentum", {})
-    if isinstance(momentum_cfg, dict):
-        momentum_inputs = momentum_cfg.get("input", [])
+    grouped_result = build_grouped_sequential_config(part_cfg)
+    if grouped_result is not None:
+        grouped_sequential_config, raw_sequential_fields, projected_sequential_feature_names = grouped_result
     else:
-        momentum_inputs = momentum_cfg
-    momentum_fields = tuple(str(item) for item in momentum_inputs if isinstance(item, str))
-    if momentum_fields != FOUR_VECTOR_FEATURES:
-        raise ValueError(
-            "Inputs.Part.Momentum must expose exactly ['energy', 'pt', 'eta', 'phi'] for ml_pipeline_lite."
-        )
-
-    def recursive_leaf_fields(values: list[Any]) -> list[str]:
-        output: list[str] = []
-        for item in values:
-            if isinstance(item, dict):
-                for nested_value in item.values():
-                    if isinstance(nested_value, dict):
-                        output.extend(recursive_leaf_fields(nested_value.get("input", [])))
-                    elif isinstance(nested_value, list):
-                        output.extend(recursive_leaf_fields(nested_value))
-                    else:
-                        output.append(str(nested_value))
-            else:
-                output.append(str(item))
-        return output
-
-    raw_sequential_fields: list[str] = [normalize_part_feature_name(name) for name in momentum_fields]
-    for key, value in part_cfg.items():
-        if key == "Momentum":
-            continue
-        if isinstance(value, dict):
-            raw_sequential_fields.extend(
-                normalize_part_feature_name(field_name)
-                for field_name in recursive_leaf_fields(value.get("input", []))
+        momentum_cfg = part_cfg.get("Momentum", {})
+        if isinstance(momentum_cfg, dict):
+            momentum_inputs = momentum_cfg.get("input", [])
+        else:
+            momentum_inputs = momentum_cfg
+        momentum_fields = tuple(str(item) for item in momentum_inputs if isinstance(item, str))
+        if momentum_fields != FOUR_VECTOR_FEATURES:
+            raise ValueError(
+                "Inputs.Part.Momentum must expose exactly ['energy', 'pt', 'eta', 'phi'] for ml_pipeline_lite."
             )
-        elif isinstance(value, list):
-            raw_sequential_fields.extend(normalize_part_feature_name(str(item)) for item in value)
 
-    deduped_fields: list[str] = []
-    seen: set[str] = set()
-    for field in raw_sequential_fields:
-        if field in seen:
-            continue
-        seen.add(field)
-        deduped_fields.append(field)
-
-    grouped_sequential_config = None
-    if any(isinstance(value, dict) for value in part_cfg.values()):
-        grouped_sequential_config = {
-            "SEQUENTIAL": {
-                "Source": {
-                    "projected_feature_names": deduped_fields,
-                    "groups": {
-                        key: value
-                        for key, value in part_cfg.items()
-                        if isinstance(value, dict)
-                    },
-                }
-            }
-        }
-
+        raw_sequential_fields_list: list[str] = [normalize_part_feature_name(name) for name in momentum_fields]
+        for key, value in part_cfg.items():
+            if key == "Momentum":
+                continue
+            if isinstance(value, dict):
+                raw_sequential_fields_list.extend(
+                    normalize_part_feature_name(field_name)
+                    for field_name in flatten_leaf_features(value.get("input", []), allow_top_level_groups=False)
+                )
+            elif isinstance(value, list):
+                raw_sequential_fields_list.extend(normalize_part_feature_name(str(item)) for item in value)
+        raw_sequential_fields = tuple(dict.fromkeys(raw_sequential_fields_list))
+        projected_sequential_feature_names = raw_sequential_fields
+        grouped_sequential_config = None
     global_fields = tuple(str(item) for item in global_cfg.get("Fields", DEFAULT_GLOBAL_FIELDS))
     return FeatureConfig(
-        raw_sequential_fields=tuple(deduped_fields),
+        raw_sequential_fields=tuple(raw_sequential_fields),
+        projected_sequential_feature_names=tuple(projected_sequential_feature_names),
         global_fields=global_fields,
         grouped_sequential_config=grouped_sequential_config,
-        all_sequential_fields=tuple(deduped_fields)
+        all_sequential_fields=tuple(raw_sequential_fields)
     )
 
 
@@ -368,6 +507,7 @@ def main() -> None:
             "evenet_config": str(args.evenet_config),
             "class_labels": class_labels,
             "point_cloud_features": list(feature_config.raw_sequential_fields),
+            "projected_point_cloud_features": list(feature_config.projected_sequential_feature_names),
             "global_features": list(feature_config.global_fields),
             "invisible_features": list(evenet_config.invisible_features),
         }
