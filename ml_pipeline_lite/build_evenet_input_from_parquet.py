@@ -1039,6 +1039,10 @@ def build_output_events(
     tau_vis_rho = features_from_p4_local(tau_vis_rho_p4, ("energy", "pt", "eta", "phi"))
     tau_vis_target = features_from_p4_local(tau_vis_target_p4, ("energy", "pt", "eta", "phi"))
     x_invisible = features_from_p4_local(x_invisible_p4, invisible_features)
+    invisible_pt = ak.to_numpy(x_invisible_p4.pt, allow_missing=False).astype(np.float32)
+    invisible_eta = ak.to_numpy(ak.where(np.isfinite(x_invisible_p4.eta), x_invisible_p4.eta, 0.0), allow_missing=False).astype(np.float32)
+    invisible_phi = ak.to_numpy(ak.where(np.isfinite(x_invisible_p4.phi), x_invisible_p4.phi, 0.0), allow_missing=False).astype(np.float32)
+    invisible_mask_np = ak.to_numpy(x_invisible_mask, allow_missing=False).astype(bool)
 
     fields: dict[str, Any] = {
         "sample_key": ak.Array([sample.key] * len(selected_events)),
@@ -1084,27 +1088,25 @@ def build_output_events(
         "tau_vis_prong_slot1_pt": to_numpy(visible_b.pt, np.float32),
         "tau_vis_prong_slot1_eta": to_numpy(visible_b.eta, np.float32),
         "tau_vis_prong_slot1_phi": to_numpy(visible_b.phi, np.float32),
+        "target_invisible_slot0_valid": invisible_mask_np[:, 0],
+        "target_invisible_slot0_pt": invisible_pt[:, 0],
+        "target_invisible_slot0_eta": invisible_eta[:, 0],
+        "target_invisible_slot0_phi": invisible_phi[:, 0],
+        "target_invisible_slot1_valid": invisible_mask_np[:, 1],
+        "target_invisible_slot1_pt": invisible_pt[:, 1],
+        "target_invisible_slot1_eta": invisible_eta[:, 1],
+        "target_invisible_slot1_phi": invisible_phi[:, 1],
     }
     fields.update(part_inputs)
     fields.update(global_inputs)
     if sample.is_signal:
         truth_tau_a = rebuild_vector(selected_events["truth_tau_a_p4"])
         truth_tau_b = rebuild_vector(selected_events["truth_tau_b_p4"])
-        target_a, target_valid_a = build_target_missing(truth_tau_a, visible_a)
-        target_b, target_valid_b = build_target_missing(truth_tau_b, visible_b)
         truth_observables = build_truth_observables(truth_tau_a, truth_tau_b, visible_a, visible_b)
         fields.update(
             {
                 "truth_tau_a_p4": materialize_p4(truth_tau_a),
                 "truth_tau_b_p4": materialize_p4(truth_tau_b),
-                "target_invisible_slot0_valid": target_valid_a.astype(bool),
-                "target_invisible_slot0_pt": to_numpy(target_a.pt, np.float32),
-                "target_invisible_slot0_eta": to_numpy(target_a.eta, np.float32),
-                "target_invisible_slot0_phi": to_numpy(target_a.phi, np.float32),
-                "target_invisible_slot1_valid": target_valid_b.astype(bool),
-                "target_invisible_slot1_pt": to_numpy(target_b.pt, np.float32),
-                "target_invisible_slot1_eta": to_numpy(target_b.eta, np.float32),
-                "target_invisible_slot1_phi": to_numpy(target_b.phi, np.float32),
             }
         )
         fields.update(truth_observables)
