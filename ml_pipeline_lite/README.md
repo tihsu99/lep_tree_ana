@@ -6,9 +6,12 @@ This directory holds small, nominal-only rewrites of the legacy `ml_pipeline`.
 
 This rewrite keeps only the fields needed for later EveNet work:
 
+- filtered per-particle `Part_*` inputs needed by EveNet
+- `Global` condition features needed by EveNet
 - visible tau `a/b` four-vectors
-- truth tau `a/b` four-vectors
-- target invisible slot `pt / eta / phi`
+- truth tau `a/b` four-vectors for `Ztautau` only
+- target invisible slot `pt / eta / phi` for `Ztautau` only
+- classification target index / class name aligned with the generated EveNet class order
 - source slot mapping
 - simple event metadata and region cuts
 - recomputed truth angular observables
@@ -40,6 +43,19 @@ Outputs:
 - `monitoring/<sample>/*.png`
 - `monitoring/comparison/*.png` for data vs stacked MC control plots
 - `manifest.json`
+
+The output parquet stores:
+
+- the filtered sequential EveNet inputs as `Part_*` jagged columns
+- the global condition inputs as flat scalar columns
+- `classification`
+- `classification_target_index`
+- `classification_target_name`
+
+with the same class ordering used by `generated_event_info.yaml`.
+
+If a required `Global` feature is not stored directly, `missing_p4` is used for
+the nominal fallback, including `missing_pz`.
 
 ## `generate_event_info_yaml.py`
 

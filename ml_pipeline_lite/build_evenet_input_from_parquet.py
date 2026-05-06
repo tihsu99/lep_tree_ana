@@ -23,11 +23,30 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from quantum.observables_builder import build_observables
+from ml_pipeline_lite.common import (
+    build_classification_lookup,
+    classification_targets_for_sample,
+    process_latex_label,
+)
+from ml_pipeline_lite.generate_event_info_yaml import parse_feature_config
 
 
 vector.register_awkward()
 
 MAX_VISIBLE_ENERGY_GEV = 91.25
+PART_MOMENTUM_SOURCE_FIELDS = (
+    "Part_fourMomentum_fCoordinates_fX",
+    "Part_fourMomentum_fCoordinates_fY",
+    "Part_fourMomentum_fCoordinates_fZ",
+    "Part_fourMomentum_fCoordinates_fT",
+)
+COMPARISON_1D_KEYS = (
+    "nprong",
+    "visible_energy",
+    "visible_pt",
+    "visible_eta",
+    "visible_phi",
+)
 
 MONITOR_1D_SPECS: dict[str, tuple[float, float, int]] = {
     "nprong": (-0.5, 7.5, 8),
@@ -65,6 +84,7 @@ class Sample:
     norm_factor: float | None
     lumi: float | None
     total_initial_num_events: float | None
+    plot_label: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -160,6 +180,7 @@ def parse_samples(config: dict[str, Any], selected_keys: list[str] | None) -> li
                 norm_factor=float(sample_cfg["norm_factor"]) if "norm_factor" in sample_cfg else None,
                 lumi=float(sample_cfg["lumi"]) if "lumi" in sample_cfg else None,
                 total_initial_num_events=None,
+                plot_label=process_latex_label(str(sample_cfg.get("name", key))),
             )
         )
     return samples
@@ -249,33 +270,156 @@ def to_numpy(values: Any, dtype=np.float64) -> np.ndarray:
     return ak.to_numpy(values, allow_missing=False).astype(dtype)
 
 
-def required_columns(schema_names: set[str]) -> list[str]:
+def part_input_mask(events: ak.Array) -> ak.Array:
+    if "Part_fourMomentum_fCoordinates_fT" not in events.fields:
+        reference_field = next(field for field in events.fields if field.startswith("Part_"))
+        return ak.ones_like(events[reference_field], dtype=bool)
+    energy = events["Part_fourMomentum_fCoordinates_fT"]
+    return ak.values_astype(np.isfinite(energy) & (energy <= MAX_VISIBLE_ENERGY_GEV), bool)
+
+
+def filtered_part_momentum(events: ak.Array) -> ak.Array:
+    mask = part_input_mask(events)
+    return build_momentum4d(
+        events["Part_fourMomentum_fCoordinates_fX"][mask],
+        events["Part_fourMomentum_fCoordinates_fY"][mask],
+        events["Part_fourMomentum_fCoordinates_fZ"][mask],
+        events["Part_fourMomentum_fCoordinates_fT"][mask],
+    )
+
+
+def build_part_inputs(events: ak.Array, feature_config) -> tuple[dict[str, ak.Array], np.ndarray]:
+    mask = part_input_mask(events)
+    part_p4 = filtered_part_momentum(events)
+    momentum_lookup = {
+        "Part_energy": part_p4.E,
+        "Part_pt": part_p4.pt,
+        "Part_eta": ak.where(np.isfinite(part_p4.eta), part_p4.eta, 0.0),
+        "Part_phi": part_p4.phi,
+    }
+    fields: dict[str, ak.Array] = {}
+    for feature_name in feature_config.raw_sequential_fields:
+        if feature_name in momentum_lookup:
+            fields[feature_name] = momentum_lookup[feature_name]
+        else:
+            fields[feature_name] = events[feature_name][mask]
+    num_vectors = ak.to_numpy(ak.num(next(iter(fields.values())), axis=1), allow_missing=False).astype(np.int32)
+    return fields, num_vectors
+
+
+def _p4_component(p4: ak.Array, component: str) -> ak.Array:
+    fields = set(getattr(p4, "fields", []))
+    if component == "px":
+        return p4["px"] if "px" in fields else p4["x"]
+    if component == "py":
+        return p4["py"] if "py" in fields else p4["y"]
+    if component == "pz":
+        return p4["pz"] if "pz" in fields else p4["z"]
+    if component in {"E", "energy"}:
+        return p4["E"] if "E" in fields else p4["t"]
+    raise ValueError(f"Unsupported p4 component '{component}'.")
+
+
+def resolve_global_feature(events: ak.Array, field_name: str) -> ak.Array:
+    if field_name in events.fields:
+        return events[field_name]
+    if "missing_p4" in events.fields:
+        missing_p4 = events["missing_p4"]
+        if field_name == "missing_px":
+            return _p4_component(missing_p4, "px")
+        if field_name == "missing_py":
+            return _p4_component(missing_p4, "py")
+        if field_name == "missing_pz":
+            return _p4_component(missing_p4, "pz")
+        if field_name in {"missing_E", "missing_energy"}:
+            return _p4_component(missing_p4, "E")
+        if field_name == "missing_pt":
+            px = _p4_component(missing_p4, "px")
+            py = _p4_component(missing_p4, "py")
+            return np.sqrt(px * px + py * py)
+    preview = ", ".join(events.fields[:25])
+    suffix = " ..." if len(events.fields) > 25 else ""
+    raise KeyError(f"Global feature '{field_name}' is missing. Available fields include: {preview}{suffix}")
+
+
+def build_global_inputs(events: ak.Array, feature_config) -> dict[str, np.ndarray]:
+    return {
+        field_name: to_numpy(resolve_global_feature(events, field_name), np.float32)
+        for field_name in feature_config.global_fields
+    }
+
+
+def required_columns(schema_names: set[str], feature_config, sample: Sample) -> list[str]:
     columns = {
         "lead_a_visible_p4",
         "lead_b_visible_p4",
-        "truth_tau_a_p4",
-        "truth_tau_b_p4",
         "nprong",
-        "event_category",
-        "truth_QI_region",
-        "analyzing_power",
-        "analyzing_power_a",
-        "analyzing_power_b",
         "initial_total_num_events",
         "weight",
         "central_weight",
     }
+    if sample.is_signal:
+        columns.update(
+            {
+                "truth_tau_a_p4",
+                "truth_tau_b_p4",
+                "event_category",
+                "truth_QI_region",
+                "analyzing_power",
+                "analyzing_power_a",
+                "analyzing_power_b",
+            }
+        )
+    for feature_name in feature_config.raw_sequential_fields:
+        if feature_name in {"Part_energy", "Part_pt", "Part_eta", "Part_phi"}:
+            columns.update(PART_MOMENTUM_SOURCE_FIELDS)
+        else:
+            columns.add(feature_name)
+    for field_name in feature_config.global_fields:
+        if field_name in schema_names:
+            columns.add(field_name)
+        elif field_name.startswith("missing_") or field_name in {"missing_pt", "missing_E", "missing_energy"}:
+            columns.add("missing_p4")
     columns.update(name for name in schema_names if name.endswith("_cut"))
     return sorted(name for name in columns if name in schema_names)
 
 
-def ensure_required_fields(events: ak.Array, sample: Sample, path: str) -> None:
-    required = {"lead_a_visible_p4", "lead_b_visible_p4", "truth_tau_a_p4", "truth_tau_b_p4"}
+def ensure_required_fields(events: ak.Array, sample: Sample, path: str, feature_config) -> None:
+    required = {"lead_a_visible_p4", "lead_b_visible_p4"}
+    if sample.is_signal:
+        required.update({"truth_tau_a_p4", "truth_tau_b_p4", "event_category"})
     missing = sorted(required - set(events.fields))
     if missing:
         raise ValueError(
             f"Sample '{sample.key}' file '{path}' is missing required fields: {missing}"
         )
+    if any(feature_name in {"Part_energy", "Part_pt", "Part_eta", "Part_phi"} for feature_name in feature_config.raw_sequential_fields):
+        missing_momentum = [field for field in PART_MOMENTUM_SOURCE_FIELDS if field not in events.fields]
+        if missing_momentum:
+            raise ValueError(
+                f"Sample '{sample.key}' file '{path}' is missing particle momentum fields: {missing_momentum}"
+            )
+    missing_part_features = [
+        feature_name
+        for feature_name in feature_config.raw_sequential_fields
+        if feature_name not in {"Part_energy", "Part_pt", "Part_eta", "Part_phi"} and feature_name not in events.fields
+    ]
+    if missing_part_features:
+        raise ValueError(
+            f"Sample '{sample.key}' file '{path}' is missing particle input fields: {missing_part_features}"
+        )
+    if any(field_name not in events.fields for field_name in feature_config.global_fields):
+        missing_global = []
+        for field_name in feature_config.global_fields:
+            if field_name in events.fields:
+                continue
+            if (field_name.startswith("missing_") or field_name in {"missing_pt", "missing_E", "missing_energy"}) and "missing_p4" in events.fields:
+                continue
+            missing_global.append(field_name)
+        if missing_global:
+            raise ValueError(
+                f"Sample '{sample.key}' file '{path}' is missing required global fields: {missing_global}"
+            )
 
 
 def preselection_mask(events: ak.Array) -> np.ndarray:
@@ -377,15 +521,25 @@ def fill_monitor_state(state: dict[str, Any], selected_events: ak.Array, output_
         "visible_pt": visible_pt,
         "visible_eta": visible_eta,
         "visible_phi": visible_phi,
-        "target_pt": target_pt,
-        "target_eta": target_eta,
-        "target_phi": target_phi,
-        "truth_theta_cm": to_numpy(output_events["truth_theta_cm"]),
-        "truth_mtautau": to_numpy(output_events["truth_mtautau"]),
-        "truth_cos_theta_A_k": to_numpy(output_events["truth_cos_theta_A_k"]),
-        "truth_cos_theta_B_k": to_numpy(output_events["truth_cos_theta_B_k"]),
-        "truth_cos_theta_A_k_times_cos_theta_B_k": to_numpy(output_events["truth_cos_theta_A_k_times_cos_theta_B_k"]),
     }
+    if "target_invisible_slot0_pt" in output_events.fields:
+        values_1d.update(
+            {
+                "target_pt": target_pt,
+                "target_eta": target_eta,
+                "target_phi": target_phi,
+            }
+        )
+    if "truth_theta_cm" in output_events.fields:
+        values_1d.update(
+            {
+                "truth_theta_cm": to_numpy(output_events["truth_theta_cm"]),
+                "truth_mtautau": to_numpy(output_events["truth_mtautau"]),
+                "truth_cos_theta_A_k": to_numpy(output_events["truth_cos_theta_A_k"]),
+                "truth_cos_theta_B_k": to_numpy(output_events["truth_cos_theta_B_k"]),
+                "truth_cos_theta_A_k_times_cos_theta_B_k": to_numpy(output_events["truth_cos_theta_A_k_times_cos_theta_B_k"]),
+            }
+        )
     if "nprong" in selected_events.fields:
         values_1d["nprong"] = to_numpy(selected_events["nprong"], np.float64)
 
@@ -395,27 +549,28 @@ def fill_monitor_state(state: dict[str, Any], selected_events: ak.Array, output_
             weights = event_weight if len(values) == len(event_weight) else doubled_event_weight
             state["counts_1d"][name] += histogram1d(values[finite], MONITOR_1D_SPECS[name], weights=weights[finite])
 
-    rebuilt = build_observables(
-        tau_a_p4=rebuild_vector(output_events["truth_tau_a_p4"]),
-        tau_b_p4=rebuild_vector(output_events["truth_tau_b_p4"]),
-        vis_a_p4=rebuild_vector(output_events["lead_a_visible_p4"]),
-        vis_b_p4=rebuild_vector(output_events["lead_b_visible_p4"]),
-    )
-    rebuilt_map = {f"truth_{name}": np.asarray(values, dtype=np.float64) for name, values in rebuilt.items()}
-    for short_name in (
-        "theta_cm",
-        "mtautau",
-        "cos_theta_A_k",
-        "cos_theta_B_k",
-        "cos_theta_A_k_times_cos_theta_B_k",
-    ):
-        stored_name = f"truth_{short_name}"
-        key = f"truth_vs_rebuilt_{short_name}"
-        stored = to_numpy(output_events[stored_name], np.float64)
-        reco = rebuilt_map[stored_name]
-        finite = np.isfinite(stored) & np.isfinite(reco)
-        if np.any(finite):
-            state["counts_2d"][key] += histogram2d(stored[finite], reco[finite], MONITOR_2D_SPECS[key])
+    if {"truth_tau_a_p4", "truth_tau_b_p4", "truth_theta_cm"}.issubset(set(output_events.fields)):
+        rebuilt = build_observables(
+            tau_a_p4=rebuild_vector(output_events["truth_tau_a_p4"]),
+            tau_b_p4=rebuild_vector(output_events["truth_tau_b_p4"]),
+            vis_a_p4=rebuild_vector(output_events["lead_a_visible_p4"]),
+            vis_b_p4=rebuild_vector(output_events["lead_b_visible_p4"]),
+        )
+        rebuilt_map = {f"truth_{name}": np.asarray(values, dtype=np.float64) for name, values in rebuilt.items()}
+        for short_name in (
+            "theta_cm",
+            "mtautau",
+            "cos_theta_A_k",
+            "cos_theta_B_k",
+            "cos_theta_A_k_times_cos_theta_B_k",
+        ):
+            stored_name = f"truth_{short_name}"
+            key = f"truth_vs_rebuilt_{short_name}"
+            stored = to_numpy(output_events[stored_name], np.float64)
+            reco = rebuilt_map[stored_name]
+            finite = np.isfinite(stored) & np.isfinite(reco)
+            if np.any(finite):
+                state["counts_2d"][key] += histogram2d(stored[finite], reco[finite], MONITOR_2D_SPECS[key])
 
 
 def merge_monitor_states(states: list[dict[str, Any]]) -> dict[str, Any]:
@@ -431,8 +586,8 @@ def merge_monitor_states(states: list[dict[str, Any]]) -> dict[str, Any]:
     return merged
 
 
-def write_histogram_plots(output_dir: Path, sample_key: str, state: dict[str, Any]) -> dict[str, str]:
-    monitor_dir = output_dir / "monitoring" / sample_key
+def write_histogram_plots(output_dir: Path, sample: Sample, state: dict[str, Any]) -> dict[str, str]:
+    monitor_dir = output_dir / "monitoring" / sample.key
     monitor_dir.mkdir(parents=True, exist_ok=True)
     output_paths: dict[str, str] = {}
 
@@ -443,7 +598,7 @@ def write_histogram_plots(output_dir: Path, sample_key: str, state: dict[str, An
         fig, axis = plt.subplots(figsize=(6.2, 4.6), dpi=160)
         axis.step(edges[:-1], counts, where="post", linewidth=1.7)
         axis.set_ylabel("Weighted yield")
-        axis.set_title(f"{sample_key}: {name}")
+        axis.set_title(f"{sample.plot_label}: {name}")
         axis.grid(alpha=0.2)
         fig.tight_layout()
         plot_path = monitor_dir / f"{name}.png"
@@ -462,7 +617,7 @@ def write_histogram_plots(output_dir: Path, sample_key: str, state: dict[str, An
         axis.plot([x_low, x_high], [y_low, y_high], color="black", linestyle="--", linewidth=1.0)
         axis.set_xlabel(name.replace("truth_vs_rebuilt_", "stored "))
         axis.set_ylabel(name.replace("truth_vs_rebuilt_", "rebuilt "))
-        axis.set_title(f"{sample_key}: {name}")
+        axis.set_title(f"{sample.plot_label}: {name}")
         axis.grid(alpha=0.16)
         fig.tight_layout()
         plot_path = monitor_dir / f"{name}.png"
@@ -496,7 +651,8 @@ def write_data_mc_comparison_plots(
     if not data_samples or not mc_samples:
         return output_paths
 
-    for name, spec in MONITOR_1D_SPECS.items():
+    for name in COMPARISON_1D_KEYS:
+        spec = MONITOR_1D_SPECS[name]
         low, high, bins = spec
         edges = np.linspace(low, high, bins + 1)
         centers = 0.5 * (edges[:-1] + edges[1:])
@@ -519,7 +675,7 @@ def write_data_mc_comparison_plots(
                 bottom=stack_base,
                 align="edge",
                 alpha=0.8,
-                label=sample.key,
+                label=sample.plot_label,
                 linewidth=0.3,
                 edgecolor="black",
             )
@@ -540,7 +696,6 @@ def write_data_mc_comparison_plots(
             label="data",
         )
 
-        axis.set_xlabel(name)
         axis.set_ylabel("Weighted yield")
         axis.set_title(f"Data vs stacked MC: {name}")
         axis.grid(alpha=0.2)
@@ -588,21 +743,33 @@ def build_output_events(
     selected_events: ak.Array,
     sample: Sample,
     luminosity: float | None,
+    classification_lookup,
+    feature_config,
     source_file_index: int,
     source_row_index: np.ndarray,
 ) -> ak.Array:
     visible_a = rebuild_vector(selected_events["lead_a_visible_p4"])
     visible_b = rebuild_vector(selected_events["lead_b_visible_p4"])
-    truth_tau_a = rebuild_vector(selected_events["truth_tau_a_p4"])
-    truth_tau_b = rebuild_vector(selected_events["truth_tau_b_p4"])
-    target_a, target_valid_a = build_target_missing(truth_tau_a, visible_a)
-    target_b, target_valid_b = build_target_missing(truth_tau_b, visible_b)
-    truth_observables = build_truth_observables(truth_tau_a, truth_tau_b, visible_a, visible_b)
     event_weight = nominal_event_weight(sample, luminosity, selected_events)
+    event_categories = (
+        to_numpy(selected_events["event_category"], np.int64)
+        if "event_category" in selected_events.fields
+        else None
+    )
+    classification_indices, classification_names = classification_targets_for_sample(
+        sample_key=sample.key,
+        sample_name=sample.name,
+        is_data=sample.is_data,
+        num_rows=len(selected_events),
+        event_categories=event_categories,
+        lookup=classification_lookup,
+    )
     if "central_weight" in selected_events.fields:
         central_weight = to_numpy(selected_events["central_weight"], np.float32)
     else:
         central_weight = event_weight.copy()
+    part_inputs, num_sequential_vectors = build_part_inputs(selected_events, feature_config)
+    global_inputs = build_global_inputs(selected_events, feature_config)
 
     fields: dict[str, Any] = {
         "sample_key": ak.Array([sample.key] * len(selected_events)),
@@ -613,12 +780,14 @@ def build_output_events(
         "source_event_index": source_row_index.astype(np.int64),
         "source_slot_for_a": np.zeros(len(selected_events), dtype=np.int8),
         "source_slot_for_b": np.ones(len(selected_events), dtype=np.int8),
+        "classification": classification_indices,
+        "classification_target_index": classification_indices,
+        "classification_target_name": ak.Array(classification_names.tolist()),
         "event_weight": event_weight.astype(np.float32),
         "central_weight": central_weight.astype(np.float32),
+        "num_sequential_vectors": num_sequential_vectors,
         "lead_a_visible_p4": materialize_p4(visible_a),
         "lead_b_visible_p4": materialize_p4(visible_b),
-        "truth_tau_a_p4": materialize_p4(truth_tau_a),
-        "truth_tau_b_p4": materialize_p4(truth_tau_b),
         "tau_vis_prong_slot0_valid": finite_p4_mask(visible_a),
         "tau_vis_prong_slot0_energy": to_numpy(visible_a.E, np.float32),
         "tau_vis_prong_slot0_pt": to_numpy(visible_a.pt, np.float32),
@@ -629,15 +798,30 @@ def build_output_events(
         "tau_vis_prong_slot1_pt": to_numpy(visible_b.pt, np.float32),
         "tau_vis_prong_slot1_eta": to_numpy(visible_b.eta, np.float32),
         "tau_vis_prong_slot1_phi": to_numpy(visible_b.phi, np.float32),
-        "target_invisible_slot0_valid": target_valid_a.astype(bool),
-        "target_invisible_slot0_pt": to_numpy(target_a.pt, np.float32),
-        "target_invisible_slot0_eta": to_numpy(target_a.eta, np.float32),
-        "target_invisible_slot0_phi": to_numpy(target_a.phi, np.float32),
-        "target_invisible_slot1_valid": target_valid_b.astype(bool),
-        "target_invisible_slot1_pt": to_numpy(target_b.pt, np.float32),
-        "target_invisible_slot1_eta": to_numpy(target_b.eta, np.float32),
-        "target_invisible_slot1_phi": to_numpy(target_b.phi, np.float32),
     }
+    fields.update(part_inputs)
+    fields.update(global_inputs)
+    if sample.is_signal:
+        truth_tau_a = rebuild_vector(selected_events["truth_tau_a_p4"])
+        truth_tau_b = rebuild_vector(selected_events["truth_tau_b_p4"])
+        target_a, target_valid_a = build_target_missing(truth_tau_a, visible_a)
+        target_b, target_valid_b = build_target_missing(truth_tau_b, visible_b)
+        truth_observables = build_truth_observables(truth_tau_a, truth_tau_b, visible_a, visible_b)
+        fields.update(
+            {
+                "truth_tau_a_p4": materialize_p4(truth_tau_a),
+                "truth_tau_b_p4": materialize_p4(truth_tau_b),
+                "target_invisible_slot0_valid": target_valid_a.astype(bool),
+                "target_invisible_slot0_pt": to_numpy(target_a.pt, np.float32),
+                "target_invisible_slot0_eta": to_numpy(target_a.eta, np.float32),
+                "target_invisible_slot0_phi": to_numpy(target_a.phi, np.float32),
+                "target_invisible_slot1_valid": target_valid_b.astype(bool),
+                "target_invisible_slot1_pt": to_numpy(target_b.pt, np.float32),
+                "target_invisible_slot1_eta": to_numpy(target_b.eta, np.float32),
+                "target_invisible_slot1_phi": to_numpy(target_b.phi, np.float32),
+            }
+        )
+        fields.update(truth_observables)
     if sample.total_initial_num_events is not None:
         fields["initial_total_num_events"] = np.full(
             len(selected_events),
@@ -659,7 +843,6 @@ def build_output_events(
     for field in sorted(passthrough):
         if field in selected_events.fields and field not in fields:
             fields[field] = selected_events[field]
-    fields.update(truth_observables)
     return ak.Array(fields)
 
 
@@ -671,6 +854,8 @@ def write_shard(events: ak.Array, path: Path) -> None:
 def worker_process_file(
     sample_payload: dict[str, Any],
     luminosity: float | None,
+    classification_lookup,
+    feature_config,
     file_path: str,
     source_file_index: int,
     output_dir: str,
@@ -683,7 +868,7 @@ def worker_process_file(
     state = empty_monitor_state()
     parquet = pq.ParquetFile(file_path)
     schema_names = {field.name for field in parquet.schema_arrow}
-    columns = required_columns(schema_names)
+    columns = required_columns(schema_names, feature_config, sample)
     shard_buffers: list[ak.Array] = []
     selected_in_buffer = 0
     written_shards: list[dict[str, Any]] = []
@@ -717,8 +902,13 @@ def worker_process_file(
     for record_batch in parquet.iter_batches(batch_size=batch_size, columns=columns):
         events = ak.from_arrow(record_batch)
         state["rows_seen"] += len(events)
-        ensure_required_fields(events, sample, file_path)
-        for field in ("lead_a_visible_p4", "lead_b_visible_p4", "truth_tau_a_p4", "truth_tau_b_p4"):
+        ensure_required_fields(events, sample, file_path, feature_config)
+        vector_fields = ["lead_a_visible_p4", "lead_b_visible_p4"]
+        if sample.is_signal:
+            vector_fields.extend(["truth_tau_a_p4", "truth_tau_b_p4"])
+        if "missing_p4" in events.fields:
+            vector_fields.append("missing_p4")
+        for field in vector_fields:
             events[field] = rebuild_vector(events[field])
         mask = preselection_mask(events)
         if not np.any(mask):
@@ -730,6 +920,8 @@ def worker_process_file(
             selected_events=selected,
             sample=sample,
             luminosity=luminosity,
+            classification_lookup=classification_lookup,
+            feature_config=feature_config,
             source_file_index=source_file_index,
             source_row_index=selected_indices,
         )
@@ -756,6 +948,8 @@ def write_manifest(
     args: argparse.Namespace,
     samples: list[Sample],
     luminosity: float | None,
+    classification_lookup,
+    feature_config,
     worker_results: list[dict[str, Any]],
     monitoring_outputs: dict[str, dict[str, str]],
 ) -> None:
@@ -766,6 +960,7 @@ def write_manifest(
             "is_data": sample.is_data,
             "is_signal": sample.is_signal,
             "file_source": sample.file_source,
+            "plot_label": sample.plot_label,
             "files": expand_files(sample.files),
             "total_initial_num_events": sample.total_initial_num_events,
         }
@@ -779,6 +974,9 @@ def write_manifest(
         "rows_per_shard": args.rows_per_shard,
         "num_workers": args.num_workers,
         "luminosity": luminosity,
+        "class_labels": list(classification_lookup.class_labels),
+        "sequential_features": list(feature_config.raw_sequential_fields),
+        "global_condition_features": list(feature_config.global_fields),
         "samples": sample_manifest,
         "shards": shards_by_sample,
         "monitoring": monitoring_outputs,
@@ -794,10 +992,14 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     config = read_yaml(args.analysis_config)
+    feature_config = parse_feature_config(config)
     samples = attach_sample_total_initial_events(parse_samples(config, args.samples))
 
     if not samples:
         raise ValueError("No samples selected.")
+
+    selected_keys = {sample.key for sample in samples}
+    classification_lookup = build_classification_lookup(config, selected_keys)
 
     luminosity = infer_luminosity(samples)
     jobs: list[tuple[Sample, str, int]] = []
@@ -808,6 +1010,7 @@ def main() -> None:
 
     print(f"[ml_pipeline_lite] output_dir={output_dir}")
     print(f"[ml_pipeline_lite] samples={[sample.key for sample in samples]}")
+    print(f"[ml_pipeline_lite] class_labels={list(classification_lookup.class_labels)}")
     print(f"[ml_pipeline_lite] jobs={len(jobs)} workers={args.num_workers}")
     for sample in samples:
         print(
@@ -831,8 +1034,11 @@ def main() -> None:
                     "norm_factor": sample.norm_factor,
                     "lumi": sample.lumi,
                     "total_initial_num_events": sample.total_initial_num_events,
+                    "plot_label": sample.plot_label,
                 },
                 luminosity=luminosity,
+                classification_lookup=classification_lookup,
+                feature_config=feature_config,
                 file_path=file_path,
                 source_file_index=file_index,
                 output_dir=str(output_dir),
@@ -861,12 +1067,21 @@ def main() -> None:
         for sample in samples:
             merged = merge_monitor_states(states_by_sample[sample.key])
             merged_states[sample.key] = merged
-            monitoring_outputs[sample.key] = write_histogram_plots(output_dir, sample.key, merged)
+            monitoring_outputs[sample.key] = write_histogram_plots(output_dir, sample, merged)
         comparison_outputs = write_data_mc_comparison_plots(output_dir, samples, merged_states)
         if comparison_outputs:
             monitoring_outputs["comparison"] = comparison_outputs
 
-    write_manifest(output_dir, args, samples, luminosity, worker_results, monitoring_outputs)
+    write_manifest(
+        output_dir,
+        args,
+        samples,
+        luminosity,
+        classification_lookup,
+        feature_config,
+        worker_results,
+        monitoring_outputs,
+    )
 
 
 if __name__ == "__main__":

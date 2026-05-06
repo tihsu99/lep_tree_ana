@@ -15,6 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from ml_pipeline_lite.common import ordered_class_labels
+
 
 FOUR_VECTOR_FEATURES = ("energy", "pt", "eta", "phi")
 DEFAULT_GLOBAL_FIELDS = (
@@ -253,34 +255,6 @@ def parse_evenet_config(schema_config: dict[str, Any], analysis_config: dict[str
         invisible_features=tuple(str(item) for item in invisible_features),
         invisible_tags=merge_tags(default_invisible_tags(tuple(str(item) for item in invisible_features)), invisible_cfg),
     )
-
-
-def ordered_class_labels(analysis_config: dict[str, Any], selected_keys: set[str] | None) -> list[str]:
-    samples_cfg = analysis_config.get("Samples") or {}
-    subcategories_cfg = analysis_config.get("Subcategories") or {}
-    labels: list[str] = []
-
-    for sample_key, sample_cfg in samples_cfg.items():
-        if selected_keys and sample_key not in selected_keys:
-            continue
-        if bool(sample_cfg.get("is_data", False)):
-            continue
-
-        sample_name = str(sample_cfg.get("name", sample_key))
-        sample_subcategories = subcategories_cfg.get(sample_key)
-        if sample_subcategories:
-            labels.extend(str(label) for label in sample_subcategories.keys())
-        else:
-            labels.append(sample_name)
-
-    deduplicated: list[str] = []
-    seen: set[str] = set()
-    for label in labels:
-        if label in seen:
-            continue
-        seen.add(label)
-        deduplicated.append(label)
-    return deduplicated
 
 
 def lookup_feature_tag(feature_name: str, tags: dict[str, str], default: str = "none") -> str:

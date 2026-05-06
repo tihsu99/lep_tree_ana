@@ -191,7 +191,7 @@ Normalization:
     charged_E: log_normalize
     missing_px: normalize
     missing_py: normalize
-    missing_pt: normalize
+    missing_pz: normalize
     isolation_angle: normalize
     thrust_x: normalize
     thrust_y: normalize
