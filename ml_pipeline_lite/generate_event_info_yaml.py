@@ -202,7 +202,7 @@ def parse_feature_config(config: dict[str, Any]) -> FeatureConfig:
                 final_fields.append(str(x_element))
         return final_fields
 
-
+    print(part_cfg)
     for key, value in part_cfg.items():
         if key == "Momentum":
             continue
