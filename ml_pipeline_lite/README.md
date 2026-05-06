@@ -57,6 +57,42 @@ with the same class ordering used by `generated_event_info.yaml`.
 If a required `Global` feature is not stored directly, `missing_p4` is used for
 the nominal fallback, including `missing_pz`.
 
+## `preprocess_evenet_parquet.py`
+
+Preprocess the lite parquet shards into shuffled train/val/test parquet files
+using the standard EveNet preprocessing logic.
+
+This stage is intentionally simple:
+
+- read the lite shard manifest
+- use all non-data shards as training input
+- optionally preprocess data shards into `store-dir/data`
+- event-level split inside each shard
+- shuffle rows per written parquet file
+- keep `event_weight` unchanged
+
+Example:
+
+```bash
+python3 ml_pipeline_lite/preprocess_evenet_parquet.py \
+  --manifest /tmp/evenet_lite_build/manifest.json \
+  --config ml_pipeline_lite/config/preprocess_config.yaml \
+  --store-dir /tmp/evenet_lite_preprocess \
+  --split-ratio 0.4,0.1,0.5 \
+  --num-workers 4 \
+  --verbose
+```
+
+Outputs:
+
+- `train_*.parquet`
+- `val/val_*.parquet`
+- `test/test_*.parquet`
+- `data/data_*.parquet`
+- `shape_metadata.json`
+- `normalization.pt`
+- `preprocess_manifest.json`
+
 ## `generate_event_info_yaml.py`
 
 Generate the `generated_event_info.yaml` schema consumed by:
