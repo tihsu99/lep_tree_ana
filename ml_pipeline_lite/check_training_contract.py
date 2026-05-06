@@ -79,6 +79,7 @@ def event_info_contract(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def require_keys(events: ak.Array, path: Path) -> None:
+    print(events.fields)
     missing = [key for key in CORE_KEYS if key not in events.fields]
     if missing:
         raise ValueError(f"{path} is missing required keys: {missing}")
