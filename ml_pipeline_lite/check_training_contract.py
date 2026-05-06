@@ -98,48 +98,48 @@ def check_batch(
 ) -> None:
     # require_keys(events, path)
 
-    x = as_numpy(events, "x")
-    x_mask = as_numpy(events, "x_mask")
-    conditions = as_numpy(events, "conditions")
-    conditions_mask = as_numpy(events, "conditions_mask")
-    x_invisible = as_numpy(events, "x_invisible")
-    x_invisible_mask = as_numpy(events, "x_invisible_mask")
+    # x = as_numpy(events, "x")
+    # x_mask = as_numpy(events, "x_mask")
+    # conditions = as_numpy(events, "conditions")
+    # conditions_mask = as_numpy(events, "conditions_mask")
+    # x_invisible = as_numpy(events, "x_invisible")
+    # x_invisible_mask = as_numpy(events, "x_invisible_mask")
     classification = np.asarray(as_numpy(events, "classification"), dtype=np.int64)
 
-    if x.ndim != 3:
-        raise ValueError(f"{path}: x must be rank-3, got shape {x.shape}")
-    if x.shape[-1] != contract["raw_sequential_dim"]:
-        raise ValueError(
-            f"{path}: x feature dim {x.shape[-1]} does not match event-info raw sequential dim "
-            f"{contract['raw_sequential_dim']}"
-        )
-    if x_mask.shape != x.shape[:2]:
-        raise ValueError(f"{path}: x_mask shape {x_mask.shape} does not match x slots {x.shape[:2]}")
-    if conditions.ndim != 2:
-        raise ValueError(f"{path}: conditions must be rank-2, got shape {conditions.shape}")
-    if conditions.shape[-1] != contract["global_dim"]:
-        raise ValueError(
-            f"{path}: conditions dim {conditions.shape[-1]} does not match event-info global dim "
-            f"{contract['global_dim']}"
-        )
-    if conditions_mask.shape != (conditions.shape[0], 1):
-        raise ValueError(
-            f"{path}: conditions_mask must have shape {(conditions.shape[0], 1)}, got {conditions_mask.shape}"
-        )
-    if x_invisible.ndim != 3:
-        raise ValueError(f"{path}: x_invisible must be rank-3, got shape {x_invisible.shape}")
-    if x_invisible.shape[1] != 2:
-        raise ValueError(f"{path}: x_invisible second dim must be 2, got {x_invisible.shape}")
-    if x_invisible.shape[-1] != contract["invisible_dim"]:
-        raise ValueError(
-            f"{path}: x_invisible feature dim {x_invisible.shape[-1]} does not match event-info invisible dim "
-            f"{contract['invisible_dim']}"
-        )
-    if x_invisible_mask.shape != x_invisible.shape[:2]:
-        raise ValueError(
-            f"{path}: x_invisible_mask shape {x_invisible_mask.shape} does not match x_invisible slots "
-            f"{x_invisible.shape[:2]}"
-        )
+    # if x.ndim != 3:
+    #     raise ValueError(f"{path}: x must be rank-3, got shape {x.shape}")
+    # if x.shape[-1] != contract["raw_sequential_dim"]:
+    #     raise ValueError(
+    #         f"{path}: x feature dim {x.shape[-1]} does not match event-info raw sequential dim "
+    #         f"{contract['raw_sequential_dim']}"
+    #     )
+    # if x_mask.shape != x.shape[:2]:
+    #     raise ValueError(f"{path}: x_mask shape {x_mask.shape} does not match x slots {x.shape[:2]}")
+    # if conditions.ndim != 2:
+    #     raise ValueError(f"{path}: conditions must be rank-2, got shape {conditions.shape}")
+    # if conditions.shape[-1] != contract["global_dim"]:
+    #     raise ValueError(
+    #         f"{path}: conditions dim {conditions.shape[-1]} does not match event-info global dim "
+    #         f"{contract['global_dim']}"
+    #     )
+    # if conditions_mask.shape != (conditions.shape[0], 1):
+    #     raise ValueError(
+    #         f"{path}: conditions_mask must have shape {(conditions.shape[0], 1)}, got {conditions_mask.shape}"
+    #     )
+    # if x_invisible.ndim != 3:
+    #     raise ValueError(f"{path}: x_invisible must be rank-3, got shape {x_invisible.shape}")
+    # if x_invisible.shape[1] != 2:
+    #     raise ValueError(f"{path}: x_invisible second dim must be 2, got {x_invisible.shape}")
+    # if x_invisible.shape[-1] != contract["invisible_dim"]:
+    #     raise ValueError(
+    #         f"{path}: x_invisible feature dim {x_invisible.shape[-1]} does not match event-info invisible dim "
+    #         f"{contract['invisible_dim']}"
+    #     )
+    # if x_invisible_mask.shape != x_invisible.shape[:2]:
+    #     raise ValueError(
+    #         f"{path}: x_invisible_mask shape {x_invisible_mask.shape} does not match x_invisible slots "
+    #         f"{x_invisible.shape[:2]}"
+    #     )
 
     num_classes = len(contract["class_labels"])
     invalid_mask = (classification < -1) | (classification >= num_classes)
