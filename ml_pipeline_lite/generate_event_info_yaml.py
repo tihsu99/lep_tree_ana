@@ -192,7 +192,7 @@ def parse_feature_config(config: dict[str, Any]) -> FeatureConfig:
         )
 
     raw_sequential_fields: list[str] = [normalize_part_feature_name(name) for name in momentum_fields]
-    all_sequential_fileds: list[str] = [normalize_part_feature_name(name) for name in momentum_fields]
+    all_sequential_fields: list[str] = [normalize_part_feature_name(name) for name in momentum_fields]
     def recursive_find_filds(x):
         final_fields = []
         for x_element in x:
@@ -207,7 +207,7 @@ def parse_feature_config(config: dict[str, Any]) -> FeatureConfig:
         if key == "Momentum":
             continue
 
-        all_sequential_fileds.extend(normalize_part_feature_name(str(item)) for item in value)
+        all_sequential_fields.extend(normalize_part_feature_name(str(item)) for item in value)
         if isinstance(value, dict):
             raw_sequential_fields.append(key)
         elif isinstance(value, list):
@@ -241,7 +241,7 @@ def parse_feature_config(config: dict[str, Any]) -> FeatureConfig:
         raw_sequential_fields=tuple(deduped_fields),
         global_fields=global_fields,
         grouped_sequential_config=grouped_sequential_config,
-        all_sequential_fileds=tuple(all_sequential_fileds)
+        all_sequential_fields=tuple(all_sequential_fields)
     )
 
 
