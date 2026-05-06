@@ -78,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("ml_pipeline_lite/generated_event_info.yaml"),
+        default=Path("ml_pipeline_lite/config/generated_event_info.yaml"),
         help="Output generated event-info YAML path.",
     )
     parser.add_argument(
