@@ -146,6 +146,11 @@ def generate_assignment_names(event_info):
     return [f"TARGETS/{process_name}/{particle_name}" for process_name, particle_name, _ in assignment_names]
 
 
+def event_info_class_labels() -> list[str]:
+    key_a, key_b = global_config.event_info.classification_names[0].split("/")
+    return list(global_config.event_info.class_label[key_a][key_b][0])
+
+
 def numeric_array_from_field(values: ak.Array) -> np.ndarray | None:
     if "var *" in str(ak.type(values)):
         return None
@@ -451,8 +456,16 @@ def main() -> None:
     if not training_shards:
         raise ValueError(f"No training shards found in {manifest_path}")
 
-    key_a, key_b = global_config.event_info.classification_names[0].split("/")
-    process_ids = global_config.event_info.class_label[key_a][key_b][0]
+    manifest_class_labels = list(manifest.get("class_labels") or [])
+    config_class_labels = event_info_class_labels()
+    process_ids = manifest_class_labels or config_class_labels
+    if manifest_class_labels and manifest_class_labels != config_class_labels:
+        print(
+            "[lite-preprocess] warning: manifest class_labels differ from preprocess event_info class labels. "
+            "Using manifest class_labels for preprocessing statistics. "
+            "Regenerate generated_event_info.yaml before training to keep class ordering aligned.",
+            flush=True,
+        )
     assignment_keys = generate_assignment_names(global_config.event_info)
 
     preprocess_lite_shards(

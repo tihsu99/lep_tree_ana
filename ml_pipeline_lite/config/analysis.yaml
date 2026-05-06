@@ -75,7 +75,7 @@ EveNetPrediction:
     - Ztautau_mumu
     - Ztautau_emu
     - Ztautau_mue
-    - Ztautau_other
+    - Ztautau_others
 
 EveNetInput:
   # false keeps the historical point-cloud collection.
@@ -158,7 +158,7 @@ Subcategories:
     Ztautau_mumu: [44]
     Ztautau_emu: [34]
     Ztautau_mue: [43]
-    Ztautau_other: [15, 51, 25, 52, 35, 53, 45, 54, 55]
+    Ztautau_others: [15, 51, 25, 52, 35, 53, 45, 54, 55]
 
 Normalization:
   Sequential:
