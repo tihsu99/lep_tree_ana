@@ -298,7 +298,8 @@ def build_part_inputs(events: ak.Array, feature_config) -> tuple[dict[str, ak.Ar
         "Part_phi": part_p4.phi,
     }
     fields: dict[str, ak.Array] = {}
-    for feature_name in feature_config.raw_sequential_fields:
+
+    for feature_name in feature_config.all_sequential_fields:
         if feature_name in momentum_lookup:
             fields[feature_name] = momentum_lookup[feature_name]
         else:
@@ -370,7 +371,7 @@ def required_columns(schema_names: set[str], feature_config, sample: Sample) -> 
                 "analyzing_power_b",
             }
         )
-    for feature_name in feature_config.raw_sequential_fields:
+    for feature_name in feature_config.all_sequential_fields:
         if feature_name in {"Part_energy", "Part_pt", "Part_eta", "Part_phi"}:
             columns.update(PART_MOMENTUM_SOURCE_FIELDS)
         else:
@@ -393,7 +394,7 @@ def ensure_required_fields(events: ak.Array, sample: Sample, path: str, feature_
         raise ValueError(
             f"Sample '{sample.key}' file '{path}' is missing required fields: {missing}"
         )
-    if any(feature_name in {"Part_energy", "Part_pt", "Part_eta", "Part_phi"} for feature_name in feature_config.raw_sequential_fields):
+    if any(feature_name in {"Part_energy", "Part_pt", "Part_eta", "Part_phi"} for feature_name in feature_config.all_sequential_fields):
         missing_momentum = [field for field in PART_MOMENTUM_SOURCE_FIELDS if field not in events.fields]
         if missing_momentum:
             raise ValueError(
@@ -401,7 +402,7 @@ def ensure_required_fields(events: ak.Array, sample: Sample, path: str, feature_
             )
     missing_part_features = [
         feature_name
-        for feature_name in feature_config.raw_sequential_fields
+        for feature_name in feature_config.all_sequential_fields
         if feature_name not in {"Part_energy", "Part_pt", "Part_eta", "Part_phi"} and feature_name not in events.fields
     ]
     if missing_part_features:
@@ -975,7 +976,7 @@ def write_manifest(
         "num_workers": args.num_workers,
         "luminosity": luminosity,
         "class_labels": list(classification_lookup.class_labels),
-        "sequential_features": list(feature_config.raw_sequential_fields),
+        "sequential_features": list(feature_config.all_sequential_fields),
         "global_condition_features": list(feature_config.global_fields),
         "samples": sample_manifest,
         "shards": shards_by_sample,
