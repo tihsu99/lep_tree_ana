@@ -86,14 +86,11 @@ def ordered_class_labels(analysis_config: dict[str, Any], selected_keys: set[str
         if bool(sample_cfg.get("is_data", False)):
             continue
 
-        sample_name = str(sample_cfg.get("name", sample_key))
         sample_subcategories = subcategories_cfg.get(sample_key)
         if sample_subcategories:
             labels.extend(str(label) for label in sample_subcategories.keys())
-            fallback_label = f"{sample_name}_others"
-            if fallback_label in PROCESS_LATEX_LABELS and fallback_label not in labels:
-                labels.append(fallback_label)
         else:
+            sample_name = str(sample_cfg.get("name", sample_key))
             labels.append(sample_name)
 
     deduplicated: list[str] = []
@@ -159,18 +156,13 @@ def classification_targets_for_sample(
         if event_categories is None:
             raise ValueError(f"Sample '{sample_key}' needs event_category to build classification targets.")
         category_to_label = lookup.sample_event_category_to_label[sample_key]
-        fallback_label = f"{sample_name}_others"
-        if fallback_label not in lookup.label_to_index:
-            fallback_label = sample_name if sample_name in lookup.label_to_index else ""
         names = []
         for category in event_categories.astype(np.int64):
             label = category_to_label.get(int(category))
             if label is None:
-                if not fallback_label:
-                    raise ValueError(
-                        f"Sample '{sample_key}' has event_category={category} not covered by Subcategories."
-                    )
-                label = fallback_label
+                raise ValueError(
+                    f"Sample '{sample_key}' has event_category={category} not covered by Subcategories."
+                )
             names.append(label)
         name_array = np.asarray(names, dtype=object)
         index_array = np.asarray([lookup.label_to_index[name] for name in names], dtype=np.int32)
