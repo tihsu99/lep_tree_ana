@@ -1,0 +1,5 @@
+event_info:
+  default: generated_event_info.yaml
+
+resonance:
+  default: resonance.yaml
