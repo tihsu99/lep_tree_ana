@@ -25,6 +25,7 @@ if str(REPO_ROOT) not in sys.path:
 from quantum.observables_builder import build_observables
 from ml_pipeline_lite.common import (
     build_classification_lookup,
+    channel_latex_label,
     classification_targets_for_sample,
     process_latex_label,
 )
@@ -41,6 +42,7 @@ PART_MOMENTUM_SOURCE_FIELDS = (
     "Part_fourMomentum_fCoordinates_fT",
 )
 DEFAULT_INVISIBLE_FEATURES = ("pt", "eta", "phi")
+TAU_MASS_GEV = 1.77686
 CORE_MODEL_KEYS = {
     "x",
     "x_mask",
@@ -74,11 +76,15 @@ MONITOR_1D_SPECS: dict[str, tuple[float, float, int]] = {
 }
 
 MONITOR_2D_SPECS: dict[str, tuple[tuple[float, float], tuple[float, float], int]] = {
-    "truth_vs_rebuilt_theta_cm": ((0.0, 1.0), (0.0, 1.0), 60),
-    "truth_vs_rebuilt_mtautau": ((0.0, 150.0), (0.0, 150.0), 60),
-    "truth_vs_rebuilt_cos_theta_A_k": ((-1.0, 1.0), (-1.0, 1.0), 60),
-    "truth_vs_rebuilt_cos_theta_B_k": ((-1.0, 1.0), (-1.0, 1.0), 60),
-    "truth_vs_rebuilt_cos_theta_A_k_times_cos_theta_B_k": ((-1.0, 1.0), (-1.0, 1.0), 60),
+    "truth_vs_target_theta_cm": ((0.0, 1.0), (0.0, 1.0), 60),
+    "truth_vs_target_mtautau": ((0.0, 150.0), (0.0, 150.0), 60),
+    "truth_vs_target_cos_theta_A_k": ((-1.0, 1.0), (-1.0, 1.0), 60),
+    "truth_vs_target_cos_theta_B_k": ((-1.0, 1.0), (-1.0, 1.0), 60),
+    "truth_vs_target_cos_theta_A_k_times_cos_theta_B_k": ((-1.0, 1.0), (-1.0, 1.0), 60),
+    "visible_vs_truth_visible_energy": ((0.0, 100.0), (0.0, 100.0), 60),
+    "visible_vs_truth_visible_pt": ((0.0, 60.0), (0.0, 60.0), 60),
+    "visible_vs_truth_visible_eta": ((-3.0, 3.0), (-3.0, 3.0), 60),
+    "visible_vs_truth_visible_phi": ((-math.pi, math.pi), (-math.pi, math.pi), 60),
 }
 
 
@@ -279,6 +285,23 @@ def materialize_p4(values: ak.Array) -> ak.Array:
             "z": vector_values.pz,
             "t": vector_values.E,
         }
+    )
+
+
+def build_momentum4d_with_mass(values: ak.Array, mass: float) -> ak.Array:
+    px = cast_array_like(values.px, np.float64)
+    py = cast_array_like(values.py, np.float64)
+    pz = cast_array_like(values.pz, np.float64)
+    energy = np.sqrt(px * px + py * py + pz * pz + mass * mass)
+    return build_momentum4d(px, py, pz, energy)
+
+
+def massless_p4_from_pt_eta_phi(pt: np.ndarray, eta: np.ndarray, phi: np.ndarray) -> ak.Array:
+    return build_momentum4d(
+        pt * np.cos(phi),
+        pt * np.sin(phi),
+        pt * np.sinh(eta),
+        pt * np.cosh(eta),
     )
 
 
@@ -523,6 +546,10 @@ def required_columns(schema_names: set[str], feature_config, sample: Sample) -> 
                 "analyzing_power_b",
             }
         )
+        if "truth_visible_a_p4" in schema_names:
+            columns.add("truth_visible_a_p4")
+        if "truth_visible_b_p4" in schema_names:
+            columns.add("truth_visible_b_p4")
     for feature_name in feature_config.all_sequential_fields:
         if feature_name in {"Part_energy", "Part_pt", "Part_eta", "Part_phi"}:
             columns.update(PART_MOMENTUM_SOURCE_FIELDS)
@@ -613,6 +640,59 @@ def build_truth_observables(truth_tau_a: ak.Array, truth_tau_b: ak.Array, visibl
         vis_b_p4=visible_b,
     )
     return {f"truth_{name}": np.asarray(values, dtype=np.float32) for name, values in observables.items()}
+
+
+def target_missing_p4_from_output(output_events: ak.Array, slot: int) -> ak.Array:
+    return massless_p4_from_pt_eta_phi(
+        to_numpy(output_events[f"target_invisible_slot{slot}_pt"], np.float64),
+        to_numpy(output_events[f"target_invisible_slot{slot}_eta"], np.float64),
+        to_numpy(output_events[f"target_invisible_slot{slot}_phi"], np.float64),
+    )
+
+
+def target_rebuilt_observables_from_output(output_events: ak.Array) -> dict[str, np.ndarray] | None:
+    required = {
+        "truth_theta_cm",
+        "lead_a_visible_p4",
+        "lead_b_visible_p4",
+        "target_invisible_slot0_pt",
+        "target_invisible_slot0_eta",
+        "target_invisible_slot0_phi",
+        "target_invisible_slot1_pt",
+        "target_invisible_slot1_eta",
+        "target_invisible_slot1_phi",
+    }
+    if not required.issubset(set(output_events.fields)):
+        return None
+    visible_a = rebuild_vector(output_events["lead_a_visible_p4"])
+    visible_b = rebuild_vector(output_events["lead_b_visible_p4"])
+    target_a = target_missing_p4_from_output(output_events, 0)
+    target_b = target_missing_p4_from_output(output_events, 1)
+    tau_a = build_momentum4d_with_mass(visible_a + target_a, TAU_MASS_GEV)
+    tau_b = build_momentum4d_with_mass(visible_b + target_b, TAU_MASS_GEV)
+    observables = build_observables(
+        tau_a_p4=tau_a,
+        tau_b_p4=tau_b,
+        vis_a_p4=visible_a,
+        vis_b_p4=visible_b,
+    )
+    return {f"truth_{name}": np.asarray(values, dtype=np.float64) for name, values in observables.items()}
+
+
+def truth_visible_tau_pair(
+    selected_events: ak.Array,
+    output_events: ak.Array,
+) -> tuple[ak.Array | None, ak.Array | None]:
+    fields = set(selected_events.fields)
+    if {"truth_visible_a_p4", "truth_visible_b_p4"}.issubset(fields):
+        return rebuild_vector(selected_events["truth_visible_a_p4"]), rebuild_vector(selected_events["truth_visible_b_p4"])
+    if {"truth_tau_a_p4", "truth_tau_b_p4"}.issubset(fields):
+        truth_tau_a = rebuild_vector(selected_events["truth_tau_a_p4"])
+        truth_tau_b = rebuild_vector(selected_events["truth_tau_b_p4"])
+        target_a = target_missing_p4_from_output(output_events, 0)
+        target_b = target_missing_p4_from_output(output_events, 1)
+        return truth_tau_a - target_a, truth_tau_b - target_b
+    return None, None
 
 
 def stack_tau_pair(values_a: ak.Array, values_b: ak.Array) -> ak.Array:
@@ -732,6 +812,7 @@ def empty_monitor_state() -> dict[str, Any]:
             name: np.zeros((spec[2], spec[2]), dtype=np.float64)
             for name, spec in MONITOR_2D_SPECS.items()
         },
+        "counts_1d_by_class": {},
         "rows_seen": 0,
         "rows_selected": 0,
         "sum_event_weight": 0.0,
@@ -745,12 +826,14 @@ def fill_monitor_state(state: dict[str, Any], selected_events: ak.Array, output_
 
     event_weight = to_numpy(output_events["event_weight"], np.float64)
     state["sum_event_weight"] += float(np.sum(event_weight))
+    class_names = np.asarray(ak.to_numpy(output_events["classification_target_name"], allow_missing=False), dtype=str)
     visible_a = rebuild_vector(selected_events["lead_a_visible_p4"])
     visible_b = rebuild_vector(selected_events["lead_b_visible_p4"])
     target_pt = np.concatenate([to_numpy(output_events["target_invisible_slot0_pt"]), to_numpy(output_events["target_invisible_slot1_pt"])])
     target_eta = np.concatenate([to_numpy(output_events["target_invisible_slot0_eta"]), to_numpy(output_events["target_invisible_slot1_eta"])])
     target_phi = np.concatenate([to_numpy(output_events["target_invisible_slot0_phi"]), to_numpy(output_events["target_invisible_slot1_phi"])])
     doubled_event_weight = np.concatenate([event_weight, event_weight])
+    doubled_class_names = np.concatenate([class_names, class_names])
     visible_energy = np.concatenate([to_numpy(visible_a.E), to_numpy(visible_b.E)])
     visible_pt = np.concatenate([to_numpy(visible_a.pt), to_numpy(visible_b.pt)])
     visible_eta = np.concatenate([to_numpy(visible_a.eta), to_numpy(visible_b.eta)])
@@ -786,17 +869,27 @@ def fill_monitor_state(state: dict[str, Any], selected_events: ak.Array, output_
     for name, values in values_1d.items():
         finite = np.isfinite(values)
         if np.any(finite):
-            weights = event_weight if len(values) == len(event_weight) else doubled_event_weight
-            state["counts_1d"][name] += histogram1d(values[finite], MONITOR_1D_SPECS[name], weights=weights[finite])
+            per_event = len(values) == len(event_weight)
+            weights = event_weight if per_event else doubled_event_weight
+            labels = class_names if per_event else doubled_class_names
+            finite_values = values[finite]
+            finite_weights = weights[finite]
+            finite_labels = labels[finite]
+            state["counts_1d"][name] += histogram1d(finite_values, MONITOR_1D_SPECS[name], weights=finite_weights)
+            for class_name in np.unique(finite_labels):
+                class_state = state["counts_1d_by_class"].setdefault(
+                    class_name,
+                    {hist_name: np.zeros(spec[2], dtype=np.float64) for hist_name, spec in MONITOR_1D_SPECS.items()},
+                )
+                class_mask = finite_labels == class_name
+                class_state[name] += histogram1d(
+                    finite_values[class_mask],
+                    MONITOR_1D_SPECS[name],
+                    weights=finite_weights[class_mask],
+                )
 
-    if {"truth_tau_a_p4", "truth_tau_b_p4", "truth_theta_cm"}.issubset(set(output_events.fields)):
-        rebuilt = build_observables(
-            tau_a_p4=rebuild_vector(output_events["truth_tau_a_p4"]),
-            tau_b_p4=rebuild_vector(output_events["truth_tau_b_p4"]),
-            vis_a_p4=rebuild_vector(output_events["lead_a_visible_p4"]),
-            vis_b_p4=rebuild_vector(output_events["lead_b_visible_p4"]),
-        )
-        rebuilt_map = {f"truth_{name}": np.asarray(values, dtype=np.float64) for name, values in rebuilt.items()}
+    rebuilt_map = target_rebuilt_observables_from_output(output_events)
+    if rebuilt_map is not None:
         for short_name in (
             "theta_cm",
             "mtautau",
@@ -805,12 +898,42 @@ def fill_monitor_state(state: dict[str, Any], selected_events: ak.Array, output_
             "cos_theta_A_k_times_cos_theta_B_k",
         ):
             stored_name = f"truth_{short_name}"
-            key = f"truth_vs_rebuilt_{short_name}"
+            key = f"truth_vs_target_{short_name}"
             stored = to_numpy(output_events[stored_name], np.float64)
             reco = rebuilt_map[stored_name]
             finite = np.isfinite(stored) & np.isfinite(reco)
             if np.any(finite):
                 state["counts_2d"][key] += histogram2d(stored[finite], reco[finite], MONITOR_2D_SPECS[key])
+
+    truth_visible_a, truth_visible_b = truth_visible_tau_pair(selected_events, output_events)
+    if truth_visible_a is not None and truth_visible_b is not None:
+        comparisons = {
+            "energy": (
+                np.concatenate([to_numpy(visible_a.E, np.float64), to_numpy(visible_b.E, np.float64)]),
+                np.concatenate([to_numpy(truth_visible_a.E, np.float64), to_numpy(truth_visible_b.E, np.float64)]),
+            ),
+            "pt": (
+                np.concatenate([to_numpy(visible_a.pt, np.float64), to_numpy(visible_b.pt, np.float64)]),
+                np.concatenate([to_numpy(truth_visible_a.pt, np.float64), to_numpy(truth_visible_b.pt, np.float64)]),
+            ),
+            "eta": (
+                np.concatenate([to_numpy(visible_a.eta, np.float64), to_numpy(visible_b.eta, np.float64)]),
+                np.concatenate([to_numpy(truth_visible_a.eta, np.float64), to_numpy(truth_visible_b.eta, np.float64)]),
+            ),
+            "phi": (
+                np.concatenate([to_numpy(visible_a.phi, np.float64), to_numpy(visible_b.phi, np.float64)]),
+                np.concatenate([to_numpy(truth_visible_a.phi, np.float64), to_numpy(truth_visible_b.phi, np.float64)]),
+            ),
+        }
+        for component, (visible_values, truth_values) in comparisons.items():
+            key = f"visible_vs_truth_visible_{component}"
+            finite = np.isfinite(visible_values) & np.isfinite(truth_values)
+            if np.any(finite):
+                state["counts_2d"][key] += histogram2d(
+                    visible_values[finite],
+                    truth_values[finite],
+                    MONITOR_2D_SPECS[key],
+                )
 
 
 def merge_monitor_states(states: list[dict[str, Any]]) -> dict[str, Any]:
@@ -823,6 +946,13 @@ def merge_monitor_states(states: list[dict[str, Any]]) -> dict[str, Any]:
             merged["counts_1d"][name] += state["counts_1d"][name]
         for name in merged["counts_2d"]:
             merged["counts_2d"][name] += state["counts_2d"][name]
+        for class_name, class_counts in state["counts_1d_by_class"].items():
+            merged_class = merged["counts_1d_by_class"].setdefault(
+                class_name,
+                {hist_name: np.zeros(spec[2], dtype=np.float64) for hist_name, spec in MONITOR_1D_SPECS.items()},
+            )
+            for hist_name in merged_class:
+                merged_class[hist_name] += class_counts[hist_name]
     return merged
 
 
@@ -855,8 +985,15 @@ def write_histogram_plots(output_dir: Path, sample: Sample, state: dict[str, Any
         mesh = axis.pcolormesh(x_edges, y_edges, counts.T, cmap="Blues", shading="auto")
         fig.colorbar(mesh, ax=axis, label="Entries")
         axis.plot([x_low, x_high], [y_low, y_high], color="black", linestyle="--", linewidth=1.0)
-        axis.set_xlabel(name.replace("truth_vs_rebuilt_", "stored "))
-        axis.set_ylabel(name.replace("truth_vs_rebuilt_", "rebuilt "))
+        if name.startswith("truth_vs_target_"):
+            axis.set_xlabel(name.replace("truth_vs_target_", "truth "))
+            axis.set_ylabel(name.replace("truth_vs_target_", "target rebuilt "))
+        elif name.startswith("visible_vs_truth_visible_"):
+            axis.set_xlabel(name.replace("visible_vs_truth_visible_", "visible "))
+            axis.set_ylabel(name.replace("visible_vs_truth_visible_", "truth visible "))
+        else:
+            axis.set_xlabel(name)
+            axis.set_ylabel(name)
         axis.set_title(f"{sample.plot_label}: {name}")
         axis.grid(alpha=0.16)
         fig.tight_layout()
@@ -874,6 +1011,54 @@ def write_histogram_plots(output_dir: Path, sample: Sample, state: dict[str, Any
         "plots": output_paths,
     }
     summary_path.write_text(json.dumps(summary_payload, indent=2) + "\n")
+    output_paths["summary"] = str(summary_path.relative_to(output_dir))
+    return output_paths
+
+
+def write_class_stacked_plots(output_dir: Path, sample: Sample, state: dict[str, Any]) -> dict[str, str]:
+    monitor_dir = output_dir / "monitoring" / sample.key / "class_breakdown"
+    monitor_dir.mkdir(parents=True, exist_ok=True)
+    output_paths: dict[str, str] = {}
+    if not state["counts_1d_by_class"]:
+        return output_paths
+
+    ordered_classes = sorted(
+        state["counts_1d_by_class"],
+        key=lambda class_name: float(np.sum(state["counts_1d_by_class"][class_name]["visible_energy"])),
+        reverse=True,
+    )
+
+    for name, spec in MONITOR_1D_SPECS.items():
+        low, high, bins = spec
+        edges = np.linspace(low, high, bins + 1)
+        fig, axis = plt.subplots(figsize=(7.0, 5.0), dpi=160)
+        stack_base = np.zeros(bins, dtype=np.float64)
+        for class_name in ordered_classes:
+            counts = state["counts_1d_by_class"][class_name][name]
+            axis.bar(
+                edges[:-1],
+                counts,
+                width=np.diff(edges),
+                bottom=stack_base,
+                align="edge",
+                alpha=0.85,
+                linewidth=0.2,
+                edgecolor="black",
+                label=channel_latex_label(class_name),
+            )
+            stack_base += counts
+        axis.set_ylabel("Weighted yield")
+        axis.set_title(f"{sample.plot_label}: class contribution to {name}")
+        axis.grid(alpha=0.2)
+        axis.legend(frameon=False, fontsize=8, ncol=2)
+        fig.tight_layout()
+        plot_path = monitor_dir / f"{name}.png"
+        fig.savefig(plot_path)
+        plt.close(fig)
+        output_paths[name] = str(plot_path.relative_to(output_dir))
+
+    summary_path = monitor_dir / "summary.json"
+    summary_path.write_text(json.dumps({"plots": output_paths, "classes": ordered_classes}, indent=2) + "\n")
     output_paths["summary"] = str(summary_path.relative_to(output_dir))
     return output_paths
 
@@ -1201,6 +1386,10 @@ def worker_process_file(
         vector_fields = ["lead_a_visible_p4", "lead_b_visible_p4"]
         if sample.is_signal:
             vector_fields.extend(["truth_tau_a_p4", "truth_tau_b_p4"])
+            if "truth_visible_a_p4" in events.fields:
+                vector_fields.append("truth_visible_a_p4")
+            if "truth_visible_b_p4" in events.fields:
+                vector_fields.append("truth_visible_b_p4")
         if "missing_p4" in events.fields:
             vector_fields.append("missing_p4")
         for field in vector_fields:
@@ -1409,6 +1598,9 @@ def main() -> None:
             merged = merge_monitor_states(states_by_sample[sample.key])
             merged_states[sample.key] = merged
             monitoring_outputs[sample.key] = write_histogram_plots(output_dir, sample, merged)
+            class_outputs = write_class_stacked_plots(output_dir, sample, merged)
+            if class_outputs:
+                monitoring_outputs[f"{sample.key}_class_breakdown"] = class_outputs
         comparison_outputs = write_data_mc_comparison_plots(output_dir, samples, merged_states)
         if comparison_outputs:
             monitoring_outputs["comparison"] = comparison_outputs
