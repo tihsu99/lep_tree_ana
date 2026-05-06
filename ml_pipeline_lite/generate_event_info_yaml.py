@@ -195,9 +195,9 @@ def parse_feature_config(config: dict[str, Any]) -> FeatureConfig:
     all_sequential_fields: list[str] = [normalize_part_feature_name(name) for name in momentum_fields]
     def recursive_find_filds(x):
         final_fields = []
-        for x_element in x:
+        for x_element in x["input"]:
             if isinstance(x_element, dict):
-                final_fields.extend(recursive_find_filds(x["input"]))
+                final_fields.extend(recursive_find_filds(x_element))
             else:
                 final_fields.append(str(x_element))
         return final_fields
