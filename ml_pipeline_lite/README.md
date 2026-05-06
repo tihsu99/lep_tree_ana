@@ -28,11 +28,10 @@ It is designed for large parquet inputs:
 ### Example
 
 ```bash
-python3 ml_pipeline_lite/build_evenet_input_from_parquet.py \
-  --analysis-config ml_pipeline/config/analysis.yaml \
-  --output-dir /tmp/evenet_lite_build \
-  --samples Ztautau data94 \
-  --batch-size 50000 \
+python3 build_evenet_input_from_parquet.py   \
+  --analysis-config config/analysis.yaml   \
+  --output-dir /pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_baseline_v2/  \
+  --batch-size 50000  \
   --rows-per-shard 100000 \
   --num-workers 4
 ```

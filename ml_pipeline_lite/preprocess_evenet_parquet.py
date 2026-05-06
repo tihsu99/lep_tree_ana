@@ -147,6 +147,8 @@ def generate_assignment_names(event_info):
 
 
 def numeric_array_from_field(values: ak.Array) -> np.ndarray | None:
+    if "var *" in str(ak.type(values)):
+        return None
     if getattr(values, "fields", []):
         return None
     try:
