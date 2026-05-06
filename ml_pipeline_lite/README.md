@@ -56,6 +56,15 @@ with the same class ordering used by `generated_event_info.yaml`.
 If a required `Global` feature is not stored directly, `missing_p4` is used for
 the nominal fallback, including `missing_pz`.
 
+
+## `build evenet config`
+To generate the `generated_event_info.yaml` schema, we need to provide two input yaml files:
+```
+python3 generate_event_info_yaml.py \
+  --analysis-config config/analysis.yaml \
+  --evenet-config config/evenet_schema.yaml \ 
+  --output config/generated_event_info.yaml
+```
 ## `preprocess_evenet_parquet.py`
 
 Preprocess the lite parquet shards into shuffled train/val/test parquet files
@@ -73,12 +82,12 @@ This stage is intentionally simple:
 Example:
 
 ```bash
-python3 ml_pipeline_lite/preprocess_evenet_parquet.py \
-  --manifest /tmp/evenet_lite_build/manifest.json \
-  --config ml_pipeline_lite/config/preprocess_config.yaml \
-  --store-dir /tmp/evenet_lite_preprocess \
-  --split-ratio 0.4,0.1,0.5 \
-  --num-workers 4 \
+python3 preprocess_evenet_parquet.py  \
+  --manifest /pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_baseline_v2/manifest.json \
+  --config config/preprocess_config.yaml  \
+  --store-dir /pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_baseline_v2/evenet_input  \
+  --split-ratio 0.4,0.1,0.5  \
+  --num-workers 4  \
   --verbose
 ```
 
