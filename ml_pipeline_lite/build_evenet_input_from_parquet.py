@@ -292,7 +292,7 @@ def finite_p4_mask(values: ak.Array) -> np.ndarray:
 
 
 def to_numpy(values: Any, dtype=np.float64) -> np.ndarray:
-    return ak.to_numpy(values, allow_missing=False).astype(dtype)
+    return np.ascontiguousarray(ak.to_numpy(values, allow_missing=False).astype(dtype, copy=False))
 
 
 def to_numpy_array(values: Any, dtype=None) -> np.ndarray:
@@ -301,8 +301,8 @@ def to_numpy_array(values: Any, dtype=None) -> np.ndarray:
     else:
         values = np.asarray(values)
     if dtype is not None:
-        values = values.astype(dtype)
-    return values
+        values = values.astype(dtype, copy=False)
+    return np.ascontiguousarray(values)
 
 
 def part_input_mask(events: ak.Array) -> ak.Array:
@@ -1131,6 +1131,9 @@ def build_output_events(
     for field in sorted(passthrough):
         if field in selected_events.fields and field not in fields:
             fields[field] = selected_events[field]
+    for field_name, values in list(fields.items()):
+        if isinstance(values, np.ndarray):
+            fields[field_name] = np.ascontiguousarray(values)
     return ak.Array(fields)
 
 
