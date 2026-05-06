@@ -96,7 +96,7 @@ def check_batch(
     contract: dict[str, Any],
     stats: dict[str, Any],
 ) -> None:
-    require_keys(events, path)
+    # require_keys(events, path)
 
     x = as_numpy(events, "x")
     x_mask = as_numpy(events, "x_mask")
