@@ -78,7 +78,7 @@ options:
 
       Classification:
         learning_rate: *lr_classification
-        include: false
+        include: true
         optimizer_type: "adamW"
 
       Regression:
@@ -97,7 +97,7 @@ options:
         include: false
 
       TruthGeneration:
-        include: true
+        include: false
         diffusion_steps: 50
         optimizer_type: "adamW"
         learning_rate: *lr
@@ -125,11 +125,11 @@ options:
 
     ProgressiveTraining:
       stages:
-        - name: "neutrino_only"
+        - name: "classification"
           epoch_ratio: 1.0
           transition_ratio: 0.0
           loss_weights:
-            generation-truth: [1.0, 1.0]
+            classification: [1.0, 1.0]
 
   Dataset:
     dataset_limit: 1.0
