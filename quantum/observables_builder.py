@@ -153,7 +153,7 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
     cm_p4 = tau_a_p4 + tau_b_p4
 
 
-    boost_to_cm = safe_boost_to_cm(-cm_p4)
+    boost_to_cm = -cm_p4.to_beta3()
 
     # boost all relevant 4-vectors to the CM frame
     tau_a_p4_cm = tau_a_p4.boost(boost_to_cm)
