@@ -91,7 +91,7 @@ def ordered_class_labels(analysis_config: dict[str, Any], selected_keys: set[str
         if sample_subcategories:
             labels.extend(str(label) for label in sample_subcategories.keys())
             fallback_label = f"{sample_name}_others"
-            if fallback_label in PROCESS_LATEX_LABELS:
+            if fallback_label in PROCESS_LATEX_LABELS and fallback_label not in labels:
                 labels.append(fallback_label)
         else:
             labels.append(sample_name)
