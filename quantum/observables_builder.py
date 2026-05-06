@@ -48,6 +48,34 @@ def reweight_correlation(ary_observable, ary_spin_analyzing_power, weight, eleme
     return new_weight
 
 
+def safe_boost_to_cm(cm_p4: ak.Array) -> ak.Array:
+    px = np.asarray(cm_p4.px, dtype=np.float64)
+    py = np.asarray(cm_p4.py, dtype=np.float64)
+    pz = np.asarray(cm_p4.pz, dtype=np.float64)
+    energy = np.asarray(cm_p4.energy, dtype=np.float64)
+
+    p2 = px * px + py * py + pz * pz
+
+    zero_or_bad = (
+        ~np.isfinite(energy)
+        | ~np.isfinite(px)
+        | ~np.isfinite(py)
+        | ~np.isfinite(pz)
+        | (np.abs(energy) < 1e-12)
+        | (p2 < 1e-24)
+    )
+
+    bx = np.zeros_like(px)
+    by = np.zeros_like(py)
+    bz = np.zeros_like(pz)
+
+    good = ~zero_or_bad
+    bx[good] = -px[good] / energy[good]
+    by[good] = -py[good] / energy[good]
+    bz[good] = -pz[good] / energy[good]
+
+    return vector.zip({"x": bx, "y": by, "z": bz})
+
 def shift_SDM_element(events, element_name, variation):
     observable_name, analyzing_power = None, None
     if element_name.startswith('C_'):
@@ -123,7 +151,9 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
         where A and B are the two visible particles, and n, r, k are the helicity basis vectors defined in the rest frame of the tau a.
     """
     cm_p4 = tau_a_p4 + tau_b_p4
-    boost_to_cm = -cm_p4.to_beta3()
+
+
+    boost_to_cm = safe_boost_to_cm(-cm_p4)
 
     # boost all relevant 4-vectors to the CM frame
     tau_a_p4_cm = tau_a_p4.boost(boost_to_cm)
