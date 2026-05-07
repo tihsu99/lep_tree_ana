@@ -52,20 +52,21 @@ class ForwardFoldingProcessor(BaseProcessor):
         # Total Ztautau signal yield in truth region
         self.expected_yields_truth_region = 32177.19
         
-        # Branching ratios for each tau decay channel (pi, rho, e, mu)
-        # These map signal names to their branching ratio fractions
-        self.signal_branching_ratios = config.get("signal_branching_ratios", {
-            "Ztautau_pipi": 0.04545 * 0.04545,
-            "Ztautau_pirho": 2 * 0.04545 * 0.27,
-            "Ztautau_pie": 2 * 0.04545 * 0.1783,
-            "Ztautau_pimu": 2 * 0.04545 * 0.1704,
-            "Ztautau_rhorho": 0.27 * 0.27,
-            "Ztautau_rhoe": 2 * 0.27 * 0.1783,
-            "Ztautau_rhomu": 2 * 0.27 * 0.1704,
-            "Ztautau_ee": 0.1783 * 0.1783,
-            "Ztautau_emu": 2 * 0.1783 * 0.1704,
-            "Ztautau_mumu": 0.1704 * 0.1704,
-        })
+        # branching ratio: nonTau, pi, rho, e, mu, others
+        self.branching_ratios = [
+            0,
+            0.1077,
+            0.2537,
+            0.1773,
+            0.1731,
+            0
+        ]
+
+    def get_branching_ratio_from_event_category(self, event_category):
+        pos_id = event_category // 10
+        neg_id = event_category % 10
+        assert 0 <= pos_id < len(self.branching_ratios) and 0 <= neg_id < len(self.branching_ratios), f"Invalid event category {event_category}"
+        return self.branching_ratios[pos_id] * self.branching_ratios[neg_id]
 
     def get_binned_observable(self, var, events):
         var_values = ak.to_numpy(events[var], allow_missing=False)
@@ -92,7 +93,7 @@ class ForwardFoldingProcessor(BaseProcessor):
         folded.SetDirectory(0)
         return folded
 
-    def build_expected_signal_hist(self, region, signal_names, analyzing_powers, var, parameter_value, truth_hist_build_func):
+    def build_expected_signal_hist(self, region, signal_names, branching_ratios, analyzing_powers, var, parameter_value, truth_hist_build_func):
         """Build expected signal histogram by folding truth templates through response matrices.
         
         Each signal gets its own truth template based on its analyzing power and branching ratio.
@@ -111,8 +112,7 @@ class ForwardFoldingProcessor(BaseProcessor):
         expected = None
         
         for idx, signal_name in enumerate(signal_names):
-            # Get branching ratio for this signal, default to 1.0 if not found
-            branching_ratio = self.signal_branching_ratios.get(signal_name, 1.0)
+            branching_ratio = branching_ratios[idx] 
             
             # Build truth template specific to this signal's analyzing power and branching ratio
             truth_hist = truth_hist_build_func(analyzing_powers[idx], parameter_value, total_bin_contents=self.expected_yields_truth_region * branching_ratio)
@@ -188,6 +188,7 @@ class ForwardFoldingProcessor(BaseProcessor):
         bkg_values, _ = self.th1_to_arrays(h_bkg)
 
         analyzing_powers = []
+        branching_ratios = []
         for signal_name in signal_names:
             event_category = cf.get_event_category_from_signal_name(signal_name)
             ap_pos, ap_neg = ob.get_analyzing_power_from_event_category(event_category)
@@ -197,6 +198,9 @@ class ForwardFoldingProcessor(BaseProcessor):
                 analyzing_powers.append(ap_neg)
             elif bc_name.startswith("C_"):
                 analyzing_powers.append(-1 * ap_pos * ap_neg)
+
+            branching_ratio = self.get_branching_ratio_from_event_category(event_category)
+            branching_ratios.append(branching_ratio)
 
         truth_hist_build_func = self.build_truth_hist_Bi if bc_name.startswith("B_") else self.build_truth_hist_Cij
 
@@ -213,7 +217,7 @@ class ForwardFoldingProcessor(BaseProcessor):
         def chi2(x):
             """Chi-squared objective function for minimization."""
             parameter_value = float(x[0])
-            h_signal = self.build_expected_signal_hist(region, signal_names, analyzing_powers, var, parameter_value, truth_hist_build_func)
+            h_signal = self.build_expected_signal_hist(region, signal_names, branching_ratios, analyzing_powers, var, parameter_value, truth_hist_build_func)
             signal_values, _ = self.th1_to_arrays(h_signal)
             expected_values = signal_values + bkg_values
             residuals = data_values - expected_values
@@ -254,6 +258,8 @@ class ForwardFoldingProcessor(BaseProcessor):
             h_mc = self.build_reco_hist(f"h_mc_{region}_{signal_name}_{var}", events_list, var)
             signal_category = cf.get_event_category_from_signal_name(signal_name)
             ap_pos, ap_neg = ob.get_analyzing_power_from_event_category(signal_category)
+            branching_ratio = self.get_branching_ratio_from_event_category(signal_category)
+
             analyzing_power = 0.0
             if bc_name.startswith("B_A"):
                 analyzing_power = ap_pos * -1
@@ -264,7 +270,6 @@ class ForwardFoldingProcessor(BaseProcessor):
 
             response_matrix = self.response_manager.get_response_matrix(region, signal_name, var)
 
-            branching_ratio = self.signal_branching_ratios.get(signal_name, 1.0)
             truth_hist = truth_hist_build_func(analyzing_power, nominal_value, total_bin_contents=self.expected_yields_truth_region * branching_ratio)
             # truth_hist = truth_hist_build_func(analyzing_power, nominal_value, total_bin_contents=374.06)
             truth_hist = unfold.build_TH1D_from_Hist(
