@@ -340,8 +340,8 @@ class ForwardFoldingProcessor(BaseProcessor):
                 fit_diagnostics = {}
                 for var in self.unfold_vars:
                     cf.print_and_write_to_opened_file(f"\n    Fitting {var}", f_out)
-                    # h_data = self.build_reco_hist(f"h_data_{region}_{var}", data_events, var)
-                    # h_bkg = self.build_reco_hist(f"h_bkg_{region}_{var}", background_events, var)
+                    h_data = self.build_reco_hist(f"h_data_{region}_{var}", data_events, var)
+                    h_bkg = self.build_reco_hist(f"h_bkg_{region}_{var}", background_events, var)
 
                     if self.verbosity >= 1:
                         self.plot_forward_fold_sanity(
@@ -351,28 +351,28 @@ class ForwardFoldingProcessor(BaseProcessor):
                             var,
                         )
 
-                #     fit_value, chi2, fit_result = self.fit_observable(region, signal_names, var, h_data, h_bkg)
-                #     bc_name = ob.get_bc_name_from_variable_name(var)
-                #     fitted_bc[bc_name] = fit_value
-                #     fit_diagnostics[var] = (chi2, fit_result.success, fit_result.message)
-                #     cf.print_and_write_to_opened_file(
-                #         f"        {bc_name}: {fit_value.value:.4f} +/- {fit_value.err_up:.4f}, chi2={chi2:.2f}",
-                #         f_out,
-                #     )
+                    fit_value, chi2, fit_result = self.fit_observable(region, signal_names, var, h_data, h_bkg)
+                    bc_name = ob.get_bc_name_from_variable_name(var)
+                    fitted_bc[bc_name] = fit_value
+                    fit_diagnostics[var] = (chi2, fit_result.success, fit_result.message)
+                    cf.print_and_write_to_opened_file(
+                        f"        {bc_name}: {fit_value.value:.4f} +/- {fit_value.err_up:.4f}, chi2={chi2:.2f}",
+                        f_out,
+                    )
 
-                # self.print_results(f_out, "Fitted B and C matrices", fitted_bc)
+                self.print_results(f_out, "Fitted B and C matrices", fitted_bc)
 
-                # if all(name in fitted_bc for name in ob.NominalBCValues):
-                #     quantum_results = ob.evaluate_quantum_results_with_uncertainties(fitted_bc)
-                #     self.print_results(f_out, "Fitted quantum results", quantum_results)
+                if all(name in fitted_bc for name in ob.NominalBCValues):
+                    quantum_results = ob.evaluate_quantum_results_with_uncertainties(fitted_bc)
+                    self.print_results(f_out, "Fitted quantum results", quantum_results)
 
-                # if self.verbosity >= 1:
-                #     cf.print_and_write_to_opened_file("\n    Fit diagnostics:", f_out)
-                #     for var, (chi2, success, message) in fit_diagnostics.items():
-                #         cf.print_and_write_to_opened_file(
-                #             f"        {var}: success={success}, chi2={chi2:.2f}, message={message}",
-                #             f_out,
-                #         )
+                if self.verbosity >= 0:
+                    cf.print_and_write_to_opened_file("\n    Fit diagnostics:", f_out)
+                    for var, (chi2, success, message) in fit_diagnostics.items():
+                        cf.print_and_write_to_opened_file(
+                            f"        {var}: success={success}, chi2={chi2:.2f}, message={message}",
+                            f_out,
+                        )
 
     def finalize(self):
         pass
