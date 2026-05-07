@@ -16,25 +16,45 @@ ValueWithUncertainty = namedtuple('ValueWithUncertainty', ['value', 'err_up', 'e
 AnalyzingPowerAry = np.array([0, 1, 0.41, -0.33, -0.34, 0]) # order: [notTauDecay, pi, rho, el, mu, others]
 NominalBCValues = {
     'B_An': 0.0,
-    'B_Ar': 0.0,
-    'B_Ak': 0.1444,
+    'B_Ar': 0.000054,
+    'B_Ak': 0.149663,
     'B_Bn': 0.0,
-    'B_Br': 0.0,
-    'B_Bk': 0.1474,
-    'C_nn': 0.8446,
-    'C_rr': -0.7971,
-    'C_kk': 1.0345,
+    'B_Br': 0.000054,
+    'B_Bk': 0.149663,
+    'C_nn': 0.784523,
+    'C_rr': -0.78451,
+    'C_kk': 0.999987,
     'C_nr': 0.0,
     'C_nk': 0.0,
-    'C_rk': 0.0,
+    'C_rk': 0.000724757,
     'C_rn': 0.0,
     'C_kn': 0.0,
-    'C_kr': 0.0,
+    'C_kr': 0.000724757,
 }
 
 def get_analyzing_power_ary():
     # order: [notTauDecay, pi, rho, el, mu, others]
     return AnalyzingPowerAry
+
+
+def get_analyzing_power_from_event_category(event_category):
+    pos_idx = event_category // 10
+    neg_idx = event_category % 10
+    assert pos_idx < len(AnalyzingPowerAry), f"Positive index {pos_idx} out of range for analyzing power array"
+    assert neg_idx < len(AnalyzingPowerAry), f"Negative index {neg_idx} out of range for analyzing power array"
+    return AnalyzingPowerAry[pos_idx], AnalyzingPowerAry[neg_idx]
+
+
+def get_bc_name_from_variable_name(variable_name):
+    if variable_name.startswith("cos_theta_A_") and "_times_" not in variable_name:
+        return f"B_A{variable_name[-1]}"
+    if variable_name.startswith("cos_theta_B_") and "_times_" not in variable_name:
+        return f"B_B{variable_name[-1]}"
+    if variable_name.startswith("cos_theta_A_") and "_times_cos_theta_B_" in variable_name:
+        axis_a = variable_name.split("cos_theta_A_")[1][0]
+        axis_b = variable_name.split("cos_theta_B_")[1][0]
+        return f"C_{axis_a}{axis_b}"
+    return None
 
 
 def reweight_correlation(ary_observable, ary_spin_analyzing_power, weight, element_name, variation):

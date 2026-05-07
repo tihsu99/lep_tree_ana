@@ -20,6 +20,7 @@ class ResponseMatricesManager:
         self.bin_edges = unfold.get_bin_edges()
         self.unfold_vars = [obs for obs in get_observable_names() if 'cos' in obs]
         self.response_matrices = {}
+        self.raw_ztautau_events = None
         self.initialize()
 
 
@@ -111,4 +112,3 @@ class ResponseMatricesManager:
         var_values = ak.to_numpy(events[var], allow_missing=False)
         binned_var = unfold.bin_variable(var_values, self.bin_edges)
         return binned_var.astype(float)
-

@@ -55,6 +55,14 @@ def build_Hist_from_TH1D(h, bin_edges=None):
     return Hist(bin_edges=bin_edges, values=values, errors=errors)
 
 
+def build_TH1D_from_Hist(hist, hname):
+    h = ROOT.TH1D(hname, hname, len(hist.bin_edges) - 1, hist.bin_edges[0], hist.bin_edges[-1])
+    for i in range(len(hist.values)):
+        h.SetBinContent(i + 1, hist.values[i])
+        h.SetBinError(i + 1, hist.errors[i])
+    return h
+
+
 def plot_unfolded_results(hUnfold, save_path, h_truth=None, h_reco=None, var_name="Observable"):
     canvas = ROOT.TCanvas("RooUnfold", "RooUnfold", 450, 500)
     ROOT.gStyle.SetOptStat(0)
