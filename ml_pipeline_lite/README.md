@@ -154,7 +154,7 @@ The core behavior is intentionally simple:
 
 - use the prediction-parquet `evenet_weight` directly
 - rebuild the predicted baseline-selected rows with calibrated tau and QI observables
-- keep the raw complement outside the selected baseline rows and append it unchanged
+- keep the raw complement outside the selected baseline rows and append it with default invalid reco fields
 - optionally write a truth-neutrino oracle tree
 
 Example:
