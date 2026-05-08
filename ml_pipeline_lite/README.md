@@ -116,6 +116,170 @@ Outputs:
 - `normalization.pt`
 - `preprocess_manifest.json`
 
+
+## `predict_evenet_from_raw_parquet.py`
+
+Run EveNet prediction on the converted parquet files with the nominal weight rule:
+
+- `evenet_weight = event_weight`
+- if a split fraction is provided, scale by `1 / split_fraction`
+
+This lite entry keeps only the converted-parquet workflow and the chunk/shard
+controls needed for large-scale production.
+
+Example:
+
+```bash
+python3 predict_evenet_from_raw_parquet.py \
+  --analysis-config config/analysis.yaml \
+  --train-config config/train_pretrain.yaml \
+  --classification-checkpoint /path/to/checkpoint-pretrain-cls/best.ckpt \
+  --diffusion-checkpoint /path/to/checkpoint-pretrain-diffusion/best.ckpt \
+  --converted-parquet /path/to/evenet_input/test \
+  --shape-metadata /path/to/evenet_input/shape_metadata.json \
+  --output-dir /path/to/prediction-evenet-pretrain \
+  --converted-split-fraction 0.5 \
+  --batch-size 8192 \
+  --num-gpus 4 \
+  --task-num-shards 4 \
+  --task-shard-index 0
+```
+
+
+## `export_evenet_prediction_to_qi.py`
+
+Export prediction parquet files into the central QI/unfolding parquet layout.
+
+The core behavior is intentionally simple:
+
+- use the prediction-parquet `evenet_weight` directly
+- rebuild the predicted baseline-selected rows with calibrated tau and QI observables
+- keep the raw complement outside the selected baseline rows and append it unchanged
+- optionally write a truth-neutrino oracle tree
+
+Example:
+
+```bash
+python3 export_evenet_prediction_to_qi.py \
+  --analysis-config config/analysis.yaml \
+  --mc-pred-parquet /path/to/prediction-evenet-pretrain \
+  --data-pred-parquet /path/to/prediction-evenet-pretrain/data-pred \
+  --output-dir /path/to/prediction-evenet-pretrain/qi-export \
+  --qi-method-label pretrain \
+  --write-truth-neutrino-copy \
+  --truth-qi-method-label truth \
+  --raw-batch-size 50000 \
+  --prediction-batch-size 25000 \
+  --num-workers 4 \
+  --worker-backend thread
+```
+
+Outputs:
+
+- `<output-dir>/<qi-method-label>/<sample>/filtered___raw.parquet`
+- `<output-dir>/<qi-method-label>/<sample>/filtered___<region>.parquet`
+- optionally `<output-dir>/<truth-qi-method-label>/<sample>/...`
+- `<output-dir>/<qi-method-label>__qi_export_summary.json`
+
+
+## `plot_preunfolding_validation.py`
+
+Produce the lite pre-unfolding validation plots from the exported central-schema
+parquet trees.
+
+This rewrite keeps only the nominal summary path:
+
+- stored reco observables only
+- truth-vs-reco panels
+- truth-vs-reco summary plots
+- optional data-vs-MC control plots
+
+It intentionally does not run:
+
+- recomputed reco observables
+- truth-neutrino upper-limit plots
+- missing-neutrino / reco-tau / visible-tau validation branches
+
+Example:
+
+```bash
+python3 plot_preunfolding_validation.py \
+  --method Baseline:/path/to/baseline/qi-export \
+  --method EveNet-Pretrain:/path/to/pretrain/qi-export \
+  --signal-sample-name Ztautau \
+  --data-sample-name data94 \
+  --mc-sample-names Ztautau Zll Zqq \
+  --output-dir /path/to/preunfolding-validation \
+  --num-workers 8 \
+  --load-batch-size 50000
+```
+
+Outputs:
+
+- `truth_vs_reco/*.png`
+- `truth_vs_reco_summary/*.png`
+- `preunfolding_validation_summary.json`
+- `preunfolding_validation_report.md`
+- optionally the standard data-vs-MC control-plot PNGs
+
+
+## `run_tree_ana_root_preload.py`
+
+Run the unfolding / `tree_ana` preload workflow from the lite framework path.
+
+This rewrite keeps the preload and region-parallel unfolding control in
+`ml_pipeline_lite`, while still launching the shared `tree_ana` executable.
+
+Example:
+
+```bash
+python3 run_tree_ana_root_preload.py \
+  -c /path/to/config_qi.yaml \
+  --num-workers 4 \
+  --root-step-size 20000 \
+  --raw-batch-size 25000
+```
+
+
+## `extract_qi_final_measurements.py`
+
+Extract the final QI measurements from `results.txt`, write JSON/CSV tables,
+and draw the per-channel comparison plots.
+
+This rewrite lives fully in `ml_pipeline_lite` and keeps the
+Truth/Reconstruction comparison support.
+
+Example:
+
+```bash
+python3 extract_qi_final_measurements.py \
+  --method Baseline:/path/to/baseline/results.txt \
+  --method EveNet-Pretrain:/path/to/pretrain/results.txt \
+  --output-prefix /path/to/qi_compare \
+  --keep-truth
+```
+
+
+## `plot_evenet_prediction_summary.py`
+
+Draw the prediction summary plots from the prediction parquet outputs.
+
+This rewrite lives in `ml_pipeline_lite` and defaults the config paths to:
+
+- `ml_pipeline_lite/config/analysis.yaml`
+- `ml_pipeline_lite/config/evenet_schema.yaml`
+
+Example:
+
+```bash
+python3 plot_evenet_prediction_summary.py \
+  --mc-parquet /path/to/prediction-evenet-pretrain \
+  --data-parquet /path/to/prediction-evenet-pretrain/data-pred \
+  --output-dir /path/to/prediction-evenet-pretrain/summary \
+  --weight-source evenet \
+  --unblind
+```
+
 ## Shuffle the processed EveNet input files
 This is an optional step to further shuffle the preprocessed EveNet input files. 
 This is useful for training stability when the number of input files is small and each file contains a large number of events. 

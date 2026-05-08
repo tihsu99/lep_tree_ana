@@ -1,5 +1,5 @@
 GlobalConfigs:
-  default_output_dir: "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/prediction-evenet-pretrain/qi-export"
+  default_output_dir: "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_baseline_v2/evenet_predict_pretrain/qi-export/qi-export"
   region_of_interest: &RegionName "raw"
   load_regions:
     - "raw"
@@ -46,7 +46,7 @@ DataLoaders:
     is_data: true
     is_signal: false
     input_files:
-      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/prediction-evenet-pretrain/qi-export/data94/filtered___raw.parquet"
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_baseline_v2/evenet_predict_pretrain/qi-export/qi-export/filtered___raw.parquet"
 
   Ztautau:
     name: "Ztautau"
@@ -55,7 +55,7 @@ DataLoaders:
     is_signal: false
     norm_factor: 1458.9
     input_files:
-      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/prediction-evenet-pretrain/qi-export/Ztautau/filtered___raw.parquet"
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_baseline_v2/evenet_predict_pretrain/qi-export/qi-export/Ztautau/filtered___raw.parquet"
 
   Zll:
     name: "Zll"
@@ -64,7 +64,7 @@ DataLoaders:
     is_signal: false
     norm_factor: 2844.4
     input_files:
-      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/prediction-evenet-pretrain/qi-export/Zll/filtered___raw.parquet"
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_baseline_v2/evenet_predict_pretrain/qi-export/qi-export/Zll/filtered___raw.parquet"
 
   Zqq:
     name: "Zqq"
@@ -73,7 +73,7 @@ DataLoaders:
     is_signal: false
     norm_factor: 30511.2
     input_files:
-      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_based/prediction-evenet-pretrain/qi-export/Zqq/filtered___raw.parquet"
+      - "/pscratch/sd/t/tihsu/database/ZtautauAnalysis/ml_baseline_v2/evenet_predict_pretrain/qi-export/qi-export/Zqq/filtered___raw.parquet"
 
 Processors:
   QIProcessor:
