@@ -175,7 +175,7 @@ class QIProcessor(BaseProcessor):
                     # h_measure = h_measure_signal
 
                     response_matrix = self.response_manager.get_response_matrix(region, signal_name, var)
-                    unfold_result = ROOT.RooUnfoldSvd(response_matrix, h_measure, 5).Hunfold(2)
+                    unfold_result = ROOT.RooUnfoldBayes(response_matrix, h_measure, 10, handleFakes=True).Hunfold(2)
 
                     # build truth distribution using truth region events for comparison
                     var_truth_binned = self.get_binned_observable(f'truth_{var}', truth_events)
