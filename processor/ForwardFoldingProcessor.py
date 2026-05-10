@@ -69,7 +69,7 @@ class ForwardFoldingProcessor(BaseProcessor):
     def build_nuisance_parameter_specs(self, nuisance_config):
         if nuisance_config is None:
             nuisance_config = {
-                "signal_norm": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": True},
+                "signal_norm": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": False},
                 "background_norm": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": False},
             }
 
@@ -339,7 +339,7 @@ class ForwardFoldingProcessor(BaseProcessor):
         ax_ratio.set_ylim(0.0, 2.0)
         ax_ratio.grid(alpha=0.25)
         fig.tight_layout()
-        fig.savefig(f"{output_dir}/{var}_{label}_data_mc.pdf")
+        fig.savefig(f"{output_dir}/{var}_{label}_data_mc.png")
         plt.close(fig)
 
     def print_results(self, f_out, label, results):
