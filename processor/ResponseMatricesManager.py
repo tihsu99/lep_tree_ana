@@ -151,7 +151,7 @@ class ResponseMatricesManager:
         # unfold_result = ROOT.RooUnfoldSvd(response_matrix, h_to_unfold, 5).Hunfold(2)
         # unfold_result = ROOT.RooUnfoldInvert(response_matrix, h_to_unfold).Hunfold(2)
         # unfold_result = ROOT.RooUnfoldTUnfold(response_matrix, h_recon).Hunfold(2)
-        unfold_result = ROOT.RooUnfoldBayes(response_matrix, h_recon, niter=10, handleFakes=True).Hunfold(2)
+        unfold_result = ROOT.RooUnfoldBayes(response_matrix, h_recon, niter=4, handleFakes=True).Hunfold(2)
         unfold_result.SetTitle("h_unfolded")
 
         # forward fold the truth distribution and compare with reco distribution
