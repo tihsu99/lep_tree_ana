@@ -3,12 +3,12 @@ from BaseProcessor import BaseProcessor
 import DataLoader
 import matplotlib.pyplot as plt
 import os
-import vector
 import awkward as ak
-from utils.common_functions import load_events_from_parquet, print_and_write_to_opened_file, get_event_category_from_signal_name
+from utils.common_functions import print_and_write_to_opened_file, get_event_category_from_signal_name
 from utils.plotter import do_control_plot
 from quantum.observables_builder import get_observable_names, derive_results, shift_SDM_element
 import quantum.unfold as unfold
+from processor.ResponseMatricesManager import ResponseMatricesManager
 import ROOT
 
 
@@ -41,15 +41,6 @@ def plot_quantum_observables(dl_dict, output_dir, region_name="hadhad", log_scal
         plt.savefig(f"{output_dir}/control_plot_{obs}.png")
 
 
-def binning_variable(var, bin_edges):
-    # bin the variable according to the provided bin edges
-    var = np.asarray(var)
-    binned_var = np.digitize(var, bin_edges) - 1  # digitize returns indices starting from 1
-    binned_var[var < bin_edges[0]] = -1  # underflow
-    binned_var[var >= bin_edges[-1]] = len(bin_edges) - 1  # overflow
-    return binned_var
-
-
 class QIProcessor(BaseProcessor):
     def __init__(self, config, output_dir):
         """
@@ -68,84 +59,20 @@ class QIProcessor(BaseProcessor):
         self.asimov_data = config.get('asimov_data', True)
         
         # under development: unfolding results
-        default_output_dir = config['default_output_dir']
-        self.path_response_matrices = f"{default_output_dir}/response_matrices/"
-        self.response_matrix = {f"{region}_{signal_name}": {} for region in self.dict_region_to_signals.keys() for signal_name in self.dict_region_to_signals.get(region, [])}
-        self.num_bins = 10
-        self.bin_edges = np.linspace(-1, 1, self.num_bins + 1)
-
+        self.num_bins = unfold.get_num_bins()
+        self.bin_edges = unfold.get_bin_edges()
+        self.response_manager = ResponseMatricesManager(self.config['processed_data_dir'], self.config['default_output_dir'], self.dict_region_to_signals)
+        self.unfold_vars = self.response_manager.unfold_vars
         self.initialize()
 
     def initialize(self):
         self.raw_ztautau_events, _ = DataLoader.DataLoader.load_processed_data(self.config['processed_data_dir'], "Ztautau", region_name='raw')
         self.events_truth_region = self.raw_ztautau_events[(self.raw_ztautau_events['truth_QI_region'] == 1)]
-        self.load_response_matrix()
 
     def get_binned_observable(self, var, events):
         var_values = ak.to_numpy(events[var], allow_missing=False)
-        binned_var = binning_variable(var_values, self.bin_edges)
+        binned_var = unfold.bin_variable(var_values, self.bin_edges)
         return binned_var.astype(float)
-
-    def build_response_matrix(self, region):
-        # build response matrix using raw Ztautau events
-        raw_events = self.raw_ztautau_events
-
-        for signal_name in self.dict_region_to_signals.get(region, []):
-            # mask for truth region and analysis region
-            mask_truth_region = raw_events['truth_QI_region'] == 1
-            mask_analysis_region = (raw_events[f'{region}_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['theta_cm'] > 0.6) & (raw_events['mtautau'] > 80)
-            event_category = get_event_category_from_signal_name(signal_name)
-            mask_target_signal = raw_events['event_category'] == event_category
-
-            # only use events that pass selection
-            mask_unfolding_events = mask_target_signal & (mask_truth_region | mask_analysis_region)
-            events = raw_events[mask_unfolding_events]
-            mask_truth_region = mask_truth_region[mask_unfolding_events]
-            mask_analysis_region = mask_analysis_region[mask_unfolding_events]
-
-            for var in get_observable_names():
-                print(f"Building response matrix for {var}...")
-                binned_var_recon = self.get_binned_observable(var, events).astype(float)
-                binned_var_truth = self.get_binned_observable(f'truth_{var}', events).astype(float)
-                weight = ak.to_numpy(events['weight_nominal'], allow_missing=False)
-
-                # set truth (recon) observable to np.nan if the event is outside of the truth (analysis) region
-                binned_var_truth[~mask_truth_region] = np.nan
-                binned_var_recon[~mask_analysis_region] = np.nan
-
-                # build response matrix
-                self.response_matrix[f"{region}_{signal_name}"][var] = unfold.build_response(binned_var_recon, binned_var_truth, num_bins=self.num_bins, weight=weight, name=f"{region}_{signal_name}_{var}")
-            
-        fout = ROOT.TFile(f"{self.path_response_matrices}/response_{region}.root", "RECREATE")
-        for signal_name in self.dict_region_to_signals.get(region, []):
-            for var in get_observable_names():
-                self.response_matrix[f"{region}_{signal_name}"][var].Write()
-        fout.Close()
-
-
-    def load_response_matrix(self):
-        for region in self.dict_region_to_signals.keys():
-            signal_names = self.dict_region_to_signals.get(region, [])
-            loaded = True
-            file_path = f"{self.path_response_matrices}/response_{region}.root"
-            if not os.path.exists(file_path):
-                os.makedirs(self.path_response_matrices, exist_ok=True)
-                print(f"Response matrix file for {region} not found at {file_path}. Rebuilding all response matrices...")
-                loaded = False
-            else:
-                fin = ROOT.TFile(file_path, "READ")
-                for signal_name in signal_names:
-                    for var in get_observable_names():
-                        if not fin.GetListOfKeys().Contains(f"{region}_{signal_name}_{var}"):
-                            print(f"Response matrix for {signal_name} and {var} not found in file. Rebuilding all response matrices...")
-                            loaded = False
-                            break
-                        self.response_matrix[f"{region}_{signal_name}"][var] = fin.Get(f"{region}_{signal_name}_{var}")
-                    if not loaded: break
-                fin.Close()
-            if not loaded:
-                self.build_response_matrix(region)
-
 
     def run(self, dl_dict):
         f_out = open(f"{self.output_dir}/results.txt", 'w')
@@ -221,7 +148,7 @@ class QIProcessor(BaseProcessor):
                 # unfold the target variables
                 unfold_histograms = {}
                 truth_histograms = {}
-                for var in get_observable_names():
+                for var in self.unfold_vars:
                     print(f"Unfolding {var}...")
 
                     # unfold the variable
@@ -247,7 +174,8 @@ class QIProcessor(BaseProcessor):
                     # h_measure_signal = unfold.build_TH1D(f"h_{var}_signal", binned_var_signal, num_bins=self.num_bins, weight=weight_signal)
                     # h_measure = h_measure_signal
 
-                    unfold_result = ROOT.RooUnfoldSvd(self.response_matrix[f"{region}_{signal_name}"][var], h_measure, 5).Hunfold(2)
+                    response_matrix = self.response_manager.get_response_matrix(region, signal_name, var)
+                    unfold_result = ROOT.RooUnfoldSvd(response_matrix, h_measure, 5).Hunfold(2)
 
                     # build truth distribution using truth region events for comparison
                     var_truth_binned = self.get_binned_observable(f'truth_{var}', truth_events)

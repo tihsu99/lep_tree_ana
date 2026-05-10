@@ -1,5 +1,6 @@
 import awkward as ak
 import os
+import glob
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -8,8 +9,13 @@ from utils.common_functions import print_and_write_to_opened_file, get_event_cat
 
 
 if __name__ == "__main__":
-    input_parquet = '/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260426-hadhad/Ztautau/filtered___raw.parquet'
-    events = ak.from_parquet(input_parquet)
+    # input_parquet = '/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260426-hadhad/Ztautau/filtered___raw.parquet'
+    # events = ak.from_parquet(input_parquet)
+    events = []
+    for f in glob.glob('/pscratch/sd/c/cmo/LEP/tree_ana/run/20260427-dataset/Ztautau_*/filtered___raw.parquet'):
+        events.append(ak.from_parquet(f))
+    events = ak.concatenate(events)
+
     output_base_dir = f'example_plots/'
     output_text_file = os.path.join(output_base_dir, 'truth_analysis.txt')
     os.makedirs(output_base_dir, exist_ok=True)
@@ -47,7 +53,7 @@ if __name__ == "__main__":
                     print_and_write_to_opened_file(f"Observable {obs} not found in events for channel {channel_name}", f_out)
                     continue
                 obs_values = ak.to_numpy(selected_events[obs], allow_missing=False)
-                weights = ak.to_numpy(selected_events['weight'], allow_missing=False)
+                weights = np.ones_like(obs_values)
                 bin_edges = np.linspace(-1, 1, 51)
                 fig, ax = plt.subplots()
                 # get Hist
