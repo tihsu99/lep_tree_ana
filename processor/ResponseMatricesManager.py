@@ -120,7 +120,7 @@ class ResponseMatricesManager:
         signal_category = get_event_category_from_signal_name(signal_name)
         response_matrix = self.get_response_matrix(region, signal_name, var)
         if self.raw_ztautau_events is None:
-            self.raw_ztautau_events, _ = DataLoader.DataLoader.load_processed_data(self.data_dir, "Ztautau", "raw")
+            self.raw_ztautau_events, _ = DataLoader.DataLoader.load_processed_data(self.data_dir, "Ztautau", "raw", is_trainset=False)
         raw_events = self.raw_ztautau_events
         mask_target_signal = raw_events['event_category'] == signal_category
         raw_events = raw_events[mask_target_signal]
@@ -128,7 +128,7 @@ class ResponseMatricesManager:
 
         mask_truth_region = raw_events['truth_QI_region'] == 1
         mask_analysis_region = (raw_events[f'{region}_cut'] == 1) & (raw_events['flags_valid'] > 0) & (raw_events['theta_cm'] > 0.6) & (raw_events['mtautau'] > 80)
-        mask_analysis_fake_events = mask_analysis_region & (~mask_truth_region)
+        # mask_analysis_fake_events = mask_analysis_region & (~mask_truth_region)
 
         # events = raw_events[mask_target_signal & (mask_truth_region | mask_analysis_region)]
         events = raw_events
@@ -142,8 +142,8 @@ class ResponseMatricesManager:
         var_recon_binned = self.get_binned_observable(var, events[mask_analysis_region])
         h_recon = unfold.build_TH1D(f"h_recon", var_recon_binned, num_bins=self.num_bins, weight=weight[mask_analysis_region])
 
-        var_recon_fake_binned = self.get_binned_observable(var, events[mask_analysis_fake_events])
-        h_recon_fake = unfold.build_TH1D(f"h_recon_fake", var_recon_fake_binned, num_bins=self.num_bins, weight=weight[mask_analysis_fake_events])
+        # var_recon_fake_binned = self.get_binned_observable(var, events[mask_analysis_fake_events])
+        # h_recon_fake = unfold.build_TH1D(f"h_recon_fake", var_recon_fake_binned, num_bins=self.num_bins, weight=weight[mask_analysis_fake_events])
 
         # unfold reco distribution and compare with truth distribution
         # h_to_unfold = h_recon.Clone("h_to_unfold")
@@ -156,7 +156,8 @@ class ResponseMatricesManager:
 
         # forward fold the truth distribution and compare with reco distribution
         h_truth_forward_folded = response_matrix.ApplyToTruth(h_truth)
-        h_truth_forward_folded.Add(h_recon_fake)
+        h_reco_fake = response_matrix.Hfakes()
+        h_truth_forward_folded.Add(h_reco_fake)
 
         # plot
         ROOT.gStyle.SetOptStat(0)
