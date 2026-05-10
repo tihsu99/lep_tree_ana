@@ -160,6 +160,8 @@ class ForwardFoldingProcessor(BaseProcessor):
                 truth_hist,
                 f"h_ff_{region}_{signal_name}_{var}_{parameter_value:.5f}",
             )
+            h_fake = response_matrix.Hfakes()
+            folded.Add(h_fake)
             if expected is None:
                 expected = folded.Clone(f"h_expected_signal_{region}_{var}_{parameter_value:.5f}")
                 expected.SetDirectory(0)
