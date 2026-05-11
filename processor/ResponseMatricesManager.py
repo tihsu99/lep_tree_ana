@@ -72,7 +72,7 @@ class ResponseMatricesManager:
     def build_response_matrices(self, region):
         # build response matrix using raw Ztautau events
         if self.raw_ztautau_events is None:
-            self.raw_ztautau_events, _ = DataLoader.DataLoader.load_processed_data(self.data_dir, "Ztautau", "raw")
+            self.raw_ztautau_events, _ = DataLoader.DataLoader.load_processed_data(self.data_dir, "Ztautau", "raw", is_trainset=True)
         raw_events = self.raw_ztautau_events
 
         for signal_name in self.dict_region_to_signals.get(region, []):

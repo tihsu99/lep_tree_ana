@@ -91,7 +91,7 @@ class QIProcessor(BaseProcessor):
             os.makedirs(output_dir, exist_ok=True)
 
             # plot quantum observables
-            if self.verbosity > 0:
+            if self.verbosity >= 2:
                 plot_quantum_observables(
                     dl_dict, 
                     f"{output_dir}/plots/",
