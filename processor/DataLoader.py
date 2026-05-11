@@ -1,6 +1,5 @@
 import numpy as np
-import pandas as pd
-import uproot as ur
+import json
 import matplotlib.pyplot as plt
 import logging
 import vector
@@ -8,478 +7,122 @@ import glob
 import os
 import awkward as ak
 import copy
-import pyarrow.parquet as pq
-from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
-            get_all_p4_from_ak_events, cme, rebuild_p4, load_events_from_parquet
-from quantum.observables_builder import build_observables, get_mean_and_err_of_mean, shift_SDM_element
-import RegionSelections.DefineVariables as DefineVariables
-import RegionSelections.BaselineSelections as BaselineSelections
-import RegionSelections.HadHadSelections as HadHadSelections
-import RegionSelections.PiPiSelections as PiPiSelections
-import RegionSelections.LepLepSelections as LepLepSelections
-import RegionSelections.PiRhoSelections as PiRhoSelections
+import re
+from utils.common_functions import load_events_from_parquet
+from quantum.observables_builder import shift_SDM_element
 
 log = logging.getLogger(__name__)
-
-def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
-    raw_events = events
-    filtered_events_dict = {
-        'raw': raw_events,
-    }
-
-    raw_events = DefineVariables.define_recon_level_variables(raw_events)
-    if is_Ztautau:
-        raw_events = DefineVariables.define_signal_exclusive_variables(raw_events)
-    
-    # baseline selection
-    baseline_selection_results = BaselineSelections.get_flag_passes_baseline(raw_events)
-    for cut_name, flag_passes_cut in baseline_selection_results.items():
-        cut_title = BaselineSelections.get_dict_of_baseline_selection_names()[cut_name]
-        filter_log_dict[cut_title] = filter_log_dict.get(cut_title, 0) + ak.sum(flag_passes_cut)
-        raw_events[cut_name] = flag_passes_cut
-    flag_passes_baseline = baseline_selection_results[BaselineSelections.get_cut_name()]
-    filtered_events_dict['baseline'] = raw_events[flag_passes_baseline]
-
-    # had-had selection on top of baseline selection
-    hadhad_selection_results = HadHadSelections.get_flag_passes_hadhad_region(raw_events)
-    for cut_name, flag_passes_cut in hadhad_selection_results.items():
-        cut_title = HadHadSelections.get_dict_of_hadhad_selection_names()[cut_name]
-        flag_passes_cut = flag_passes_cut & flag_passes_baseline
-        filter_log_dict[cut_title] = filter_log_dict.get(cut_title, 0) + ak.sum(flag_passes_cut)
-        raw_events[cut_name] = flag_passes_cut
-    flag_passes_hadhad = hadhad_selection_results[HadHadSelections.get_cut_name()] & flag_passes_baseline
-    filtered_events_dict['hadhad'] = raw_events[flag_passes_hadhad]
-
-    # pi-pi selection on top of had-had selection
-    pipi_selection_results = PiPiSelections.get_flag_passes_pipi_region(raw_events)
-    for cut_name, flag_passes_cut in pipi_selection_results.items():
-        cut_title = PiPiSelections.get_dict_of_pipi_selection_names()[cut_name]
-        flag_passes_cut = flag_passes_cut & flag_passes_hadhad
-        filter_log_dict[cut_title] = filter_log_dict.get(cut_title, 0) + ak.sum(flag_passes_cut)
-        raw_events[cut_name] = flag_passes_cut
-    flag_passes_pipi = pipi_selection_results[PiPiSelections.get_cut_name()] & flag_passes_hadhad
-    filtered_events_dict['pipi'] = raw_events[flag_passes_pipi]
-
-    # pi-rho selection on top of had-had selection
-    for region_name, is_pion_positive in [('pirho', True), ('rhopi', False)]:
-        pirho_selection_results = PiRhoSelections.get_flag_passes_pirho_region(raw_events, is_pion_positive)
-        for cut_name, flag_passes_cut in pirho_selection_results.items():
-            cut_title = PiRhoSelections.get_dict_of_pirho_selection_names(is_pion_positive)[cut_name]
-            flag_passes_cut = flag_passes_cut & flag_passes_hadhad
-            filter_log_dict[cut_title] = filter_log_dict.get(cut_title, 0) + ak.sum(flag_passes_cut)
-            raw_events[cut_name] = flag_passes_cut
-        flag_passes_pirho = pirho_selection_results[PiRhoSelections.get_cut_name(is_pion_positive)] & flag_passes_hadhad
-        filtered_events_dict[region_name] = raw_events[flag_passes_pirho]
-
-    # ---------------------------------------------------------
-    # Unified Leptonic Selections (ee, mumu, emu)
-    # ---------------------------------------------------------
-    # Call the selection function OUTSIDE the loop
-    selection_results = LepLepSelections.get_flag_passes_leplep_region(raw_events)
-    
-    # Log the cuts and append the flags to raw_events OUTSIDE the channel split loop
-    for cut_name, flag_passes_cut in selection_results.items():
-        cut_title = LepLepSelections.get_dict_of_leplep_selection_names()[cut_name]
-        flag_passes_cut = flag_passes_cut & flag_passes_baseline
-        filter_log_dict[cut_title] = filter_log_dict.get(cut_title, 0) + ak.sum(flag_passes_cut)
-        raw_events[cut_name] = flag_passes_cut
-            
-    # Now simply split the final arrays into their respective dictionaries
-    for channel in ['mumu', 'ee', 'emu']:
-        cut_name = f"{channel}_cut"
-        flag_passes = selection_results[cut_name] & flag_passes_baseline
-        filtered_events_dict[channel] = raw_events[flag_passes]
-
-    # Store the raw events with all the defined variables 
-    filtered_events_dict['raw'] = raw_events
-
-    return filtered_events_dict, filter_log_dict
 
 
 class DataLoader:
     def __init__(self, config, output_dir):
         self.config = config
-        # load all config into member variables
-        for key, value in config.items():
-            setattr(self, key, value)
         self.norm_factor = config.get("norm_factor", 1.0)
-        self.output_dir = output_dir
-        os.makedirs(self.output_dir, exist_ok=True)
         self.name = self.config.get("name", "")
-        self.tree_name = self.config.get("tree_name", "t")
-        self.input_files = self.config.get("input_files", [])
-        self.region_of_interest = self.config.get("region_of_interest", "pipi")
-        self.load_regions = self.config.get("load_regions", [self.region_of_interest])
-        self.load_regions = list(set(self.load_regions)) # remove duplicates
-        self.root_step_size = int(self.config.get("root_step_size", os.environ.get("TREE_ANA_ROOT_STEP_SIZE", 50000)))
+        self.load_regions = self.config.get("load_regions", [])
+        self.load_regions = list(dict.fromkeys(self.load_regions)) # remove duplicates while preserving order
+        self.processed_data_dir = self.config.get("processed_data_dir", "")
         self.is_data = self.config.get("is_data", False)
         self.initial_total_num_events = 0
         self.luminosity = self.config.get("luminosity", 0)
         if self.luminosity == 0 and not self.is_data:
             log.warning("Luminosity is set to 0 for MC sample. Please set luminosity in config for proper normalization.")
-
         self.is_Ztautau = "Ztautau" in self.name
-
-        if not self.input_files:
-            raise ValueError("Input files must be specified.")
-        elif isinstance(self.input_files, str):
-            self.input_files = glob.glob(self.input_files)
-        else:
-            all_files = []
-            for pattern in self.input_files:
-                all_files.extend(glob.glob(pattern))
-            # sort files for consistency
-            all_files = sorted(all_files)
-            self.input_files = all_files
+        self.is_signal = self.is_Ztautau
 
         self.data = {}
-        self.filter_results = {
-            'initial_total_num_events': 0,
-        }
+        self.load_data()
 
-        _data_loaded = False
-        if len(glob.glob(self.output_dir + f"/filtered___{self.region_of_interest}.parquet")) > 0:
-            log.info(f"Loading existing filtered data from {self.output_dir}")
-            for region in self.load_regions:
-                file = self.output_dir + "/filtered___" + region + ".parquet"
-                if os.path.exists(file):
-                    self.data[region] = load_events_from_parquet(file)
-                    if len(self.data[region]) == 0:
-                        log.warning(f"Filtered data for region {region} is empty. This may be due to previous filtering steps removing all events. Creating empty array for this region.")
-                        empty_events = next(iter(self.data.values())) # get the structure of events from any existing region
-                        filter_events = np.zeros(len(empty_events), dtype=bool)
-                        self.data[region] = empty_events[filter_events]
-                    if self.initial_total_num_events == 0 and len(self.data[region]) > 0:
-                        self.initial_total_num_events = self.data[region]['initial_total_num_events'][0]
-                    _data_loaded = True
-                else:
-                    log.warning(f"Filtered data file for region {region} does not exist. Re-loading and filtering data from input files.")
-                    _data_loaded = False
-                    break
-
-        if not _data_loaded:
-            self.load_data()
-            self.save_data()
-            keys = list(self.data.keys())
-            for key in keys:
-                if key not in self.load_regions:
-                    del self.data[key]
-            _data_loaded = True
-
-        log.info(f"DataLoader initialization complete. Loaded {len(self.input_files)} files.")
-
-    
-    def _stream_write_parquet_chunk(self, path: str, events: ak.Array) -> None:
-        if len(events) == 0:
-            return
-        table = ak.to_arrow_table(events, extensionarray=False)
-        writer = getattr(self, "_parquet_writers", {}).get(path)
-        if writer is None:
-            if not hasattr(self, "_parquet_writers"):
-                self._parquet_writers = {}
-            writer = pq.ParquetWriter(path, table.schema, compression="snappy")
-            self._parquet_writers[path] = writer
-        else:
-            table = table.cast(writer.schema, safe=False)
-        writer.write_table(table)
+        log.info(f"DataLoader initialization complete. Loaded {len(self.data)} regions.")
 
 
-    def _close_stream_writers(self) -> None:
-        for writer in getattr(self, "_parquet_writers", {}).values():
-            writer.close()
-        self._parquet_writers = {}
-
-
-    def _constant_weight_array(self, events: ak.Array, value: float) -> np.ndarray:
-        return np.full(len(events), np.float32(value), dtype=np.float32)
-
-
-    def _initial_total_num_events_from_loaded_parquets(self, parquet_arrays: list[ak.Array]) -> int:
-        if not parquet_arrays:
-            return 0
-        totals: list[int] = []
-        for events in parquet_arrays:
-            if len(events) == 0:
-                continue
-            if "initial_total_num_events" in events.fields:
-                totals.append(int(ak.to_numpy(events["initial_total_num_events"][:1], allow_missing=False)[0]))
-            else:
-                totals.append(int(len(events)))
-        if not totals:
-            return 0
-        return int(sum(totals))
-
-
-    def _split_loaded_parquet_regions(self, raw_events: ak.Array) -> bool:
-        requested_regions = [region for region in self.load_regions if region != "raw"]
-        if not requested_regions:
-            return True
-
-        missing_cut_fields = [
-            f"{region}_cut"
-            for region in requested_regions
-            if f"{region}_cut" not in raw_events.fields
+    @staticmethod
+    def load_processed_data(data_dir, sample_name, region_name='raw', is_data=False, is_trainset=False):
+        sample_dirs = DataLoader.get_processed_sample_dirs(data_dir, sample_name)
+        
+        files = [
+            os.path.join(sample_dir, f"filtered___{region_name}.parquet")
+            for sample_dir in sample_dirs
         ]
-        if missing_cut_fields:
-            log.info(
-                "Parquet input is missing region cut fields %s; falling back to filter_event.",
-                missing_cut_fields[:8],
+        files = [file for file in files if os.path.exists(file)]
+
+        if not files:
+            raise FileNotFoundError(
+                f"No processed parquet files found for sample '{sample_name}', region '{region_name}' "
+                f"under {data_dir}."
             )
-            return False
-
-        for region in requested_regions:
-            cut_field = f"{region}_cut"
-            region_mask = ak.to_numpy(raw_events[cut_field], allow_missing=False).astype(bool)
-            self.data[region] = raw_events[region_mask]
-            self.data[region]['initial_total_num_events'] = self.initial_total_num_events
-            if "weight" not in self.data[region].fields:
-                region_weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
-                self.data[region]['weight'] = self._constant_weight_array(self.data[region], region_weight)
-        return True
-
-
-    def _maybe_define_region_specific_variables(self, events: ak.Array) -> ak.Array:
-        observable_fields = {"theta_cm", "mtautau", "cos_theta_A_n", "cos_theta_B_n"}
-        if observable_fields.issubset(set(events.fields)):
-            return events
-
-        required_input_fields = {
-            "lead_a_visible_p4",
-            "lead_b_visible_p4",
-            "ee_cut",
-            "mumu_cut",
-            "emu_cut",
-        }
-        if not required_input_fields.issubset(set(events.fields)):
-            missing = sorted(required_input_fields.difference(set(events.fields)))
-            log.info(
-                "Skipping define_region_specific_variables for %s because required fields are missing: %s",
-                self.name,
-                missing[:8],
-            )
-            return events
-
-        return DefineVariables.define_region_specific_variables(events)
-
-
-    def load_data(self) -> pd.DataFrame:
-        if os.path.exists(self.output_dir + f"/filtered___raw.parquet"):
-            log.info(f"Loading existing raw data from {self.output_dir}/filtered___raw.parquet")
-            self.data['raw'] = ak.from_parquet(self.output_dir + f"/filtered___raw.parquet")
-            self.initial_total_num_events = self.data['raw']['initial_total_num_events'][0]
-            self.filter_results['initial_total_num_events'] = self.initial_total_num_events
-            if not self._split_loaded_parquet_regions(self.data['raw']):
-                filtered_events, self.filter_results = filter_event(self.data['raw'], self.filter_results, is_Ztautau=self.is_Ztautau)
-                for key, evt in filtered_events.items():
-                    self.data[key] = evt
-                    self.data[key]['initial_total_num_events'] = self.initial_total_num_events
+        
+        if len(files) == 1:
+            events = load_events_from_parquet(files[0])
         else:
-            log.info("Loading data from input files.")
-            parquet_inputs = all(str(path).endswith(".parquet") for path in self.input_files)
-            if parquet_inputs:
-                parquet_arrays = []
-                for file in self.input_files:
-                    log.info(f"Loading parquet data from file: {file}")
-                    events = load_events_from_parquet(file)
-                    if len(events) == 0:
-                        continue
-                    parquet_arrays.append(events)
-                if not parquet_arrays:
-                    raise ValueError("No events were loaded from parquet input files.")
+            events_list = [load_events_from_parquet(file) for file in files]
+            events = ak.concatenate(events_list, axis=0)
 
-                raw_events = parquet_arrays[0] if len(parquet_arrays) == 1 else ak.concatenate(parquet_arrays, axis=0)
-                self.data['raw'] = raw_events
-                self.initial_total_num_events = self._initial_total_num_events_from_loaded_parquets(parquet_arrays)
-                if self.initial_total_num_events <= 0:
-                    self.initial_total_num_events = int(len(raw_events))
-                self.filter_results['initial_total_num_events'] = self.initial_total_num_events
+        # Reweight events based on cutflow information
+        initial_num_events = 0
+        total_weights = 0
+        for d in sample_dirs:
+            cutflow_file = glob.glob(os.path.join(d, "cutflow_*.json"))[0]
+            with open(cutflow_file, "r") as f:
+                cutflow = json.load(f)
+                assert cutflow[0]['cut'] == 'initial_total_num_events', f"First cut in cutflow should be 'initial_total_num_events' but got {cutflow[0]['cut']} in {cutflow_file}"
+                initial_num_events += cutflow[0]['events']
+                if (total_weights != 0) and (not is_data):
+                    assert abs(cutflow[0]['weighted_events'] - total_weights) < 1e-6, f"Weighted events in cutflow do not match across samples for {sample_name}. Please check cutflow files. {total_weights} vs {cutflow[0]['weighted_events']}"
+                total_weights = cutflow[0]['weighted_events']
 
-                if not self._split_loaded_parquet_regions(raw_events):
-                    filtered_events, self.filter_results = filter_event(
-                        raw_events,
-                        self.filter_results,
-                        is_Ztautau=self.is_Ztautau,
-                    )
-                    for key, evt in filtered_events.items():
-                        self.data[key] = evt
-                        self.data[key]['initial_total_num_events'] = self.initial_total_num_events
-                if "weight" not in self.data['raw'].fields:
-                    self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
-                    self.data['raw']['weight'] = self._constant_weight_array(self.data['raw'], self.weight)
+        # split Ztautau into train and test set 
+        if sample_name=='Ztautau':
+            half_num_events = len(events) // 2
+            initial_num_events = initial_num_events // 2
+            if is_trainset:
+                events = events[:half_num_events]
+                print(f"Using train set for sample {sample_name} from the first half of events: {len(events)} events from {files}")
+                # sample_dirs = sample_dirs[:-1]
+                # print(f"Using train set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
             else:
-            # Identify branches to load
-                f = ur.open(self.input_files[0])
-                tree = f[self.tree_name]
+                events = events[half_num_events:]
+                print(f"Using test set for sample {sample_name} from the second half of events: {len(events)} events from {files}")
+                # sample_dirs = [sample_dirs[-1]]
+                # print(f"Using test set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
+        
+        events['initial_num_events'] = initial_num_events
+        weight = 1.0 if is_data else total_weights / initial_num_events if initial_num_events > 0 else 1.0
+        events['weight_nominal'] = weight
+        events['weight'] = events['weight_nominal'] # default weight is nominal weight
+        return events, initial_num_events
 
-                common_evt_branches = ["Event_evtNumber", "Event_totalChargedEnergy", "Event_totalEMEnergy", "Event_totalHadronicEnergy", "thrust_Mag", "thrust_x", "thrust_y", "thrust_z", "nGoodPart",
-                    "event_category"
-                ]
-                gen_part_branches = ["pdgId", "status", "vector_fCoordinates_fX", "vector_fCoordinates_fY", "vector_fCoordinates_fZ", "vector_fCoordinates_fT"]
-                gen_part_branches = [f"GenPart_{b}" for b in gen_part_branches]
 
-                part_branches = [
-                    "charge", "pdgId", "fourMomentum_fCoordinates_fX", "fourMomentum_fCoordinates_fY", "fourMomentum_fCoordinates_fZ", "fourMomentum_fCoordinates_fT", "isGood", "vtxIdx",
-                    "hpcShowerEnergy", "hpcShowerTheta", "hpcShowerPhi", "hpcParticleCode", "hpcNumLayers", "hpcLayerHitPattern", "hpcNumAssociatedShowers", "hpcTotalShowerEnergy",
-                    "hacShowerEnergy", "hacShowerTheta", "hacShowerPhi", "hacParticleCode", "hacNumTowers", "hacTowerHitPattern", "hacNumAssociatedShowers", "hacTotalShowerEnergy",
-                    "sticShowerEnergy", "sticShowerTheta", "sticShowerPhi", "sticNumTowers", "sticChargedTag", "sticSiliconVertexPos",
-                    "lock",
-                ]
-                part_branches = [f'Part_{b}' for b in part_branches]
-                id_branches = [
-                    "Elid_partIdx", "Elid_tag", "Elid_gammaConversion",
-                    "Muid_partIdx", "Muid_tag", "Muid_hitPattern",
-                    "Haid_pionRich", "Haidn_pionTag", "Haidr_pionTag", "Haide_pionTag", "Haidc_pionTag"
-                ]
-                track_branches = [ f'Trac_{b}' for b in
-                    [
-                        "originVtxIdx", "impParToVertexRPhi", "impParToVertexZ", "impParRPhi", "impParZ",
-                    ]
-                ]
+    @staticmethod
+    def get_processed_sample_dirs(data_dir, sample_name):
+        sample_pattern = re.compile(rf"^{re.escape(sample_name)}(?:_(\d+))?$")
+        matched_dirs = []
 
-                # Dedx branches are not Part_ prefixed, they are top-level
-                dedx_branches = ["Dedx_value", "Dedx_error", "Dedx_nrWires"]
+        for path in glob.glob(os.path.join(data_dir, "*")):
+            if not os.path.isdir(path):
+                continue
+            match = sample_pattern.match(os.path.basename(path))
+            if match is None:
+                continue
+            slice_idx = int(match.group(1)) if match.group(1) is not None else -1
+            matched_dirs.append((slice_idx, path))
 
-                part_branches = part_branches + id_branches + track_branches
+        if not matched_dirs:
+            raise FileNotFoundError(f"No processed sample directories found for '{sample_name}' under {data_dir}.")
 
-                vertex_branches = [ f'Vtx_{b}' for b in
-                    ["position_fCoordinates_fX", "position_fCoordinates_fY", "position_fCoordinates_fZ",]
-                ]
+        return [path for _, path in sorted(matched_dirs)]
 
-                branches_to_load = common_evt_branches + part_branches + vertex_branches + dedx_branches
-                if not self.is_data:
-                    branches_to_load += gen_part_branches
 
-                persist_regions = set(self.load_regions)
-                persist_regions.add('raw')
-                raw_output_file = self.output_dir + "/filtered___raw.parquet"
+    def load_data(self):
+        if not self.processed_data_dir:
+            raise ValueError("processed_data_dir must be set in the DataLoader config.")
 
-                initial_total_num_events = 0
-                for file in self.input_files:
-                    log.info(f"Loading data from file: {file}")
-                    try:
-                        f = ur.open(file)
-                        tree = f[self.tree_name]
-                    except Exception as e:
-                        log.error(f"Error reading file {file} or tree {self.tree_name}: {e}")
-                        continue
-
-                    for events in tree.iterate(expressions=branches_to_load, step_size=self.root_step_size, library="ak"):
-                        if len(events) == 0:
-                            continue
-                        events['evtNumber'] = events['Event_evtNumber'] + initial_total_num_events
-                        initial_total_num_events += len(events)
-
-                        part_abscosth = abs(events['Part_fourMomentum_fCoordinates_fZ']) / ((events['Part_fourMomentum_fCoordinates_fX'])**2 + (events['Part_fourMomentum_fCoordinates_fY'])**2 + (events['Part_fourMomentum_fCoordinates_fZ'])**2)**0.5
-                        events['Part_isGood'] = (events['Part_isGood']==1) & (part_abscosth < 0.732) & (part_abscosth > 0.035)
-                        for part_branch in part_branches:
-                            if part_branch != 'Part_isGood':
-                                events[part_branch] = events[part_branch][events['Part_isGood']]
-
-                        self.filter_results['initial_total_num_events'] += len(events)
-                        events_pass_filter, self.filter_results = filter_event(events, self.filter_results, is_Ztautau=self.is_Ztautau)
-                        if self.is_Ztautau and 'raw' in events_pass_filter:
-                            events_pass_filter['raw'] = DefineVariables.define_region_specific_variables(events_pass_filter['raw'])
-
-                        for key, evt in events_pass_filter.items():
-                            if key not in persist_regions:
-                                continue
-                            if key == 'raw' and key not in self.load_regions:
-                                self._stream_write_parquet_chunk(raw_output_file, evt)
-                                continue
-                            self.data.setdefault(key, []).append(evt)
-
-                for key in self.data:
-                    self.data[key] = ak.concatenate(self.data[key], axis=0)
-                    self.initial_total_num_events = initial_total_num_events
-                    self.data[key]['initial_total_num_events'] = initial_total_num_events
-                    self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
-                    self.data[key]['weight'] = self._constant_weight_array(self.data[key], self.weight)
-                self._close_stream_writers()
-
-        self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
-        # reconstruct neutrinos of Ztautau raw events for later use in unfolding
-        if self.is_Ztautau and 'raw' in self.data:
-            raw_events = self.data['raw']
-            self.data['raw'] = self._maybe_define_region_specific_variables(raw_events)
-
-        # Log filter results
-        if self.filter_results['initial_total_num_events'] > 0:
-            with open(self.output_dir + f"/cutflow_{self.name}.txt", "w") as f:
-                f.write(f"{'Cut':<40} {'Events':<20} {'Efficiency':<20} {'Relative Efficiency':<20}\n")
-                previous_count = self.filter_results['initial_total_num_events']
-                for key, value in self.filter_results.items():
-                    log.info(f"Filter result - {key}: {value}. Filter efficiency: {value / self.filter_results['initial_total_num_events']:.4f}")
-                    efficiency = value / self.filter_results['initial_total_num_events']
-                    relative_efficiency = value / previous_count if previous_count > 0 else 1.0
-                    f.write(f"{key:<40} {value:<20} {efficiency:<20.4f} {relative_efficiency:<20.4f}\n")
-                    previous_count = value
-
-            with open(self.output_dir + f"/cutflow_{self.name}_weighted.txt", "w") as f:
-                f.write(f"{'Cut':<40} {'Weighted Events':<20} {'Efficiency':<20} {'Relative Efficiency':<20}\n")
-                previous_count = self.weight * self.filter_results['initial_total_num_events']
-                for key, value in self.filter_results.items():
-                    weighted_value = self.weight * value
-                    efficiency = weighted_value / (self.weight * self.filter_results['initial_total_num_events'])
-                    relative_efficiency = weighted_value / previous_count if previous_count > 0 else 1.0
-                    f.write(f"{key:<40} {weighted_value:<20.4f} {efficiency:<20.4f} {relative_efficiency:<20.4f}\n")
-                    previous_count = weighted_value
-
-            # plot filter results
-            cutflow_labels = list(self.filter_results.keys())
-            cutflow_values = [self.filter_results[key] * self.weight for key in cutflow_labels]
-            fig, ax = plt.subplots(dpi=300, figsize=(8,8))
-            p = ax.bar(cutflow_labels, cutflow_values)
-            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_values], padding=3, fontsize=4)
-            ax.set_ylabel('Number of Events')
-            ax.set_title('Event Cutflow')
-            ax.set_yscale('log')
-            # rotate x, fontsize to small
-            plt.xticks(rotation=45, ha='right', fontsize=8)
-            fig.tight_layout()
-            fig.savefig(self.output_dir + f"/cutflow_{self.name}_weighted.pdf")
-
-            cutflow_normalized = [v / cutflow_values[0] for v in cutflow_values]
-            fig, ax = plt.subplots(dpi=300, figsize=(8,8))
-            p = ax.bar(cutflow_labels, cutflow_normalized)
-            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_normalized], padding=3, fontsize=4)
-            ax.set_ylabel('Efficiency')
-            ax.set_title('Event Cutflow Efficiency')
-            plt.xticks(rotation=45, ha='right', fontsize=8)
-            fig.tight_layout()
-            fig.savefig(self.output_dir + f"/cutflow_efficiency_{self.name}.pdf")
-
-            cutflow_relative = [1.0]
-            tmp_cutflow_label = ['initial_totoal_num_events']
-            for i in range(1, len(cutflow_values)):
-                rel = cutflow_values[i] / cutflow_values[i-1] if cutflow_values[i-1] > 0 else 0
-                label = cutflow_labels[i]
-                if rel>1:
-                    # if eff>1 then calculate ratio relative to initial num
-                    rel = cutflow_values[i] / cutflow_values[0]
-                    label = f"{label}/initialNoE"
-                cutflow_relative.append(rel)
-                tmp_cutflow_label.append(label)
-
-            fig, ax = plt.subplots(dpi=300, figsize=(8,8))
-            p = ax.bar(tmp_cutflow_label, cutflow_relative)
-            ax.bar_label(p, labels=[f"{v:.4f}" for v in cutflow_relative], padding=3, fontsize=4)
-            ax.set_ylabel('Relative Efficiency')
-            ax.set_title('Event Cutflow Relative Efficiency')
-            plt.xticks(rotation=45, ha='right', fontsize=8)
-            fig.tight_layout()
-            fig.savefig(self.output_dir + f"/cutflow_relative_efficiency_{self.name}.pdf")
+        log.info(f"Loading processed data for sample {self.name} from {self.processed_data_dir}")
+        for region in self.load_regions:
+            events, self.initial_total_num_events = self.load_processed_data(self.processed_data_dir, self.name, region)
+            self.data[region] = events
 
         return self.data
-
-    
-    def save_data(self):
-        output_file_prefix = self.output_dir + "/filtered"
-        for key, evt in self.data.items():
-            output_file = output_file_prefix + f"___{key}.parquet"
-            log.info(f"Saving data for region {key} to {output_file}.")
-            ak.to_parquet(evt, output_file, compression='snappy')
-
-            log.info(f"Data saved to {output_file}.")
 
 
     def postprocess(self):
@@ -490,7 +133,7 @@ class DataLoader:
         else:
             weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
         for ch, ch_events in self.data.items():
-            ch_events['weight_nominal'] = ak.Array(np.full(len(ch_events), weight, dtype=np.float32))
+            ch_events['weight_nominal'] = weight * ak.ones_like(ch_events['evtNumber'], dtype=np.float32)
             ch_events['weight'] = ch_events['weight_nominal'] # default weight is nominal weight
         self.current_variation = ('nominal', 0.0)
 
@@ -505,12 +148,6 @@ class DataLoader:
                 )
                 ch_events['weight'] = new_weight
         self.current_variation = (element_name, variation)
-
-            
-
-
-
-
 
     def finalize(self):
         log.info("DataLoader finalization complete.")

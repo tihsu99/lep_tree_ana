@@ -88,6 +88,8 @@ def define_recon_level_variables(events: ak.Array):
 
         # find leading pions/electrons/muons and their nearby photons in each hemisphere
         events[f'lead_{hemisphere}_is_pion'] = ak.fill_none(ak.any(lead_flag & (abs(events['Part_pdgId']) == 41) & (events['Part_charge'] != 0), axis=1), False)
+        lead_p = events[f'lead_{hemisphere}_p4'].p + 1e-10
+        events[f'lead_{hemisphere}_E_over_p'] = ak.fill_none(ak.firsts(events['Part_hpcTotalShowerEnergy'][lead_flag]) / lead_p, -999)
 
         events[f'is_photon_near_lead_{hemisphere}'] = (events['Part_pdgId'] == 21) & (events['Part_charge'] == 0) & (events[f'Part_dR_to_lead_{hemisphere}'] < deltaR_nearby)
         events[f'num_photon_near_lead_{hemisphere}'] = ak.fill_none(ak.sum(events[f'is_photon_near_lead_{hemisphere}'], axis=1), 0)

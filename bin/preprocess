@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+
+import os
+import glob
+import argparse
+import yaml
+import copy
+
+from Preprocess import Preprocessor
+
+
+def create_parser():
+    parser = argparse.ArgumentParser(description="Run LEP analysis") 
+    parser.add_argument("--config-yaml", "-c", help = "YAML file for configuration", default=os.environ.get("TREE_ANA_DIR") + "/config/preprocess_config.yaml")
+    parser.add_argument("--output-dir", "-o", help="Output directory. Defaults to GlobalConfigs.default_output_dir.")
+    parser.add_argument("--log-level", "-l", type = str, default = "INFO" )
+    return parser
+
+
+def read_yaml(yaml_file):
+    with open(yaml_file, "r") as _info:
+        yaml_info = yaml.safe_load(_info)  # probably a list of yaml dictionaries
+    return yaml_info
+
+
+def expand_input_files(input_files):
+    if isinstance(input_files, str):
+        input_files = [input_files]
+
+    expanded_files = []
+    for pattern in input_files:
+        expanded_files.extend(glob.glob(pattern))
+    return sorted(expanded_files)
+
+
+def split_files_by_size(input_files, max_slice_size_bytes):
+    slices = []
+    current_slice = []
+    current_size = 0
+    file_sizes = {}
+
+    for file in input_files:
+        file_size = os.path.getsize(file)
+        file_sizes[file] = file_size
+
+        if current_slice and current_size + file_size > max_slice_size_bytes:
+            slices.append(current_slice)
+            current_slice = []
+            current_size = 0
+
+        current_slice.append(file)
+        current_size += file_size
+
+    if current_slice:
+        slices.append(current_slice)
+
+    return slices, file_sizes
+
+
+if __name__ == "__main__":
+    parser = create_parser()
+    args = parser.parse_args()
+
+    import logging
+    loglevel = logging.getLevelName(args.log_level.upper())
+    logging.basicConfig(level = loglevel, format = ">>> [%(levelname)s] %(module)s.%(name)s: %(message)s")
+    log = logging.getLogger("LepAna")
+
+    analysis_config = read_yaml(args.config_yaml)
+    global_configs = analysis_config.get("GlobalConfigs", {})
+
+    output_dir = args.output_dir if args.output_dir is not None else global_configs.get('default_output_dir', './output/')
+
+    os.makedirs(output_dir, exist_ok = True)
+
+
+    global_configs = analysis_config.get("GlobalConfigs", {})
+
+    max_slice_size_gb = global_configs.get("max_input_slice_size_gb", 50)
+    max_slice_size_bytes = max_slice_size_gb * 1024**3
+    for key, dl_config in analysis_config["DataLoaders"].items():
+        dl_config_with_globals = copy.deepcopy(global_configs)
+        dl_config_with_globals.update(dl_config)
+
+        input_files = expand_input_files(dl_config_with_globals.get("input_files", []))
+        if not input_files:
+            log.warning(f"No input files found for DataLoader {key}. Skipping.")
+            continue
+
+        input_slices, file_sizes = split_files_by_size(input_files, max_slice_size_bytes)
+        total_input_size = sum(file_sizes.values())
+
+
+        if total_input_size > max_slice_size_bytes:
+            log.info(
+                f"DataLoader {key}: total input size {total_input_size / 1024**3:.2f} GB exceeds "
+                f"{max_slice_size_gb:.2f} GB. Splitting into {len(input_slices)} slices."
+            )
+        for slice_idx, input_slice in enumerate(input_slices):
+            slice_size = sum(file_sizes[file] for file in input_slice)
+            if slice_size > max_slice_size_bytes:
+                log.warning(
+                    f"DataLoader {key} slice {slice_idx} is {slice_size / 1024**3:.2f} GB, "
+                    "which exceeds the threshold because at least one file is larger than the slice limit."
+                )
+
+            slice_config = copy.deepcopy(dl_config_with_globals)
+            slice_config["input_files"] = input_slice
+            slice_config["name"] = f"{dl_config_with_globals.get('name', key)}_{slice_idx}"
+            slice_output_dir = f"{output_dir}/{key}_{slice_idx}/"
+            log.info(
+                f"Processing DataLoader {key} slice {slice_idx}: "
+                f"{len(input_slice)} files, {slice_size / 1024**3:.2f} GB -> {slice_output_dir}"
+            )
+            Preprocessor.Preprocessor(slice_config, output_dir=slice_output_dir)
+
+
+    log.info("Done")
+    os._exit(0)
