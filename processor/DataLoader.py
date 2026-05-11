@@ -18,8 +18,6 @@ class DataLoader:
     def __init__(self, config, output_dir):
         self.config = config
         self.norm_factor = config.get("norm_factor", 1.0)
-        self.output_dir = output_dir
-        os.makedirs(self.output_dir, exist_ok=True)
         self.name = self.config.get("name", "")
         self.load_regions = self.config.get("load_regions", [])
         self.load_regions = list(dict.fromkeys(self.load_regions)) # remove duplicates while preserving order
@@ -39,8 +37,9 @@ class DataLoader:
 
 
     @staticmethod
-    def load_processed_data(data_dir, sample_name, region_name='raw', is_data=False):
+    def load_processed_data(data_dir, sample_name, region_name='raw', is_data=False, is_trainset=False):
         sample_dirs = DataLoader.get_processed_sample_dirs(data_dir, sample_name)
+        
         files = [
             os.path.join(sample_dir, f"filtered___{region_name}.parquet")
             for sample_dir in sample_dirs
@@ -71,6 +70,22 @@ class DataLoader:
                 if (total_weights != 0) and (not is_data):
                     assert abs(cutflow[0]['weighted_events'] - total_weights) < 1e-6, f"Weighted events in cutflow do not match across samples for {sample_name}. Please check cutflow files. {total_weights} vs {cutflow[0]['weighted_events']}"
                 total_weights = cutflow[0]['weighted_events']
+
+        # split Ztautau into train and test set 
+        if sample_name=='Ztautau':
+            half_num_events = len(events) // 2
+            initial_num_events = initial_num_events // 2
+            total_weights = total_weights / 2
+            if is_trainset:
+                events = events[:half_num_events]
+                print(f"Using train set for sample {sample_name} from the first half of events: {len(events)} events from {files}")
+                # sample_dirs = sample_dirs[:-1]
+                # print(f"Using train set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
+            else:
+                events = events[half_num_events:]
+                print(f"Using test set for sample {sample_name} from the second half of events: {len(events)} events from {files}")
+                # sample_dirs = [sample_dirs[-1]]
+                # print(f"Using test set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
         
         events['initial_num_events'] = initial_num_events
         weight = 1.0 if is_data else total_weights / initial_num_events if initial_num_events > 0 else 1.0
