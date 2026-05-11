@@ -75,7 +75,6 @@ class DataLoader:
         if sample_name=='Ztautau':
             half_num_events = len(events) // 2
             initial_num_events = initial_num_events // 2
-            total_weights = total_weights / 2
             if is_trainset:
                 events = events[:half_num_events]
                 print(f"Using train set for sample {sample_name} from the first half of events: {len(events)} events from {files}")
