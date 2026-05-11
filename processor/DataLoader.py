@@ -9,7 +9,7 @@ import awkward as ak
 import copy
 import re
 from utils.common_functions import load_events_from_parquet
-from quantum.observables_builder import shift_SDM_element
+from quantum.observables_builder import shift_SDM_element, get_observable_names
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +90,12 @@ class DataLoader:
         weight = 1.0 if is_data else total_weights / initial_num_events if initial_num_events > 0 else 1.0
         events['weight_nominal'] = weight
         events['weight'] = events['weight_nominal'] # default weight is nominal weight
+
+        # # test ideal neutrino reconstruction
+        # if 'Ztautau' in sample_name:
+        #     for obs in get_observable_names():
+        #         events[obs] = events[f"truth_{obs}"]
+        #     events['flags_valid'] = ak.ones_like(events['Event_evtNumber'], dtype=np.int32)
         return events, initial_num_events
 
 
