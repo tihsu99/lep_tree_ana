@@ -54,21 +54,29 @@ if __name__ == "__main__":
                     print_and_write_to_opened_file(f"Observable {obs} not found in events for channel {channel_name}", f_out)
                     continue
                 obs_values = ak.to_numpy(selected_events[obs], allow_missing=False)
-                weights = np.ones_like(obs_values)
+                weights = ak.to_numpy(selected_events['weight'], allow_missing=False)
+                reweight_sf = ak.to_numpy(selected_events[f'{obs_key}_reweight_sf'], allow_missing=False)
                 bin_edges = np.linspace(-1, 1, 51)
                 fig, ax = plt.subplots()
                 # get Hist
                 hist_values, _ = np.histogram(obs_values, bins=bin_edges, weights=weights)
                 hist_errors, _ = np.histogram(obs_values, bins=bin_edges, weights=weights**2)
                 hist_errors = np.sqrt(hist_errors) 
-                hist_dict[obs_key] = ob.Hist(bin_edges=bin_edges, values=hist_values, errors=hist_errors)
+                # hist_dict[obs_key] = ob.Hist(bin_edges=bin_edges, values=hist_values, errors=hist_errors)
 
-                # plot with error bars
+                hist_reweight_values, _ = np.histogram(obs_values, bins=bin_edges, weights=weights*reweight_sf)
+                hist_reweight_errors, _ = np.histogram(obs_values, bins=bin_edges, weights=(weights*reweight_sf)**2)
+                hist_reweight_errors = np.sqrt(hist_reweight_errors)
+                hist_dict[obs_key] = ob.Hist(bin_edges=bin_edges, values=hist_reweight_values, errors=hist_reweight_errors)
+
+                # plot hist. Compare with and without reweighting
                 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-                ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_values, histtype='step', color='black')
-                ax.errorbar(bin_centers, hist_values, yerr=hist_errors, fmt='.', color='black')
+                # ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_values, histtype='step', color='black', alpha=0.5)
+                # ax.errorbar(bin_centers, hist_values, yerr=hist_errors, fmt='.', color='black', alpha=0.5)
                 mean, err_of_mean = ob.get_mean_and_err_of_mean(bin_centers, hist_values, hist_errors)
-                ax.axvline(mean, linestyle='--', label=f'Weighted Mean: {mean:.4f} ± {err_of_mean:.4f}')
+                ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_values, histtype='step', color='black', alpha=0.5, label=f'Original mean: {mean:.4f}±{err_of_mean:.4f}')
+                mean, err_of_mean = ob.get_mean_and_err_of_mean(bin_centers, hist_reweight_values, hist_reweight_errors)
+                ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_reweight_values, histtype='step', color='red', alpha=0.5, label=f'Reweighted mean: {mean:.4f}±{err_of_mean:.4f}')
                 ax.set_xlabel(f'{obs}')
                 ax.set_ylabel('Weighted Counts')
                 ax.set_title(f'{channel_name} Channel: {obs} Distribution')
