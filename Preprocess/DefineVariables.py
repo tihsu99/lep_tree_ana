@@ -321,7 +321,7 @@ def define_signal_exclusive_variables(events: ak.Array):
                 for i in range(len(sf_per_bin)):
                     mask_bin = mask_channel & (obs_binned == i)
                     reweight_sf[mask_bin] = sf_per_bin[i]
-        events[f'reweight_sf_{bc_name}'] = reweight_sf
+        events[f'{obs_name}_reweight_sf'] = reweight_sf
                 
     return events
 
@@ -341,7 +341,7 @@ def define_region_specific_variables(events: ak.Array):
     mask_do_mmc = np.zeros(num_events, dtype=bool)
     # MMC for certain regions
     mmc_regions = ['ee', 'mumu', 'emu']
-    mmc_engine = MMC({'mmc_regions': mmc_regions, 'mmc_workers': 100})
+    mmc_engine = MMC({'mmc_regions': mmc_regions, 'mmc_workers': 200})
     for region in mmc_regions:
         mask_region = events[f'{region}_cut']
         mask_do_mmc = mask_do_mmc | mask_region
