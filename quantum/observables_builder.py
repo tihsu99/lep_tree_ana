@@ -9,7 +9,7 @@ from pandas import DataFrame
 from scipy.linalg import sqrtm, eig
 from collections import namedtuple
 
-from utils.common_functions import get_p4_from_ak_events, get_sum_p4_from_ak_events
+from utils.common_functions import get_p4_from_ak_events, get_sum_p4_from_ak_events, print_and_write_to_opened_file
 from utils.tau_decay import ANALYZING_POWERS, NOMINAL_BC_VALUES, get_analyzing_powers_from_event_category
 
 Hist = namedtuple('Hist', ['bin_edges', 'values', 'errors'])
@@ -387,3 +387,11 @@ if __name__ == "__main__":
         plt.ylim(0, None)
         plt.legend()
         plt.savefig(f'{output_dir}/{obs_name}.png')
+
+def print_results(f_out, results, label=None):
+    if label is not None:
+        print_and_write_to_opened_file(f"\n{label}:", f_out)
+    for key, value in results.items():
+        print_and_write_to_opened_file(
+            f"        {key} {value.value:.4f} +{value.err_up:.4f} -{value.err_down:.4f}", f_out
+        )

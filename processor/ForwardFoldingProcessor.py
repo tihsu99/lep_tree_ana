@@ -333,13 +333,6 @@ class ForwardFoldingProcessor(BaseProcessor):
         fig.savefig(f"{output_dir}/{var}_{label}_data_mc.png")
         plt.close(fig)
 
-    def print_results(self, f_out, label, results):
-        cf.print_and_write_to_opened_file(f"\n    {label}:", f_out)
-        for key, value in results.items():
-            cf.print_and_write_to_opened_file(
-                f"        {key}: {value.value:.4f} +{value.err_up:.4f}/-{value.err_down:.4f}", f_out
-            )
-
     def write_fit_snapshots(self, region, fit_results):
         payload = OrderedDict()
         for bc_name, fit_result in fit_results.items():
@@ -355,92 +348,99 @@ class ForwardFoldingProcessor(BaseProcessor):
             json.dump(payload, f_json, indent=2)
 
     def run(self, dl_dict):
-        with open(f"{self.output_dir}/results.txt", "w") as f_out:
-            for region, signal_names in self.dict_region_to_signals.items():
-                cf.print_and_write_to_opened_file(f"\n\nRegion: {region}", f_out)
-                region_output_dir = f"{self.output_dir}/{region}"
-                os.makedirs(region_output_dir, exist_ok=True)
+        f_results = open(f"{self.output_dir}/results.txt", "w")
+        f_running_log = open(f"{self.output_dir}/running_log.txt", "w")
+        for region, signal_names in self.dict_region_to_signals.items():
+            cf.print_and_write_to_opened_file(f"Region: {region}", f_results)
+            cf.print_and_write_to_opened_file(f"Region: {region}", f_running_log)
+            region_output_dir = f"{self.output_dir}/{region}"
+            os.makedirs(region_output_dir, exist_ok=True)
 
-                _, background_events, data_events = self.get_region_events(dl_dict, region, signal_names)
-                if len(data_events) == 0:
-                    cf.print_and_write_to_opened_file("    No data events found after selection. Skipping.", f_out)
-                    continue
+            _, background_events, data_events = self.get_region_events(dl_dict, region, signal_names)
+            if len(data_events) == 0:
+                cf.print_and_write_to_opened_file("    No data events found after selection. Skipping.", f_running_log)
+                continue
 
-                fitted_bc = {}
-                observable_fit_results = OrderedDict()
-                fit_diagnostics = {}
-                for var in self.unfold_vars:
-                    cf.print_and_write_to_opened_file(f"\n    Fitting {var}", f_out)
-                    h_data = self.build_reco_hist(f"h_data_{region}_{var}", data_events, var)
-                    h_bkg = self.build_reco_hist(f"h_bkg_{region}_{var}", background_events, var)
+            fitted_bc = {}
+            observable_fit_results = OrderedDict()
+            fit_diagnostics = {}
+            for var in self.unfold_vars:
+                cf.print_and_write_to_opened_file(f"\n    Fitting {var}", f_running_log)
+                h_data = self.build_reco_hist(f"h_data_{region}_{var}", data_events, var)
+                h_bkg = self.build_reco_hist(f"h_bkg_{region}_{var}", background_events, var)
 
-                    bc_name = ob.get_bc_name_from_variable_name(var)
-                    if self.verbosity >= 1:
-                        prefit_nps = OrderedDict(
-                            (spec.name, spec.initial_value)
-                            for spec in self.nuisance_parameter_specs
-                        )
-                        self.plot_data_mc_comparison(
-                            f"{region_output_dir}/data_mc_prefit",
-                            region,
-                            signal_names,
-                            var,
-                            h_data,
-                            h_bkg,
-                            NOMINAL_BC_VALUES[bc_name],
-                            prefit_nps,
-                            "prefit",
-                        )
-
-                    fit_value, fit_result = self.fit_observable(region, signal_names, var, h_data, h_bkg)
-                    fitted_bc[bc_name] = fit_value
-                    observable_fit_results[bc_name] = fit_result
-                    fit_diagnostics[var] = (
-                        fit_result.neg2_log_likelihood,
-                        fit_result.optimizer_result.success,
-                        fit_result.optimizer_result.message,
+                bc_name = ob.get_bc_name_from_variable_name(var)
+                if self.verbosity >= 1:
+                    prefit_nps = OrderedDict(
+                        (spec.name, spec.initial_value)
+                        for spec in self.nuisance_parameter_specs
                     )
+                    self.plot_data_mc_comparison(
+                        f"{region_output_dir}/data_mc_prefit",
+                        region,
+                        signal_names,
+                        var,
+                        h_data,
+                        h_bkg,
+                        NOMINAL_BC_VALUES[bc_name],
+                        prefit_nps,
+                        "prefit",
+                    )
+
+                fit_value, fit_result = self.fit_observable(region, signal_names, var, h_data, h_bkg)
+                fitted_bc[bc_name] = fit_value
+                observable_fit_results[bc_name] = fit_result
+                fit_diagnostics[var] = (
+                    fit_result.neg2_log_likelihood,
+                    fit_result.optimizer_result.success,
+                    fit_result.optimizer_result.message,
+                )
+                cf.print_and_write_to_opened_file(
+                    f"        {bc_name}: {fit_value.value:.4f} +/- {fit_value.err_up:.4f}, -2logL={fit_result.neg2_log_likelihood:.2f}",
+                    f_running_log,
+                )
+
+                if self.verbosity >= 1:
+                    self.plot_data_mc_comparison(
+                        f"{region_output_dir}/data_mc_postfit",
+                        region,
+                        signal_names,
+                        var,
+                        h_data,
+                        h_bkg,
+                        fit_result.postfit.pois[bc_name],
+                        fit_result.postfit.nuisance_parameters,
+                        "postfit",
+                    )
+
+            self.fit_results[region] = observable_fit_results
+            self.write_fit_snapshots(region, observable_fit_results)
+            ob.print_results(f_results, fitted_bc)
+
+            cf.print_and_write_to_opened_file("\n    Post-fit nuisance parameters:", f_running_log)
+            for bc_name, fit_result in observable_fit_results.items():
+                np_text = ", ".join(
+                    f"{name}={value:.4f}"
+                    for name, value in fit_result.postfit.nuisance_parameters.items()
+                )
+                cf.print_and_write_to_opened_file(f"        {bc_name}: {np_text}", f_running_log)
+
+            if all(name in fitted_bc for name in NOMINAL_BC_VALUES):
+                quantum_results = ob.evaluate_quantum_results_with_uncertainties(fitted_bc)
+                ob.print_results(f_results, quantum_results)
+
+            if self.verbosity >= 0:
+                cf.print_and_write_to_opened_file("\n    Fit diagnostics:", f_running_log)
+                for var, (neg2_log_likelihood, success, message) in fit_diagnostics.items():
                     cf.print_and_write_to_opened_file(
-                        f"        {bc_name}: {fit_value.value:.4f} +/- {fit_value.err_up:.4f}, -2logL={fit_result.neg2_log_likelihood:.2f}",
-                        f_out,
+                        f"        {var}: success={success}, -2logL={neg2_log_likelihood:.2f}, message={message}",
+                        f_running_log,
                     )
+            cf.print_and_write_to_opened_file("\n\n", f_results)
+            cf.print_and_write_to_opened_file("\n\n", f_running_log)
 
-                    if self.verbosity >= 1:
-                        self.plot_data_mc_comparison(
-                            f"{region_output_dir}/data_mc_postfit",
-                            region,
-                            signal_names,
-                            var,
-                            h_data,
-                            h_bkg,
-                            fit_result.postfit.pois[bc_name],
-                            fit_result.postfit.nuisance_parameters,
-                            "postfit",
-                        )
-
-                self.fit_results[region] = observable_fit_results
-                self.write_fit_snapshots(region, observable_fit_results)
-                self.print_results(f_out, "Fitted B and C matrices", fitted_bc)
-
-                cf.print_and_write_to_opened_file("\n    Post-fit nuisance parameters:", f_out)
-                for bc_name, fit_result in observable_fit_results.items():
-                    np_text = ", ".join(
-                        f"{name}={value:.4f}"
-                        for name, value in fit_result.postfit.nuisance_parameters.items()
-                    )
-                    cf.print_and_write_to_opened_file(f"        {bc_name}: {np_text}", f_out)
-
-                if all(name in fitted_bc for name in NOMINAL_BC_VALUES):
-                    quantum_results = ob.evaluate_quantum_results_with_uncertainties(fitted_bc)
-                    self.print_results(f_out, "Fitted quantum results", quantum_results)
-
-                if self.verbosity >= 0:
-                    cf.print_and_write_to_opened_file("\n    Fit diagnostics:", f_out)
-                    for var, (neg2_log_likelihood, success, message) in fit_diagnostics.items():
-                        cf.print_and_write_to_opened_file(
-                            f"        {var}: success={success}, -2logL={neg2_log_likelihood:.2f}, message={message}",
-                            f_out,
-                        )
+        f_results.close()
+        f_running_log.close()
 
     def finalize(self):
         pass
