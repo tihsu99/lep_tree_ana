@@ -280,7 +280,7 @@ def define_signal_exclusive_variables(events: ak.Array):
 
     weight_original = ak.to_numpy(events['weight'])
     for obs_name in [obs for obs in get_observable_names() if 'cos' in obs]:
-        reweight_sf = np.ones_like(obs_values)
+        reweight_sf = np.ones_like(weight_original)
 
         bc_name = get_bc_name_from_variable_name(obs_name)
         nominal_bc_value = tau_decay.NOMINAL_BC_VALUES[bc_name]
