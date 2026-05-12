@@ -220,11 +220,11 @@ class ForwardFoldingProcessor(BaseProcessor):
             event_category = cf.get_event_category_from_signal_name(signal_name)
             ap_pos, ap_neg = ob.get_analyzing_power_from_event_category(event_category)
             if bc_name.startswith("B_A"):
-                analyzing_powers.append(ap_pos*-1)
+                analyzing_powers.append(ap_pos)
             elif bc_name.startswith("B_B"):
                 analyzing_powers.append(ap_neg)
             elif bc_name.startswith("C_"):
-                analyzing_powers.append(-1 * ap_pos * ap_neg)
+                analyzing_powers.append(ap_pos * ap_neg)
 
             branching_ratio = self.get_branching_ratio_from_event_category(event_category)
             branching_ratios.append(branching_ratio)

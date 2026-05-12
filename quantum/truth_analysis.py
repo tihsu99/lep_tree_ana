@@ -78,7 +78,7 @@ if __name__ == "__main__":
                 plt.close()
 
             # derive quantum results
-            BC_matrices, quantum_results = ob.derive_results(hist_dict, selected_events['analyzing_power_a'][0]*(-1), selected_events['analyzing_power_b'][0])
+            BC_matrices, quantum_results = ob.derive_results(hist_dict, selected_events['analyzing_power_a'][0], selected_events['analyzing_power_b'][0])
             dict_to_print = {**BC_matrices, **quantum_results}
             channel_results[channel_name] = dict_to_print
             for key, value in dict_to_print.items():

@@ -38,11 +38,12 @@ def get_analyzing_power_ary():
 
 
 def get_analyzing_power_from_event_category(event_category):
+    event_category = np.asarray(event_category, dtype=int)
     pos_idx = event_category // 10
     neg_idx = event_category % 10
-    assert pos_idx < len(AnalyzingPowerAry), f"Positive index {pos_idx} out of range for analyzing power array"
-    assert neg_idx < len(AnalyzingPowerAry), f"Negative index {neg_idx} out of range for analyzing power array"
-    return AnalyzingPowerAry[pos_idx], AnalyzingPowerAry[neg_idx]
+    all_idx = np.concatenate([np.atleast_1d(pos_idx), np.atleast_1d(neg_idx)])
+    assert np.all((all_idx >= 0) & (all_idx < len(AnalyzingPowerAry))), "Event category index out of range for analyzing power array"
+    return -1 * AnalyzingPowerAry[pos_idx], AnalyzingPowerAry[neg_idx]
 
 
 def get_bc_name_from_variable_name(variable_name):
@@ -72,13 +73,12 @@ def shift_SDM_element(events, element_name, variation):
     observable_name, analyzing_power = None, None
     if element_name.startswith('C_'):
         observable_name = f'truth_cos_theta_A_{element_name[-2]}_times_cos_theta_B_{element_name[-1]}'
-        analyzing_power = ak.to_numpy(events[f'analyzing_power_a'])*(-1) * ak.to_numpy(events[f'analyzing_power_b'])
+        analyzing_power = ak.to_numpy(events[f'analyzing_power_a']) * ak.to_numpy(events[f'analyzing_power_b'])
     elif element_name.startswith('B_'):
         target_object = element_name[-2].upper()  # 'A' or 'B'
         axis = element_name[-1].lower()  # 'n', 'r', or 'k'
         observable_name = f'truth_cos_theta_{target_object}_{axis}'
-        sign = -1 if target_object == 'A' else 1
-        analyzing_power = ak.to_numpy(events[f'analyzing_power_{target_object.lower()}'] * sign)
+        analyzing_power = ak.to_numpy(events[f'analyzing_power_{target_object.lower()}'])
     else:
         raise ValueError(f"Unknown SDM element name: {element_name}")
     
@@ -409,4 +409,3 @@ if __name__ == "__main__":
         plt.ylim(0, None)
         plt.legend()
         plt.savefig(f'{output_dir}/{obs_name}.png')
-

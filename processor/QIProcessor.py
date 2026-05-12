@@ -192,7 +192,7 @@ class QIProcessor(BaseProcessor):
                     truth_histograms[var] = unfold.build_Hist_from_TH1D(h_truth, bin_edges=self.bin_edges)
 
                 # derive quantum results using unfolded histograms
-                analyzing_power_a = truth_events['analyzing_power_a'][0]*(-1)
+                analyzing_power_a = truth_events['analyzing_power_a'][0]
                 analyzing_power_b = truth_events['analyzing_power_b'][0]
                 unfolded_BC_matrices, unfolded_quantum_results = derive_results(unfold_histograms, analyzing_power_a=analyzing_power_a, analyzing_power_b=analyzing_power_b)
                 truth_BC_matrices, truth_quantum_results = derive_results(truth_histograms, analyzing_power_a=analyzing_power_a, analyzing_power_b=analyzing_power_b)
