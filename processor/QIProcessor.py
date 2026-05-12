@@ -4,8 +4,9 @@ import DataLoader
 import matplotlib.pyplot as plt
 import os
 import awkward as ak
-from utils.common_functions import print_and_write_to_opened_file, get_event_category_from_signal_name
+from utils.common_functions import print_and_write_to_opened_file
 from utils.plotter import do_control_plot
+from utils.tau_decay import get_event_category_from_signal_name
 from quantum.observables_builder import get_observable_names, derive_results, shift_SDM_element
 import quantum.unfold as unfold
 from processor.ResponseMatricesManager import ResponseMatricesManager

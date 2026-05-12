@@ -5,7 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import observables_builder as ob
-from utils.common_functions import print_and_write_to_opened_file, get_event_category_from_signal_name
+from utils.common_functions import print_and_write_to_opened_file
+from utils.tau_decay import get_event_category_from_signal_name
 
 
 if __name__ == "__main__":

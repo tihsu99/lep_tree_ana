@@ -10,40 +10,18 @@ from scipy.linalg import sqrtm, eig
 from collections import namedtuple
 
 from utils.common_functions import get_p4_from_ak_events, get_sum_p4_from_ak_events
+from utils.tau_decay import ANALYZING_POWERS, NOMINAL_BC_VALUES, get_analyzing_powers_from_event_category
 
 Hist = namedtuple('Hist', ['bin_edges', 'values', 'errors'])
 ValueWithUncertainty = namedtuple('ValueWithUncertainty', ['value', 'err_up', 'err_down'])
-AnalyzingPowerAry = np.array([0, 1, 0.41, -0.33, -0.34, 0]) # order: [notTauDecay, pi, rho, el, mu, others]
-NominalBCValues = {
-    'B_An': 0.0,
-    'B_Ar': 0.000054,
-    'B_Ak': 0.149663,
-    'B_Bn': 0.0,
-    'B_Br': 0.000054,
-    'B_Bk': 0.149663,
-    'C_nn': 0.784523,
-    'C_rr': -0.78451,
-    'C_kk': 0.999987,
-    'C_nr': 0.0,
-    'C_nk': 0.0,
-    'C_rk': 0.000724757,
-    'C_rn': 0.0,
-    'C_kn': 0.0,
-    'C_kr': 0.000724757,
-}
 
 def get_analyzing_power_ary():
     # order: [notTauDecay, pi, rho, el, mu, others]
-    return AnalyzingPowerAry
+    return ANALYZING_POWERS
 
 
 def get_analyzing_power_from_event_category(event_category):
-    event_category = np.asarray(event_category, dtype=int)
-    pos_idx = event_category // 10
-    neg_idx = event_category % 10
-    all_idx = np.concatenate([np.atleast_1d(pos_idx), np.atleast_1d(neg_idx)])
-    assert np.all((all_idx >= 0) & (all_idx < len(AnalyzingPowerAry))), "Event category index out of range for analyzing power array"
-    return -1 * AnalyzingPowerAry[pos_idx], AnalyzingPowerAry[neg_idx]
+    return get_analyzing_powers_from_event_category(event_category)
 
 
 def get_bc_name_from_variable_name(variable_name):
@@ -61,8 +39,8 @@ def get_bc_name_from_variable_name(variable_name):
 def reweight_correlation(ary_observable, ary_spin_analyzing_power, weight, element_name, variation):
     assert len(ary_observable) == len(weight)
     assert len(ary_observable) == len(ary_spin_analyzing_power)
-    assert element_name in NominalBCValues, f"Element name {element_name} not found in nominal BC values"
-    original_value = NominalBCValues[element_name]
+    assert element_name in NOMINAL_BC_VALUES, f"Element name {element_name} not found in nominal BC values"
+    original_value = NOMINAL_BC_VALUES[element_name]
     target_value = original_value + variation
     scale_factor = (1 + target_value * ary_spin_analyzing_power * ary_observable) / (1 + original_value * ary_spin_analyzing_power * ary_observable)
     new_weight = weight * scale_factor

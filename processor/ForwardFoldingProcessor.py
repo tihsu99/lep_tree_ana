@@ -12,7 +12,13 @@ import quantum.unfold as unfold
 from processor.forward_folding_fit import NuisanceParameterSpec, SinglePOIFitter
 from processor.ResponseMatricesManager import ResponseMatricesManager
 import quantum.observables_builder as ob
-from utils import common_functions as cf
+import utils.common_functions as cf
+from utils.tau_decay import (
+    NOMINAL_BC_VALUES,
+    get_analyzing_powers_from_event_category,
+    get_branching_ratio_from_event_category,
+    get_event_category_from_signal_name,
+)
 
 
 class ForwardFoldingProcessor(BaseProcessor):
@@ -56,16 +62,6 @@ class ForwardFoldingProcessor(BaseProcessor):
         # Total Ztautau signal yield in truth region
         self.expected_yields_truth_region = 32177.19
         
-        # branching ratio: nonTau, pi, rho, e, mu, others
-        self.branching_ratios = [
-            0,
-            0.1077,
-            0.2537,
-            0.1773,
-            0.1731,
-            0
-        ]
-
     def build_nuisance_parameter_specs(self, nuisance_config):
         if nuisance_config is None:
             nuisance_config = {
@@ -91,12 +87,6 @@ class ForwardFoldingProcessor(BaseProcessor):
                 )
             )
         return specs
-
-    def get_branching_ratio_from_event_category(self, event_category):
-        pos_id = event_category // 10
-        neg_id = event_category % 10
-        assert 0 <= pos_id < len(self.branching_ratios) and 0 <= neg_id < len(self.branching_ratios), f"Invalid event category {event_category}"
-        return self.branching_ratios[pos_id] * self.branching_ratios[neg_id]
 
     def get_binned_observable(self, var, events):
         var_values = ak.to_numpy(events[var], allow_missing=False)
@@ -217,8 +207,8 @@ class ForwardFoldingProcessor(BaseProcessor):
         analyzing_powers = []
         branching_ratios = []
         for signal_name in signal_names:
-            event_category = cf.get_event_category_from_signal_name(signal_name)
-            ap_pos, ap_neg = ob.get_analyzing_power_from_event_category(event_category)
+            event_category = get_event_category_from_signal_name(signal_name)
+            ap_pos, ap_neg = get_analyzing_powers_from_event_category(event_category)
             if bc_name.startswith("B_A"):
                 analyzing_powers.append(ap_pos)
             elif bc_name.startswith("B_B"):
@@ -226,7 +216,7 @@ class ForwardFoldingProcessor(BaseProcessor):
             elif bc_name.startswith("C_"):
                 analyzing_powers.append(ap_pos * ap_neg)
 
-            branching_ratio = self.get_branching_ratio_from_event_category(event_category)
+            branching_ratio = get_branching_ratio_from_event_category(event_category)
             branching_ratios.append(branching_ratio)
         truth_hist_build_func = self.build_truth_hist_Bi if bc_name.startswith("B_") else self.build_truth_hist_Cij
         return branching_ratios, analyzing_powers, truth_hist_build_func
@@ -251,7 +241,6 @@ class ForwardFoldingProcessor(BaseProcessor):
 
     def fit_observable(self, region, signal_names, var, h_data, h_bkg):
         bc_name = ob.get_bc_name_from_variable_name(var)
-        nominal_value = ob.NominalBCValues[bc_name]
         data_hist = unfold.build_Hist_from_TH1D(h_data)
         data_values, data_errors = data_hist.values, data_hist.errors
 
@@ -264,7 +253,7 @@ class ForwardFoldingProcessor(BaseProcessor):
 
         fitter = SinglePOIFitter(
             poi_name=bc_name,
-            nominal_poi_value=nominal_value,
+            nominal_poi_value=NOMINAL_BC_VALUES[bc_name],
             poi_bounds=tuple(self.fit_parameter_bounds),
             nuisance_parameter_specs=self.nuisance_parameter_specs,
             data_values=data_values,
@@ -398,7 +387,7 @@ class ForwardFoldingProcessor(BaseProcessor):
                             var,
                             h_data,
                             h_bkg,
-                            ob.NominalBCValues[bc_name],
+                            NOMINAL_BC_VALUES[bc_name],
                             prefit_nps,
                             "prefit",
                         )
@@ -441,7 +430,7 @@ class ForwardFoldingProcessor(BaseProcessor):
                     )
                     cf.print_and_write_to_opened_file(f"        {bc_name}: {np_text}", f_out)
 
-                if all(name in fitted_bc for name in ob.NominalBCValues):
+                if all(name in fitted_bc for name in NOMINAL_BC_VALUES):
                     quantum_results = ob.evaluate_quantum_results_with_uncertainties(fitted_bc)
                     self.print_results(f_out, "Fitted quantum results", quantum_results)
 

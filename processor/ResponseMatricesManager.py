@@ -3,7 +3,7 @@ import DataLoader
 import matplotlib.pyplot as plt
 import os
 import awkward as ak
-from utils.common_functions import get_event_category_from_signal_name
+from utils.tau_decay import get_event_category_from_signal_name
 from quantum.observables_builder import get_observable_names
 import quantum.unfold as unfold
 import ROOT
@@ -192,5 +192,4 @@ if __name__ == "__main__":
     for obs in response_manager.unfold_vars:
     # for obs in ['cos_theta_A_k']:
         response_manager.closure_test("pipi", "Ztautau_pipi", obs)
-
 
