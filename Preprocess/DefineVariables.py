@@ -289,7 +289,7 @@ def define_region_specific_variables(events: ak.Array):
     mask_do_mmc = np.zeros(num_events, dtype=bool)
     # MMC for certain regions
     mmc_regions = ['ee', 'mumu', 'emu']
-    mmc_engine = MMC({'mmc_regions': mmc_regions})
+    mmc_engine = MMC({'mmc_regions': mmc_regions, 'mmc_workers': 100})
     for region in mmc_regions:
         mask_region = events[f'{region}_cut']
         mask_do_mmc = mask_do_mmc | mask_region
@@ -304,17 +304,17 @@ def define_region_specific_variables(events: ak.Array):
         flags_valid_array[mask_region] = tmp_flag_valid
         mmc_likelihood[mask_region] = tmp_mmc_likelihood
 
-    # Analytical solution for the rest of the events (non-MMC regions)
-    mask_non_mmc = ~mask_do_mmc
-    if np.any(mask_non_mmc):
-        tmp_v1_p4, tmp_v2_p4, flags_valid_array_non_mmc = compute_neutrino_momenta(
-            vis1_p4=reco_vis_positive_p4[mask_non_mmc],
-            vis2_p4=reco_vis_negative_p4[mask_non_mmc],
+    # Analytical solution for the rest of the events (baseline region - MMC regions)
+    mask_analytical = (~mask_do_mmc) & events['baseline_cut']
+    if np.any(mask_analytical):
+        tmp_v1_p4, tmp_v2_p4, flags_valid_array_analytical = compute_neutrino_momenta(
+            vis1_p4=reco_vis_positive_p4[mask_analytical],
+            vis2_p4=reco_vis_negative_p4[mask_analytical],
         )
-        nu_pos_px[mask_non_mmc], nu_pos_py[mask_non_mmc], nu_pos_pz[mask_non_mmc], nu_pos_E[mask_non_mmc] = tmp_v1_p4.px, tmp_v1_p4.py, tmp_v1_p4.pz, tmp_v1_p4.E
-        nu_neg_px[mask_non_mmc], nu_neg_py[mask_non_mmc], nu_neg_pz[mask_non_mmc], nu_neg_E[mask_non_mmc] = tmp_v2_p4.px, tmp_v2_p4.py, tmp_v2_p4.pz, tmp_v2_p4.E
-        flags_valid_array[mask_non_mmc] = flags_valid_array_non_mmc
-        mmc_likelihood[mask_non_mmc] = np.ones_like(nu_neg_px[mask_non_mmc])  
+        nu_pos_px[mask_analytical], nu_pos_py[mask_analytical], nu_pos_pz[mask_analytical], nu_pos_E[mask_analytical] = tmp_v1_p4.px, tmp_v1_p4.py, tmp_v1_p4.pz, tmp_v1_p4.E
+        nu_neg_px[mask_analytical], nu_neg_py[mask_analytical], nu_neg_pz[mask_analytical], nu_neg_E[mask_analytical] = tmp_v2_p4.px, tmp_v2_p4.py, tmp_v2_p4.pz, tmp_v2_p4.E
+        flags_valid_array[mask_analytical] = flags_valid_array_analytical
+        mmc_likelihood[mask_analytical] = np.ones_like(nu_neg_px[mask_analytical])  
 
     events[f'lead_a_missing_p4'] = vector.zip({"px": nu_pos_px, "py": nu_pos_py, "pz": nu_pos_pz, "E": nu_pos_E})
     events[f'lead_b_missing_p4'] = vector.zip({"px": nu_neg_px, "py": nu_neg_py, "pz": nu_neg_pz, "E": nu_neg_E})

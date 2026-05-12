@@ -266,9 +266,9 @@ class Preprocessor:
                     self.regions = list(flags.keys())
 
             self.raw_events = ak.concatenate(self.raw_events, axis=0)
-        # reconstruct neutrinos of Ztautau raw events for later use in unfolding
-        if self.is_Ztautau:
-            self.raw_events = DefineVariables.define_region_specific_variables(self.raw_events)
+
+        # reconstruct neutrinos and define region-specific variables (QI variables for example)
+        self.raw_events = DefineVariables.define_region_specific_variables(self.raw_events)
 
         # Store the raw events with all the defined variables
         self.raw_events['initial_total_num_events'] = self.initial_total_num_events
