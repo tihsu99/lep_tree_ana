@@ -13,9 +13,10 @@ if __name__ == "__main__":
     # input_parquet = '/eos/user/c/cmo/project/ZtautauLep/tree_ana/run/20260426-hadhad/Ztautau/filtered___raw.parquet'
     # events = ak.from_parquet(input_parquet)
     events = []
-    for f in glob.glob('/pscratch/sd/c/cmo/LEP/tree_ana/run/20260427-dataset/Ztautau_*/filtered___raw.parquet'):
+    for f in glob.glob('/pscratch/sd/c/cmo/LEP/tree_ana/run/20260512-dataset/Ztautau_0/filtered___raw.parquet'):
         events.append(ak.from_parquet(f))
-    events = ak.concatenate(events)
+    # events = ak.concatenate(events)
+    events = events[0]
 
     output_base_dir = f'example_plots/'
     output_text_file = os.path.join(output_base_dir, 'truth_analysis.txt')
@@ -49,6 +50,8 @@ if __name__ == "__main__":
             # plot quantum observable distribution
             hist_dict = {}
             for obs_key in ob.get_observable_names():
+                if not obs_key.startswith('cos'):
+                    continue
                 obs = "truth_" + obs_key
                 if obs not in selected_events.fields:
                     print_and_write_to_opened_file(f"Observable {obs} not found in events for channel {channel_name}", f_out)
@@ -74,9 +77,11 @@ if __name__ == "__main__":
                 # ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_values, histtype='step', color='black', alpha=0.5)
                 # ax.errorbar(bin_centers, hist_values, yerr=hist_errors, fmt='.', color='black', alpha=0.5)
                 mean, err_of_mean = ob.get_mean_and_err_of_mean(bin_centers, hist_values, hist_errors)
-                ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_values, histtype='step', color='black', alpha=0.5, label=f'Original mean: {mean:.4f}±{err_of_mean:.4f}')
+                ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_values, histtype='step', color='black', alpha=0.7, label=f'Original mean: {mean:.4f}±{err_of_mean:.4f}')
+                ax.errorbar(bin_centers, hist_values, yerr=hist_errors, fmt='.', color='black', alpha=0.7)
                 mean, err_of_mean = ob.get_mean_and_err_of_mean(bin_centers, hist_reweight_values, hist_reweight_errors)
-                ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_reweight_values, histtype='step', color='red', alpha=0.5, label=f'Reweighted mean: {mean:.4f}±{err_of_mean:.4f}')
+                ax.hist(bin_edges[:-1], bins=bin_edges, weights=hist_reweight_values, histtype='step', color='red', alpha=0.7, label=f'Reweighted mean: {mean:.4f}±{err_of_mean:.4f}')
+                ax.errorbar(bin_centers, hist_reweight_values, yerr=hist_reweight_errors, fmt='.', color='red', alpha=0.7)
                 ax.set_xlabel(f'{obs}')
                 ax.set_ylabel('Weighted Counts')
                 ax.set_title(f'{channel_name} Channel: {obs} Distribution')
