@@ -10,8 +10,9 @@ import awkward as ak
 import copy
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
             get_all_p4_from_ak_events, cme, rebuild_p4, deltaR_nearby
-from quantum.observables_builder import build_observables, get_analyzing_power_ary, get_analyzing_power_from_event_category
-from NeutrinoReconstructionProcessor import compute_neutrino_momenta
+from quantum.observables_builder import build_observables
+from utils.tau_decay import get_analyzing_powers_from_event_categories
+from processor.NeutrinoReconstructionProcessor import compute_neutrino_momenta
 from mmc.MMC import MMC
 
 
@@ -265,7 +266,7 @@ def define_signal_exclusive_variables(events: ak.Array):
 
     # analyzing power
     # non-tau, pion, rho, ele, mu, other
-    pos_power, neg_power = get_analyzing_power_from_event_category(events['event_category'])
+    pos_power, neg_power = get_analyzing_powers_from_event_categories(events['event_category'])
     events['analyzing_power_a'] = pos_power
     events['analyzing_power_b'] = neg_power
     events['analyzing_power'] = pos_power * neg_power
