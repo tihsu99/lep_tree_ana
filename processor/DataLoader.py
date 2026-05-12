@@ -59,14 +59,14 @@ class DataLoader:
             events = ak.concatenate(events_list, axis=0)
 
         # Reweight events based on cutflow information
-        initial_num_events = 0
+        initial_total_num_events = 0
         total_weights = 0
         for d in sample_dirs:
             cutflow_file = glob.glob(os.path.join(d, "cutflow_*.json"))[0]
             with open(cutflow_file, "r") as f:
                 cutflow = json.load(f)
                 assert cutflow[0]['cut'] == 'initial_total_num_events', f"First cut in cutflow should be 'initial_total_num_events' but got {cutflow[0]['cut']} in {cutflow_file}"
-                initial_num_events += cutflow[0]['events']
+                initial_total_num_events += cutflow[0]['events']
                 if (total_weights != 0) and (not is_data):
                     assert abs(cutflow[0]['weighted_events'] - total_weights) < 1e-6, f"Weighted events in cutflow do not match across samples for {sample_name}. Please check cutflow files. {total_weights} vs {cutflow[0]['weighted_events']}"
                 total_weights = cutflow[0]['weighted_events']
@@ -74,7 +74,7 @@ class DataLoader:
         # split Ztautau into train and test set 
         if sample_name=='Ztautau':
             half_num_events = len(events) // 2
-            initial_num_events = initial_num_events // 2
+            initial_total_num_events = initial_total_num_events // 2
             if is_trainset:
                 events = events[:half_num_events]
                 print(f"Using train set for sample {sample_name} from the first half of events: {len(events)} events from {files}")
@@ -86,8 +86,8 @@ class DataLoader:
                 # sample_dirs = [sample_dirs[-1]]
                 # print(f"Using test set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
         
-        events['initial_num_events'] = initial_num_events
-        weight = 1.0 if is_data else total_weights / initial_num_events if initial_num_events > 0 else 1.0
+        events['initial_total_num_events'] = initial_total_num_events
+        weight = 1.0 if is_data else total_weights / initial_total_num_events if initial_total_num_events > 0 else 1.0
         events['weight_nominal'] = weight
         events['weight'] = events['weight_nominal'] # default weight is nominal weight
 
@@ -96,7 +96,7 @@ class DataLoader:
         #     for obs in get_observable_names():
         #         events[obs] = events[f"truth_{obs}"]
         #     events['flags_valid'] = ak.ones_like(events['Event_evtNumber'], dtype=np.int32)
-        return events, initial_num_events
+        return events, initial_total_num_events
 
 
     @staticmethod
