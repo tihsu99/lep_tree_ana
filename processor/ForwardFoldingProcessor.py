@@ -65,8 +65,12 @@ class ForwardFoldingProcessor(BaseProcessor):
     def build_nuisance_parameter_specs(self, nuisance_config):
         if nuisance_config is None:
             nuisance_config = {
-                "signal_norm": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": False},
-                "background_norm": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": False},
+                "norm_signal": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": False},
+                "norm_background": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": False},
+                "norm_Ztautau_pipi": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": True, 'constraint_sigma': 0.1},
+                "norm_Ztautau_pirho": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": True, 'constraint_sigma': 0.1},
+                "norm_Ztautau_rhopi": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": True, 'constraint_sigma': 0.1},
+                "norm_Ztautau_mumu": {"initial_value": 1.0, "bounds": (0.0, 2.0), "fit": True, 'constraint_sigma': 0.1},
             }
 
         specs = []
@@ -99,14 +103,18 @@ class ForwardFoldingProcessor(BaseProcessor):
         folded.SetDirectory(0)
         return folded
 
-    def build_expected_signal_hist(self, region, signal_names, branching_ratios, event_categories, var, parameter_value):
+    def build_expected_signal_hist(self, region, signal_names, branching_ratios, event_categories, var, parameter_value, nuisance_parameters):
         expected = None
         
+        norm_signal = nuisance_parameters.get('norm_signal', 1.0)
         for idx, signal_name in enumerate(signal_names):
             branching_ratio = branching_ratios[idx] 
+            norm_signal *= nuisance_parameters.get(f'norm_{signal_name}', 1.0)
             
             # Build truth template specific to this signal's analyzing power and branching ratio
-            truth_hist, _ = ob.get_theoretical_distribution(var_name=var, signal_category=event_categories[idx], norm=self.expected_yields_truth_region * branching_ratio, bin_edges=self.bin_edges, bc_value=parameter_value)
+            truth_hist, _ = ob.get_theoretical_distribution(var_name=var, signal_category=event_categories[idx], norm=self.expected_yields_truth_region * branching_ratio * norm_signal, bin_edges=self.bin_edges, bc_value=parameter_value)
+            truth_hist = truth_hist
+
             truth_hist = unfold.build_TH1D(f"h_truth_{region}_{signal_name}_{var}_{parameter_value:.5f}", var=np.arange(self.num_bins), num_bins=self.num_bins, weight=truth_hist)
             for i in range(truth_hist.GetNbinsX()):
                 truth_hist.SetBinError(i+1, 0)
@@ -190,12 +198,12 @@ class ForwardFoldingProcessor(BaseProcessor):
             event_categories,
             var,
             parameter_value,
+            nuisance_parameters,
         )
         signal_values = unfold.build_Hist_from_TH1D(h_signal).values
         bkg_values = unfold.build_Hist_from_TH1D(h_bkg).values
-        signal_norm = nuisance_parameters.get("signal_norm", 1.0)
-        background_norm = nuisance_parameters.get("background_norm", 1.0)
-        return signal_norm * signal_values + background_norm * bkg_values
+        norm_background = nuisance_parameters.get("norm_background", 1.0)
+        return signal_values + norm_background * bkg_values
 
     def fit_observable(self, region, signal_names, var, h_data, h_bkg):
         bc_name = ob.get_bc_name_from_variable_name(var)
@@ -204,10 +212,7 @@ class ForwardFoldingProcessor(BaseProcessor):
 
         # Prepare data errors: use Poisson if no error info or Asimov is enabled
         if self.asimov_data:
-            data_errors = np.sqrt(np.clip(data_values, 1.0, None))
-        else:
-            # Use provided errors where valid, fall back to Poisson
-            data_errors = np.where(data_errors > 0, data_errors, np.sqrt(np.clip(data_values, 1.0, None)))
+            data_errors = np.sqrt(np.clip(data_values, 0, None))
 
         fitter = SinglePOIFitter(
             poi_name=bc_name,
@@ -251,21 +256,22 @@ class ForwardFoldingProcessor(BaseProcessor):
             event_categories,
             var,
             parameter_value,
+            nuisance_parameters,
         )
 
         data_hist = unfold.build_Hist_from_TH1D(h_data)
         data_values, data_errors = data_hist.values, data_hist.errors
         signal_values = unfold.build_Hist_from_TH1D(h_signal).values
         bkg_values = unfold.build_Hist_from_TH1D(h_bkg).values
-        signal_norm = nuisance_parameters.get("signal_norm", 1.0)
-        background_norm = nuisance_parameters.get("background_norm", 1.0)
-        signal_values = signal_norm * signal_values
-        bkg_values = background_norm * bkg_values
+        norm_background = nuisance_parameters.get("norm_background", 1.0)
+        signal_values = signal_values
+        bkg_values = norm_background * bkg_values
         mc_values = signal_values + bkg_values
         if self.asimov_data:
-            data_errors = np.sqrt(np.clip(data_values, 1.0, None))
-        else:
-            data_errors = np.where(data_errors > 0, data_errors, np.sqrt(np.clip(data_values, 1.0, None)))
+            data_errors = np.sqrt(np.clip(data_values, 0, None))
+
+        # evaluate difference between data and MC
+        dist = np.linalg.norm(data_values - mc_values)
 
         x = np.arange(self.num_bins)
         fig, (ax, ax_ratio) = plt.subplots(
@@ -275,19 +281,23 @@ class ForwardFoldingProcessor(BaseProcessor):
         ax.bar(x, signal_values, bottom=bkg_values, label="Signal", color="tab:blue", alpha=0.65)
         ax.errorbar(x, data_values, yerr=data_errors, fmt="ko", label="Data")
         ax.set_ylabel("Events")
-        ax.set_title(f"{region} {var} {label}: {bc_name}={parameter_value:.4f}")
+        ax.set_title(f"{region} {label}: {bc_name}={parameter_value:.4f}. dist(data, MC) = {dist:.5f}")
         ax.legend()
         ax.grid(alpha=0.25)
 
         ratio = np.divide(data_values, mc_values, out=np.zeros_like(data_values), where=mc_values != 0)
         ax_ratio.axhline(1.0, color="black", linestyle="--", linewidth=1)
         ax_ratio.errorbar(x, ratio, fmt="ko")
-        ax_ratio.set_xlabel("Reco bin")
+        ax_ratio.set_xlabel(var)
         ax_ratio.set_ylabel("Data / MC")
-        ax_ratio.set_ylim(0.0, 2.0)
+        ax_ratio.set_ylim(0.5, 1.5)
         ax_ratio.grid(alpha=0.25)
         fig.tight_layout()
         fig.savefig(f"{output_dir}/{var}_{label}_data_mc.png")
+
+        ax.set_yscale("log")
+        ax.set_ylim(1e-1, None)
+        fig.savefig(f"{output_dir}/log_{var}_{label}_data_mc.png")
         plt.close(fig)
 
     def write_fit_snapshots(self, region, fit_results):
