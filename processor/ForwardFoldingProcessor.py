@@ -261,12 +261,18 @@ class ForwardFoldingProcessor(BaseProcessor):
 
         data_hist = unfold.build_Hist_from_TH1D(h_data)
         data_values, data_errors = data_hist.values, data_hist.errors
-        signal_values = unfold.build_Hist_from_TH1D(h_signal).values
-        bkg_values = unfold.build_Hist_from_TH1D(h_bkg).values
+        signal_hist = unfold.build_Hist_from_TH1D(h_signal)
+        signal_values, signal_errors = signal_hist.values, signal_hist.errors
+        bkg_hist = unfold.build_Hist_from_TH1D(h_bkg)
+        bkg_values, bkg_errors = bkg_hist.values, bkg_hist.errors
+
         norm_background = nuisance_parameters.get("norm_background", 1.0)
-        signal_values = signal_values
         bkg_values = norm_background * bkg_values
+        bkg_errors = norm_background * bkg_errors
+
         mc_values = signal_values + bkg_values
+        mc_errors = np.hypot(signal_errors, bkg_errors)
+
         if self.asimov_data:
             data_errors = np.sqrt(np.clip(data_values, 0, None))
 
@@ -274,23 +280,35 @@ class ForwardFoldingProcessor(BaseProcessor):
         dist = np.linalg.norm(data_values - mc_values)
 
         x = np.arange(self.num_bins)
+        plot_bin_edges = np.arange(self.num_bins + 1) - 0.5
+
         fig, (ax, ax_ratio) = plt.subplots(
             2, 1, figsize=(7, 7), gridspec_kw={"height_ratios": [3, 1]}, sharex=True
         )
-        ax.bar(x, bkg_values, label="Background", color="tab:gray", alpha=0.65)
-        ax.bar(x, signal_values, bottom=bkg_values, label="Signal", color="tab:blue", alpha=0.65)
+        ax.bar(x, bkg_values, label="Background", color="tab:gray", alpha=0.65, width=np.diff(plot_bin_edges))
+        ax.bar(x, signal_values, bottom=bkg_values, label="Signal", color="tab:blue", alpha=0.65, width=np.diff(plot_bin_edges))
         ax.errorbar(x, data_values, yerr=data_errors, fmt="ko", label="Data")
+        # plot mc error as band
+        lower = np.concatenate([mc_values - mc_errors, [mc_values[-1] - mc_errors[-1]]])
+        upper = np.concatenate([mc_values + mc_errors, [mc_values[-1] + mc_errors[-1]]])
+        ax.fill_between(plot_bin_edges, lower, upper, alpha=0.4, color="black", step="post", linewidth=0)
         ax.set_ylabel("Events")
         ax.set_title(f"{region} {label}: {bc_name}={parameter_value:.4f}. dist(data, MC) = {dist:.5f}")
         ax.legend()
         ax.grid(alpha=0.25)
 
-        ratio = np.divide(data_values, mc_values, out=np.zeros_like(data_values), where=mc_values != 0)
         ax_ratio.axhline(1.0, color="black", linestyle="--", linewidth=1)
-        ax_ratio.errorbar(x, ratio, fmt="ko")
+        mc_ratio_err = np.divide(mc_errors, mc_values, out=np.full_like(mc_errors, np.nan, dtype=float), where=mc_values != 0)
+        lower = np.concatenate([1.0 - mc_ratio_err, [1.0 - mc_ratio_err[-1]]])
+        upper = np.concatenate([1.0 + mc_ratio_err, [1.0 + mc_ratio_err[-1]]])
+        ax_ratio.fill_between(plot_bin_edges, lower, upper, alpha=0.4, color="black", step="post", linewidth=0)
+
+        ratio = np.divide(data_values, mc_values, out=np.full_like(data_values, np.nan, dtype=float), where=mc_values != 0)
+        ratio_err = np.divide(data_errors, mc_values, out=np.full_like(data_errors, np.nan, dtype=float), where=mc_values != 0)
+        ax_ratio.errorbar(x, ratio, yerr=ratio_err, fmt="ko")
         ax_ratio.set_xlabel(var)
         ax_ratio.set_ylabel("Data / MC")
-        ax_ratio.set_ylim(0.5, 1.5)
+        ax_ratio.set_ylim(0.8, 1.2)
         ax_ratio.grid(alpha=0.25)
         fig.tight_layout()
         fig.savefig(f"{output_dir}/{var}_{label}_data_mc.png")
