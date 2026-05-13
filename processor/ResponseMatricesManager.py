@@ -3,8 +3,8 @@ import DataLoader
 import matplotlib.pyplot as plt
 import os
 import awkward as ak
-from utils.tau_decay import get_event_category_from_signal_name
-from quantum.observables_builder import get_observable_names
+from utils.tau_decay import get_event_category_from_signal_name, NOMINAL_BC_VALUES, get_analyzing_powers_from_event_category
+from quantum.observables_builder import get_observable_names, get_bc_name_from_variable_name
 import quantum.unfold as unfold
 import ROOT
 
@@ -93,6 +93,8 @@ class ResponseMatricesManager:
                 binned_var_recon = self.get_binned_observable(var, events)
                 binned_var_truth = self.get_binned_observable(f'truth_{var}', events)
                 weight = ak.to_numpy(events['weight_nominal'], allow_missing=False)
+                weight_sf = ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False)
+                weight = weight * weight_sf
 
                 # set truth (recon) observable to np.nan if the event is outside of the truth (analysis) region
                 binned_var_truth[~mask_truth_region] = np.nan
@@ -133,6 +135,28 @@ class ResponseMatricesManager:
         # events = raw_events[mask_target_signal & (mask_truth_region | mask_analysis_region)]
         events = raw_events
         weight = ak.to_numpy(events['weight_nominal'], allow_missing=False)
+        weight_sf = ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False)
+        weight = weight * weight_sf
+
+
+        # build h_truth_theo
+        bin_centers = self.bin_edges[:-1] + np.diff(self.bin_edges) / 2
+        ap_pos, ap_neg = get_analyzing_powers_from_event_category(signal_category)
+        bc_name = get_bc_name_from_variable_name(var)
+        slope = NOMINAL_BC_VALUES[bc_name]
+        extra_factor = 1
+        if bc_name.startswith('B_A'):
+            slope *= ap_pos
+        elif bc_name.startswith('B_B'):
+            slope *= ap_neg
+        elif bc_name.startswith('C_'):
+            slope *= ap_pos * ap_neg
+            extra_factor = -1 * np.log(np.abs(bin_centers)) 
+        target_distribution = 0.5 * (1 + slope * bin_centers) * extra_factor
+        target_distribution = target_distribution / np.sum(target_distribution) * ak.sum(weight[mask_truth_region])
+        h_theo = unfold.build_TH1D(f"h_theo", np.arange(self.num_bins), num_bins=self.num_bins, weight=target_distribution)
+        for i in range(h_theo.GetNbinsX()):
+            h_theo.SetBinError(i+1, 0)
 
         # build truth distribution using truth region events
         var_truth_binned = self.get_binned_observable(f'truth_{var}', events[mask_truth_region])
@@ -158,6 +182,12 @@ class ResponseMatricesManager:
         h_truth_forward_folded = response_matrix.ApplyToTruth(h_truth)
         h_reco_fake = response_matrix.Hfakes()
         h_truth_forward_folded.Add(h_reco_fake)
+        h_truth_forward_folded.SetTitle("folded truth")
+
+        # forward fold the theoretical distribution
+        h_theo_forward_folded = response_matrix.ApplyToTruth(h_theo)
+        h_theo_forward_folded.Add(h_reco_fake)
+        h_theo_forward_folded.SetTitle("folded theoretical")
 
         # plot
         ROOT.gStyle.SetOptStat(0)
@@ -169,13 +199,18 @@ class ResponseMatricesManager:
         h_truth.Draw("hist E1")
         h_recon.SetLineColor(ROOT.kRed)
         h_recon.Draw("hist same E1")
+        h_theo.SetLineColor(ROOT.kMagenta)
+        h_theo.Draw("hist same E1")
+
         unfold_result.SetLineColor(ROOT.kBlue)
         unfold_result.Draw("hist same E1")
-        h_truth_forward_folded.SetLineColor(ROOT.kGreen)
+        h_truth_forward_folded.SetLineColor(ROOT.kGreen + 3)
         h_truth_forward_folded.Draw("hist same  E1")
+        h_theo_forward_folded.SetLineColor(ROOT.kMagenta)
+        h_theo_forward_folded.Draw("hist same E1")
         l = None
         if 'times' in var:
-            l = c.BuildLegend(0.7, 0.8, 0.9, 0.9)
+            l = c.BuildLegend(0.7, 0.75, 0.9, 0.9)
         else:
             l = c.BuildLegend()
         l.SetTextSize(0.03)
@@ -183,8 +218,8 @@ class ResponseMatricesManager:
         
 
 if __name__ == "__main__":
-    data_dir = "./20260427-dataset/"
-    output_dir = "./20260427-forwardfold/"
+    data_dir = "./20260512-dataset/"
+    output_dir = "./20260512-closure-test/"
     dict_region_to_signals = {
         "pipi": ["Ztautau_pipi"],
     }
