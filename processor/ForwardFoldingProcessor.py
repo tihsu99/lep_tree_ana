@@ -94,53 +94,22 @@ class ForwardFoldingProcessor(BaseProcessor):
         return binned_var.astype(float)
 
 
-    def build_truth_hist_Bi(self, analyzing_power, parameter_value, total_bin_contents=1.0):
-        """Build truth-level Bi template."""
-        slope = analyzing_power * parameter_value
-        bin_contents = 0.5 * (1 + slope * self.bin_centers) 
-        bin_contents = bin_contents * total_bin_contents / np.sum(bin_contents) if np.sum(bin_contents) > 0 else bin_contents
-        return unfold.Hist(bin_edges=self.bin_edges, values=bin_contents, errors=np.zeros_like(bin_contents))
-
-    def build_truth_hist_Cij(self, analyzing_power_product, parameter_value, total_bin_contents=1.0):
-        """Build truth-level Cij template."""
-        slope = analyzing_power_product * parameter_value
-        bin_contents = -0.5 * (1 + slope * self.bin_centers) * np.log(np.abs(self.bin_centers))
-        bin_contents = bin_contents * total_bin_contents / np.sum(bin_contents) if np.sum(bin_contents) > 0 else bin_contents
-        return unfold.Hist(bin_edges=self.bin_edges, values=bin_contents, errors=np.zeros_like(bin_contents))
-
     def fold_truth_hist(self, response_matrix, truth_hist, name):
         folded = response_matrix.ApplyToTruth(truth_hist, name)
         folded.SetDirectory(0)
         return folded
 
-    def build_expected_signal_hist(self, region, signal_names, branching_ratios, analyzing_powers, var, parameter_value, truth_hist_build_func):
-        """Build expected signal histogram by folding truth templates through response matrices.
-        
-        Each signal gets its own truth template based on its analyzing power and branching ratio.
-        
-        Args:
-            region: Signal region identifier
-            signal_names: List of signal component names (e.g., ['Ztautau_pipi', 'Ztautau_rhorho', ...])
-            analyzing_powers: List of analyzing powers per signal (per signal event category)
-            var: Observable variable name
-            parameter_value: Fit parameter value
-            truth_hist_build_func: Function to build truth histograms (Bi or Cij)
-            
-        Returns:
-            ROOT.TH1D histogram of expected signal in reco space (sum of all signal contributions)
-        """
+    def build_expected_signal_hist(self, region, signal_names, branching_ratios, event_categories, var, parameter_value):
         expected = None
         
         for idx, signal_name in enumerate(signal_names):
             branching_ratio = branching_ratios[idx] 
             
             # Build truth template specific to this signal's analyzing power and branching ratio
-            truth_hist = truth_hist_build_func(analyzing_powers[idx], parameter_value, total_bin_contents=self.expected_yields_truth_region * branching_ratio)
-            
-            truth_hist = unfold.build_TH1D_from_Hist(
-                truth_hist,
-                f"h_truth_{region}_{signal_name}_{var}_{parameter_value:.5f}"
-            )
+            truth_hist, _ = ob.get_theoretical_distribution(var_name=var, signal_category=event_categories[idx], norm=self.expected_yields_truth_region * branching_ratio, bin_edges=self.bin_edges, bc_value=parameter_value)
+            truth_hist = unfold.build_TH1D(f"h_truth_{region}_{signal_name}_{var}_{parameter_value:.5f}", var=np.arange(self.num_bins), num_bins=self.num_bins, weight=truth_hist)
+            for i in range(truth_hist.GetNbinsX()):
+                truth_hist.SetBinError(i+1, 0)
             truth_hist.SetDirectory(0)
             
             # Fold through this signal's response matrix
@@ -170,14 +139,8 @@ class ForwardFoldingProcessor(BaseProcessor):
             return unfold.build_TH1D(name, [], self.num_bins)
         binned_var = np.concatenate([self.get_binned_observable(var, events) for events in events_list])
         weight = np.concatenate([ak.to_numpy(events["weight"], allow_missing=False) for events in events_list])
+        weight = weight * np.concatenate([ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False) for events in events_list])
         return unfold.build_TH1D(name, binned_var, self.num_bins, weight)
-
-    # def th1_to_arrays(self, hist):
-    #     """Extract bin contents and errors from ROOT histogram efficiently."""
-    #     nbins = hist.GetNbinsX()
-    #     values = np.array([hist.GetBinContent(i) for i in range(1, nbins + 1)], dtype=float)
-    #     errors = np.array([hist.GetBinError(i) for i in range(1, nbins + 1)], dtype=float)
-    #     return values, errors
 
     def get_region_events(self, dl_dict, region, signal_names):
         signal_events = OrderedDict((signal_name, []) for signal_name in signal_names)
@@ -204,34 +167,29 @@ class ForwardFoldingProcessor(BaseProcessor):
         return signal_events, background_events, data_events
 
     def get_signal_model_inputs(self, signal_names, bc_name):
-        analyzing_powers = []
+        # analyzing_powers = []
         branching_ratios = []
+        event_categories = []
         for signal_name in signal_names:
             event_category = get_event_category_from_signal_name(signal_name)
-            ap_pos, ap_neg = get_analyzing_powers_from_event_category(event_category)
-            if bc_name.startswith("B_A"):
-                analyzing_powers.append(ap_pos)
-            elif bc_name.startswith("B_B"):
-                analyzing_powers.append(ap_neg)
-            elif bc_name.startswith("C_"):
-                analyzing_powers.append(ap_pos * ap_neg)
+            event_categories.append(event_category)
 
             branching_ratio = get_branching_ratio_from_event_category(event_category)
             branching_ratios.append(branching_ratio)
-        truth_hist_build_func = self.build_truth_hist_Bi if bc_name.startswith("B_") else self.build_truth_hist_Cij
-        return branching_ratios, analyzing_powers, truth_hist_build_func
+        # truth_hist_build_func = self.build_truth_hist_Bi if bc_name.startswith("B_") else self.build_truth_hist_Cij
+        return branching_ratios, event_categories
 
     def build_expected_values(self, region, signal_names, var, parameter_value, nuisance_parameters, h_bkg):
         bc_name = ob.get_bc_name_from_variable_name(var)
-        branching_ratios, analyzing_powers, truth_hist_build_func = self.get_signal_model_inputs(signal_names, bc_name)
+        # branching_ratios, analyzing_powers, truth_hist_build_func = self.get_signal_model_inputs(signal_names, bc_name)
+        branching_ratios, event_categories = self.get_signal_model_inputs(signal_names, bc_name)
         h_signal = self.build_expected_signal_hist(
             region,
             signal_names,
             branching_ratios,
-            analyzing_powers,
+            event_categories,
             var,
             parameter_value,
-            truth_hist_build_func,
         )
         signal_values = unfold.build_Hist_from_TH1D(h_signal).values
         bkg_values = unfold.build_Hist_from_TH1D(h_bkg).values
@@ -285,15 +243,14 @@ class ForwardFoldingProcessor(BaseProcessor):
     ):
         os.makedirs(output_dir, exist_ok=True)
         bc_name = ob.get_bc_name_from_variable_name(var)
-        branching_ratios, analyzing_powers, truth_hist_build_func = self.get_signal_model_inputs(signal_names, bc_name)
+        branching_ratios, event_categories = self.get_signal_model_inputs(signal_names, bc_name)
         h_signal = self.build_expected_signal_hist(
             region,
             signal_names,
             branching_ratios,
-            analyzing_powers,
+            event_categories,
             var,
             parameter_value,
-            truth_hist_build_func,
         )
 
         data_hist = unfold.build_Hist_from_TH1D(h_data)

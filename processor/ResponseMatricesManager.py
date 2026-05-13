@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import awkward as ak
 from utils.tau_decay import get_event_category_from_signal_name, NOMINAL_BC_VALUES, get_analyzing_powers_from_event_category
-from quantum.observables_builder import get_observable_names, get_bc_name_from_variable_name
+from quantum.observables_builder import get_observable_names, get_bc_name_from_variable_name, get_theoretical_distribution
 import quantum.unfold as unfold
 import ROOT
 
@@ -140,21 +140,8 @@ class ResponseMatricesManager:
 
 
         # build h_truth_theo
-        bin_centers = self.bin_edges[:-1] + np.diff(self.bin_edges) / 2
-        ap_pos, ap_neg = get_analyzing_powers_from_event_category(signal_category)
-        bc_name = get_bc_name_from_variable_name(var)
-        slope = NOMINAL_BC_VALUES[bc_name]
-        extra_factor = 1
-        if bc_name.startswith('B_A'):
-            slope *= ap_pos
-        elif bc_name.startswith('B_B'):
-            slope *= ap_neg
-        elif bc_name.startswith('C_'):
-            slope *= ap_pos * ap_neg
-            extra_factor = -1 * np.log(np.abs(bin_centers)) 
-        target_distribution = 0.5 * (1 + slope * bin_centers) * extra_factor
-        target_distribution = target_distribution / np.sum(target_distribution) * ak.sum(weight[mask_truth_region])
-        h_theo = unfold.build_TH1D(f"h_theo", np.arange(self.num_bins), num_bins=self.num_bins, weight=target_distribution)
+        h_theo, _ = get_theoretical_distribution(var, signal_category, norm=ak.sum(weight[mask_truth_region]), bin_edges=self.bin_edges)
+        h_theo = unfold.build_TH1D(f"h_theo", np.arange(self.num_bins), num_bins=self.num_bins, weight=h_theo)
         for i in range(h_theo.GetNbinsX()):
             h_theo.SetBinError(i+1, 0)
 

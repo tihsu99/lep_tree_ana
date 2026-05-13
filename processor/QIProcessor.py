@@ -26,6 +26,8 @@ def plot_quantum_observables(dl_dict, output_dir, region_name="hadhad", log_scal
             flag_valid = events['flags_valid'] > 0
             obs_values = obs_values[flag_valid]
             weights = events['weight'][flag_valid]
+            weight_sf = events[f'{obs}_reweight_sf'][flag_valid]
+            weights = weights * weight_sf
             return obs_values, weights
         bin_edges = np.linspace(-1, 1, 11)
         fig, ax, ax_ratio = do_control_plot(
@@ -154,6 +156,11 @@ class QIProcessor(BaseProcessor):
                 truth_histograms = {}
                 for var in self.unfold_vars:
                     print(f"Unfolding {var}...")
+
+                    # apply weight sf
+                    weight_data = weight_data * np.concatenate([ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False) for events in data_events])
+                    weight_bkg = weight_bkg * np.concatenate([ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False) for events in background_events])
+                    weight_signal = weight_signal * np.concatenate([ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False) for events in signal_events])
 
                     # unfold the variable
                     # get binned_vars and weights for both data and background to be unfolded

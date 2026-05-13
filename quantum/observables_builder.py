@@ -36,6 +36,44 @@ def get_bc_name_from_variable_name(variable_name):
     return None
 
 
+def get_theoretical_distribution(var_name, signal_category, norm=1, bin_edges=None, num_bins=None, bc_value=None):
+    if bin_edges is not None:
+        num_bins = len(bin_edges) - 1
+        bin_edges = np.array(bin_edges)
+    elif num_bins is not None:
+        bin_edges = np.linspace(-1, 1, num_bins + 1)
+    else:
+        raise ValueError("Either bin_edges or num_bins must be provided")
+
+    assert np.all(bin_edges <= 1) and np.all(bin_edges >= -1), "Bin edges must be in the range (-1, 1)"
+
+    # get theo distribution with finer bins
+    raw_num_bins = 10000
+    raw_bin_edges = np.linspace(-1, 1, raw_num_bins + 1)
+    raw_bin_centers = (raw_bin_edges[:-1] + raw_bin_edges[1:]) / 2
+
+    bc_name = get_bc_name_from_variable_name(var_name)
+    bc_value = bc_value if bc_value is not None else NOMINAL_BC_VALUES[bc_name]
+    ap_pos, ap_neg = get_analyzing_powers_from_event_category(signal_category)
+
+    slope = bc_value
+    extra_factor = 1
+    if bc_name.startswith('B_A'):
+        slope *= ap_pos
+    elif bc_name.startswith('B_B'):
+        slope *= ap_neg
+    elif bc_name.startswith('C_'):
+        slope *= ap_pos * ap_neg
+        extra_factor = -np.log(np.clip(np.abs(raw_bin_centers), 1e-16, None))
+    raw_hist = 0.5 * (1 + slope * raw_bin_centers) * extra_factor
+    raw_hist = raw_hist / np.sum(raw_hist) * norm
+
+    # rebin the raw hist to the desired binning
+    hist_theo, _ = np.histogram(raw_bin_centers, bins=bin_edges, weights=raw_hist)
+
+    return hist_theo, bin_edges
+
+
 def reweight_correlation(ary_observable, ary_spin_analyzing_power, weight, element_name, variation):
     assert len(ary_observable) == len(weight)
     assert len(ary_observable) == len(ary_spin_analyzing_power)
