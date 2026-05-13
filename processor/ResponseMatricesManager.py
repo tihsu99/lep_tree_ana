@@ -93,8 +93,8 @@ class ResponseMatricesManager:
                 binned_var_recon = self.get_binned_observable(var, events)
                 binned_var_truth = self.get_binned_observable(f'truth_{var}', events)
                 weight = ak.to_numpy(events['weight_nominal'], allow_missing=False)
-                weight_sf = ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False)
-                weight = weight * weight_sf
+                # weight_sf = ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False)
+                # weight = weight * weight_sf
 
                 # set truth (recon) observable to np.nan if the event is outside of the truth (analysis) region
                 binned_var_truth[~mask_truth_region] = np.nan
@@ -135,8 +135,8 @@ class ResponseMatricesManager:
         # events = raw_events[mask_target_signal & (mask_truth_region | mask_analysis_region)]
         events = raw_events
         weight = ak.to_numpy(events['weight_nominal'], allow_missing=False)
-        weight_sf = ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False)
-        weight = weight * weight_sf
+        # weight_sf = ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False)
+        # weight = weight * weight_sf
 
 
         # build h_truth_theo

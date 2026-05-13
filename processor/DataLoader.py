@@ -101,11 +101,11 @@ class DataLoader:
         events['weight_nominal'] = weight
         events['weight'] = events['weight_nominal'] # default weight is nominal weight
 
-        # initilize weight sf
-        for var in get_observable_names():
-            if not 'cos' in var: continue
-            if not f'{var}_reweight_sf' in events.fields:
-                events[f'{var}_reweight_sf'] = ak.ones_like(events['Event_evtNumber'], dtype=np.float32)
+        # # initilize weight sf
+        # for var in get_observable_names():
+        #     if not 'cos' in var: continue
+        #     if not f'{var}_reweight_sf' in events.fields:
+        #         events[f'{var}_reweight_sf'] = ak.ones_like(events['Event_evtNumber'], dtype=np.float32)
 
         # # test ideal neutrino reconstruction
         # if 'Ztautau' in sample_name:

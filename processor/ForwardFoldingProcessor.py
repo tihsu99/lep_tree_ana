@@ -147,7 +147,7 @@ class ForwardFoldingProcessor(BaseProcessor):
             return unfold.build_TH1D(name, [], self.num_bins)
         binned_var = np.concatenate([self.get_binned_observable(var, events) for events in events_list])
         weight = np.concatenate([ak.to_numpy(events["weight"], allow_missing=False) for events in events_list])
-        weight = weight * np.concatenate([ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False) for events in events_list])
+        # weight = weight * np.concatenate([ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False) for events in events_list])
         return unfold.build_TH1D(name, binned_var, self.num_bins, weight)
 
     def get_region_events(self, dl_dict, region, signal_names):
