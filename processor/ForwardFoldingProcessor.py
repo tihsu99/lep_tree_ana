@@ -105,14 +105,23 @@ class ForwardFoldingProcessor(BaseProcessor):
 
     def build_expected_signal_hist(self, region, signal_names, branching_ratios, event_categories, var, parameter_value, nuisance_parameters):
         expected = None
-        
-        norm_signal = nuisance_parameters.get('norm_signal', 1.0)
+
+        global_signal_norm = nuisance_parameters.get("norm_signal", 1.0)
         for idx, signal_name in enumerate(signal_names):
-            branching_ratio = branching_ratios[idx] 
-            norm_signal *= nuisance_parameters.get(f'norm_{signal_name}', 1.0)
-            
+            branching_ratio = branching_ratios[idx]
+            signal_norm = global_signal_norm * nuisance_parameters.get(
+                f"norm_{signal_name}",
+                1.0,
+            )
+
             # Build truth template specific to this signal's analyzing power and branching ratio
-            truth_hist, _ = ob.get_theoretical_distribution(var_name=var, signal_category=event_categories[idx], norm=self.expected_yields_truth_region * branching_ratio * norm_signal, bin_edges=self.bin_edges, bc_value=parameter_value)
+            truth_hist, _ = ob.get_theoretical_distribution(
+                var_name=var,
+                signal_category=event_categories[idx],
+                norm=self.expected_yields_truth_region * branching_ratio * signal_norm,
+                bin_edges=self.bin_edges,
+                bc_value=parameter_value,
+            )
             truth_hist = truth_hist
 
             truth_hist = unfold.build_TH1D(f"h_truth_{region}_{signal_name}_{var}_{parameter_value:.5f}", var=np.arange(self.num_bins), num_bins=self.num_bins, weight=truth_hist)
@@ -224,13 +233,19 @@ class ForwardFoldingProcessor(BaseProcessor):
             build_expected_values=lambda poi_value, nuisance_parameters: self.build_expected_values(
                 region, signal_names, var, poi_value, nuisance_parameters, h_bkg
             ),
+            uncertainty_method=self.config.get("uncertainty_method", "Likelihood_Scan"),
+            likelihood_scan_points=self.config.get("likelihood_scan_points", 101),
+            likelihood_scan_threshold=self.config.get("likelihood_scan_threshold"),
+            likelihood_scan_confidence_level=self.config.get(
+                "likelihood_scan_confidence_level"
+            ),
+            likelihood_scan_tail=self.config.get("likelihood_scan_tail", "two_sided"),
         )
         fit_result = fitter.fit()
-        err = fit_result.poi_uncertainty
         fit_value = ob.ValueWithUncertainty(
             fit_result.postfit.pois[bc_name],
-            err,
-            err,
+            fit_result.poi_uncertainty_up,
+            fit_result.poi_uncertainty_down,
         )
         return fit_value, fit_result
 
@@ -318,16 +333,97 @@ class ForwardFoldingProcessor(BaseProcessor):
         fig.savefig(f"{output_dir}/log_{var}_{label}_data_mc.png")
         plt.close(fig)
 
+    def plot_likelihood_scan(self, output_dir, var, fit_result):
+        scan_result = fit_result.likelihood_scan
+        if scan_result is None or len(scan_result.poi_values) == 0:
+            return
+
+        os.makedirs(output_dir, exist_ok=True)
+        bc_name = ob.get_bc_name_from_variable_name(var)
+        poi_values = np.asarray(scan_result.poi_values, dtype=float)
+        delta_values = np.asarray(
+            scan_result.delta_neg2_log_likelihood_values,
+            dtype=float,
+        )
+        best_fit_value = fit_result.postfit.pois[bc_name]
+
+        fig, ax = plt.subplots(figsize=(7, 5))
+        ax.plot(poi_values, delta_values, color="tab:blue", linewidth=2)
+        ax.axhline(
+            scan_result.threshold_delta_neg2_log_likelihood,
+            color="tab:red",
+            linestyle="--",
+            linewidth=1.2,
+            label=(
+                f"{100.0 * scan_result.confidence_level:.1f}% CL"
+                if scan_result.confidence_level is not None
+                else "Likelihood threshold"
+            ),
+        )
+        ax.axvline(
+            best_fit_value,
+            color="black",
+            linestyle="--",
+            linewidth=1.2,
+            label=f"Best fit = {best_fit_value:.4f}",
+        )
+
+        if scan_result.interval_lower is not None:
+            ax.axvline(
+                scan_result.interval_lower,
+                color="tab:green",
+                linestyle=":",
+                linewidth=1.2,
+            )
+        if scan_result.interval_upper is not None:
+            ax.axvline(
+                scan_result.interval_upper,
+                color="tab:green",
+                linestyle=":",
+                linewidth=1.2,
+            )
+        if (
+            scan_result.interval_lower is not None
+            and scan_result.interval_upper is not None
+        ):
+            ax.axvspan(
+                scan_result.interval_lower,
+                scan_result.interval_upper,
+                color="tab:green",
+                alpha=0.12,
+                label=(
+                    f"68% interval: "
+                    f"[{scan_result.interval_lower:.4f}, {scan_result.interval_upper:.4f}]"
+                ),
+            )
+
+        ax.set_xlabel(bc_name)
+        ax.set_ylabel(r"$\Delta(-2\ln\mathcal{L})$")
+        ax.set_title(f"{var} likelihood scan")
+        ax.grid(alpha=0.25)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(f"{output_dir}/{var}_likelihood_scan.png")
+        plt.close(fig)
+
     def write_fit_snapshots(self, region, fit_results):
         payload = OrderedDict()
         for bc_name, fit_result in fit_results.items():
             payload[bc_name] = {
                 "prefit": fit_result.prefit.to_dict(),
                 "postfit": fit_result.postfit.to_dict(),
-                "poi_uncertainty": fit_result.poi_uncertainty,
+                "poi_uncertainty": {
+                    "up": fit_result.poi_uncertainty_up,
+                    "down": fit_result.poi_uncertainty_down,
+                },
                 "neg2_log_likelihood": fit_result.neg2_log_likelihood,
                 "success": bool(fit_result.optimizer_result.success),
                 "message": str(fit_result.optimizer_result.message),
+                "likelihood_scan": (
+                    None
+                    if fit_result.likelihood_scan is None
+                    else fit_result.likelihood_scan.to_dict()
+                ),
             }
         with open(f"{self.output_dir}/{region}/fit_parameters.json", "w") as f_json:
             json.dump(payload, f_json, indent=2)
@@ -397,6 +493,11 @@ class ForwardFoldingProcessor(BaseProcessor):
                         fit_result.postfit.nuisance_parameters,
                         "postfit",
                     )
+                self.plot_likelihood_scan(
+                    f"{region_output_dir}/likelihood_scan",
+                    var,
+                    fit_result,
+                )
 
             self.fit_results[region] = observable_fit_results
             self.write_fit_snapshots(region, observable_fit_results)
