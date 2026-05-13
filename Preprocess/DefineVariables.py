@@ -287,7 +287,7 @@ def define_signal_exclusive_variables(events: ak.Array):
 
         # retrieve observable values and specify events to be reweighted
         obs_values = ak.to_numpy(events[f'truth_{obs_name}'])
-        obs_binned = unfold.bin_variable(observable_values=obs_values, bins=bins_reweighting)
+        obs_binned = unfold.bin_variable(var=obs_values, bin_edges=bins_reweighting)
         mask_obs = mask_reweight & (obs_values > -1) & (obs_values < 1)
 
         # calculate sf channel-wise
@@ -304,11 +304,11 @@ def define_signal_exclusive_variables(events: ak.Array):
                 slope = nominal_bc_value
                 extra_factor = 1
                 if bc_name.startswith('B_A'):
-                    slope = ap_pos
+                    slope *= ap_pos
                 elif bc_name.startswith('B_B'):
-                    slope = ap_neg
+                    slope *= ap_neg
                 elif bc_name.startswith('C_'):
-                    slope = ap_pos * ap_neg
+                    slope *= ap_pos * ap_neg
                     extra_factor = -1 * np.log(np.abs(bins_centers)) 
                 target_distribution = 0.5 * (1 + slope * bins_centers) * extra_factor
                 # drop norm effect
