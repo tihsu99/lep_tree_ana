@@ -74,6 +74,17 @@ class QIProcessor(BaseProcessor):
         binned_var = unfold.bin_variable(var_values, self.bin_edges)
         return binned_var.astype(float)
 
+    @staticmethod
+    def concat_event_field(events_list, field_name, dtype=float):
+        if len(events_list) == 0:
+            return np.array([], dtype=dtype)
+        return np.concatenate([ak.to_numpy(events[field_name], allow_missing=False) for events in events_list]).astype(dtype, copy=False)
+
+    def concat_binned_observable(self, var, events_list):
+        if len(events_list) == 0:
+            return np.array([], dtype=float)
+        return np.concatenate([self.get_binned_observable(var, events) for events in events_list]).astype(float, copy=False)
+
     def run(self, dl_dict):
         f_out = open(f"{self.output_dir}/results.txt", 'w')
         # for region in self.regions:
@@ -133,10 +144,16 @@ class QIProcessor(BaseProcessor):
                     if (dl.is_data and not self.asimov_data) or (self.asimov_data and is_mc):
                         data_events.append(events)
 
-                # weight = ak.to_numpy(events_to_unfold['weight'], allow_missing=False)
-                weight_data = np.concatenate([ak.to_numpy(events['weight'], allow_missing=False) for events in data_events])
-                weight_bkg = np.concatenate([ak.to_numpy(events['weight'], allow_missing=False) for events in background_events])
-                weight_signal = np.concatenate([ak.to_numpy(events['weight'], allow_missing=False) for events in signal_events])
+                if len(signal_events) == 0:
+                    print_and_write_to_opened_file("    No signal events remain after selection. Skipping unfolding.", f_out)
+                    continue
+                if len(data_events) == 0:
+                    print_and_write_to_opened_file("    No data events remain after selection. Skipping unfolding.", f_out)
+                    continue
+
+                weight_data = self.concat_event_field(data_events, 'weight')
+                weight_bkg = self.concat_event_field(background_events, 'weight')
+                weight_signal = self.concat_event_field(signal_events, 'weight')
 
                 truth_events = self.events_truth_region[self.events_truth_region['event_category'] == event_category] 
                 truth_weight = ak.to_numpy(truth_events['weight'], allow_missing=False)
@@ -153,10 +170,10 @@ class QIProcessor(BaseProcessor):
 
                     # unfold the variable
                     # get binned_vars and weights for both data and background to be unfolded
-                    binned_var_data = np.concatenate([self.get_binned_observable(var, events) for events in data_events])
+                    binned_var_data = self.concat_binned_observable(var, data_events)
                     h_measure_data = unfold.build_TH1D(f"h_{var}_data", binned_var_data, num_bins=self.num_bins, weight=weight_data)
 
-                    binned_var_bkg = np.concatenate([self.get_binned_observable(var, events) for events in background_events])
+                    binned_var_bkg = self.concat_binned_observable(var, background_events)
                     h_measure_bkg = unfold.build_TH1D(f"h_{var}_bkg", binned_var_bkg, num_bins=self.num_bins, weight=weight_bkg)
 
                     # set bin error to sqrt of bin content to mimic Poisson uncertainty for asimov data
