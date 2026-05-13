@@ -58,6 +58,8 @@ class DataLoader:
             events_list = [load_events_from_parquet(file) for file in files]
             events = ak.concatenate(events_list, axis=0)
 
+        preserve_stored_weights = "weight" in events.fields and "weight_nominal" in events.fields
+
         # Reweight events based on cutflow information
         initial_num_events = 0
         total_weights = 0
@@ -67,12 +69,12 @@ class DataLoader:
                 cutflow = json.load(f)
                 assert cutflow[0]['cut'] == 'initial_total_num_events', f"First cut in cutflow should be 'initial_total_num_events' but got {cutflow[0]['cut']} in {cutflow_file}"
                 initial_num_events += cutflow[0]['events']
-                if (total_weights != 0) and (not is_data):
+                if (total_weights != 0) and (not is_data) and (not preserve_stored_weights):
                     assert abs(cutflow[0]['weighted_events'] - total_weights) < 1e-6, f"Weighted events in cutflow do not match across samples for {sample_name}. Please check cutflow files. {total_weights} vs {cutflow[0]['weighted_events']}"
                 total_weights = cutflow[0]['weighted_events']
 
         # split Ztautau into train and test set 
-        if sample_name=='Ztautau':
+        if sample_name=='Ztautau' and not preserve_stored_weights:
             half_num_events = len(events) // 2
             initial_num_events = initial_num_events // 2
             if is_trainset:
@@ -87,6 +89,8 @@ class DataLoader:
                 # print(f"Using test set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
         
         events['initial_num_events'] = initial_num_events
+        if preserve_stored_weights:
+            return events, initial_num_events
         weight = 1.0 if is_data else total_weights / initial_num_events if initial_num_events > 0 else 1.0
         events['weight_nominal'] = weight
         events['weight'] = events['weight_nominal'] # default weight is nominal weight
@@ -126,6 +130,10 @@ class DataLoader:
 
 
     def postprocess(self):
+        if all("weight" in events.fields and "weight_nominal" in events.fields for events in self.data.values()):
+            self.current_variation = ('nominal', 0.0)
+            return
+
         # define weight for each event
         if self.initial_total_num_events == 0:
             log.warning("Initial total number of events is 0. This may be due to all events being filtered out or an issue in loading data. Setting weight to 1 for all events to avoid division by zero.")
@@ -133,7 +141,7 @@ class DataLoader:
         else:
             weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
         for ch, ch_events in self.data.items():
-            ch_events['weight_nominal'] = weight * ak.ones_like(ch_events['evtNumber'], dtype=np.float32)
+            ch_events['weight_nominal'] = np.full(len(ch_events), weight, dtype=np.float32)
             ch_events['weight'] = ch_events['weight_nominal'] # default weight is nominal weight
         self.current_variation = ('nominal', 0.0)
 
