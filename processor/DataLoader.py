@@ -39,6 +39,16 @@ class DataLoader:
     @staticmethod
     def load_processed_data(data_dir, sample_name, region_name='raw', is_data=False, is_trainset=False):
         sample_dirs = DataLoader.get_processed_sample_dirs(data_dir, sample_name)
+        # split Ztautau into train and test set 
+        if sample_name=='Ztautau':
+            if is_trainset:
+                sample_dirs = sample_dirs[1:]
+                print(f"Using train set for sample {sample_name} from {sample_dirs}")
+            else:
+                sample_dirs = sample_dirs[:1]
+                # sample_dirs = sample_dirs[1:]
+                print(f"Using test set for sample {sample_name} from {sample_dirs}")
+
         
         files = [
             os.path.join(sample_dir, f"filtered___{region_name}.parquet")
@@ -71,25 +81,31 @@ class DataLoader:
                     assert abs(cutflow[0]['weighted_events'] - total_weights) < 1e-6, f"Weighted events in cutflow do not match across samples for {sample_name}. Please check cutflow files. {total_weights} vs {cutflow[0]['weighted_events']}"
                 total_weights = cutflow[0]['weighted_events']
 
-        # split Ztautau into train and test set 
-        if sample_name=='Ztautau':
-            half_num_events = len(events) // 2
-            initial_total_num_events = initial_total_num_events // 2
-            if is_trainset:
-                events = events[:half_num_events]
-                print(f"Using train set for sample {sample_name} from the first half of events: {len(events)} events from {files}")
-                # sample_dirs = sample_dirs[:-1]
-                # print(f"Using train set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
-            else:
-                events = events[half_num_events:]
-                print(f"Using test set for sample {sample_name} from the second half of events: {len(events)} events from {files}")
-                # sample_dirs = [sample_dirs[-1]]
-                # print(f"Using test set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
+        # # split Ztautau into train and test set 
+        # if sample_name=='Ztautau':
+        #     half_num_events = len(events) // 2
+        #     initial_total_num_events = initial_total_num_events // 2
+        #     if is_trainset:
+        #         events = events[:half_num_events]
+        #         print(f"Using train set for sample {sample_name} from the first half of events: {len(events)} events from {files}")
+        #         # sample_dirs = sample_dirs[:-1]
+        #         # print(f"Using train set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
+        #     else:
+        #         events = events[half_num_events:]
+        #         print(f"Using test set for sample {sample_name} from the second half of events: {len(events)} events from {files}")
+        #         # sample_dirs = [sample_dirs[-1]]
+        #         # print(f"Using test set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
         
         events['initial_total_num_events'] = initial_total_num_events
         weight = 1.0 if is_data else total_weights / initial_total_num_events if initial_total_num_events > 0 else 1.0
         events['weight_nominal'] = weight
         events['weight'] = events['weight_nominal'] # default weight is nominal weight
+
+        # initilize weight sf
+        for var in get_observable_names():
+            if not 'cos' in var: continue
+            if not f'{var}_reweight_sf' in events.fields:
+                events[f'{var}_reweight_sf'] = ak.ones_like(events['Event_evtNumber'], dtype=np.float32)
 
         # # test ideal neutrino reconstruction
         # if 'Ztautau' in sample_name:
