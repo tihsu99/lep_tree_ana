@@ -10,7 +10,7 @@ import awkward as ak
 import copy
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
             get_all_p4_from_ak_events, cme, rebuild_p4, deltaR_nearby
-from quantum.observables_builder import build_observables, get_observable_names, get_bc_name_from_variable_name
+from quantum.observables_builder import build_observables, get_observable_names, get_bc_name_from_variable_name, get_theoretical_distribution
 import quantum.unfold as unfold
 import utils.tau_decay as tau_decay
 from utils.tau_decay import get_analyzing_powers_from_event_categories, get_analyzing_powers_from_event_category
@@ -282,9 +282,6 @@ def define_signal_exclusive_variables(events: ak.Array):
     for obs_name in [obs for obs in get_observable_names() if 'cos' in obs]:
         reweight_sf = np.ones_like(weight_original)
 
-        bc_name = get_bc_name_from_variable_name(obs_name)
-        nominal_bc_value = tau_decay.NOMINAL_BC_VALUES[bc_name]
-
         # retrieve observable values and specify events to be reweighted
         obs_values = ak.to_numpy(events[f'truth_{obs_name}'])
         obs_binned = unfold.bin_variable(var=obs_values, bin_edges=bins_reweighting)
@@ -294,25 +291,11 @@ def define_signal_exclusive_variables(events: ak.Array):
         for c_pos in range(1, 5):
             for c_neg in range(1, 5):
                 channel = 10 * c_pos + c_neg
-                ap_pos, ap_neg = get_analyzing_powers_from_event_category(channel)
                 mask_channel = mask_obs & (events['event_category'] == channel)
-
                 sum_weights_per_bin, _ = np.histogram(obs_values[mask_channel], bins=bins_reweighting, weights=weight_original[mask_channel])
                 sum_weights_total = np.sum(sum_weights_per_bin)
 
-                # get target distribution
-                slope = nominal_bc_value
-                extra_factor = 1
-                if bc_name.startswith('B_A'):
-                    slope *= ap_pos
-                elif bc_name.startswith('B_B'):
-                    slope *= ap_neg
-                elif bc_name.startswith('C_'):
-                    slope *= ap_pos * ap_neg
-                    extra_factor = -1 * np.log(np.abs(bins_centers)) 
-                target_distribution = 0.5 * (1 + slope * bins_centers) * extra_factor
-                # drop norm effect
-                target_distribution = target_distribution / np.sum(target_distribution) * sum_weights_total
+                target_distribution, _ = get_theoretical_distribution(var_name=obs_name, signal_category=channel, norm=sum_weights_total, bin_edges=bins_reweighting)
 
                 # calculate sf per bin and apply to events in the bin
                 sf_per_bin = np.ones_like(sum_weights_per_bin)
