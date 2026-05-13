@@ -60,6 +60,13 @@ class MMC:
                 (self.pdfs['electron'], self.pdfs['muon']),
                 (self.pdfs['muon'], self.pdfs['electron'])
             ]
+        elif region_name in {'pi_el', 'el_pi', 'pi_mu', 'mu_pi',
+                             'rho_el', 'el_rho', 'rho_mu', 'mu_rho'}:
+            # Lephad regions: hadronic side is determined by the algebraic
+            # m_miss = 0 condition (handled inside MMCLepHad via
+            # compute_neutrino_momenta); leptonic side scans m_inv_lep against
+            # the electron or muon dR PDF. Delegate and return early.
+            return self._calculate_lephad(vis_a_p4, vis_b_p4, region_name)
         else:
             raise ValueError(f"Unknown region {region_name}")
 
@@ -103,5 +110,52 @@ class MMC:
 
         mmc_likelihood = np.ascontiguousarray(mmc_likelihood)
         flags_valid = np.ascontiguousarray(np.where((mmc_likelihood > 0) & np.isfinite(mmc_likelihood), 1, 0))
-        
+
         return reco_mis_positivep4, reco_mis_negativep4, flags_valid, mmc_likelihood
+
+    def _calculate_lephad(self, vis_a_p4, vis_b_p4, region_name):
+        """Lephad reconstruction. region_name encodes the (hadron, lepton)
+        ordering and the lepton flavor: e.g. 'pi_el' = hadron(pi) on a-side,
+        lepton(electron) on b-side; 'el_rho' = lepton(electron) on a-side,
+        hadron(rho) on b-side.
+        """
+        from mmc.mmc_lephad import MMCLepHad
+
+        had_a, lep_a = region_name.split('_')
+        had_on_a = had_a in ('pi', 'rho')
+        lep_flavor = lep_a if had_on_a else had_a
+        lep_pdf = self.pdfs['electron'] if lep_flavor == 'el' else self.pdfs['muon']
+        engine = MMCLepHad(lep_hist_array=lep_pdf, sqrt_s=cme)
+
+        if had_on_a:
+            vis_had, vis_lep = vis_a_p4, vis_b_p4
+        else:
+            vis_had, vis_lep = vis_b_p4, vis_a_p4
+
+        nu_had, nu_lep, likelihood = parallel_calculation(
+            engine, vis_had, vis_lep, num_workers=self.mmc_workers
+        )
+
+        # Map back to (a, b) ordering. Caller expects (mis_positive=a, mis_negative=b).
+        if had_on_a:
+            nu_a, nu_b = nu_had, nu_lep
+        else:
+            nu_a, nu_b = nu_lep, nu_had
+
+        reco_mis_positivep4 = vector.zip({
+            "px": np.ascontiguousarray(nu_a.px),
+            "py": np.ascontiguousarray(nu_a.py),
+            "pz": np.ascontiguousarray(nu_a.pz),
+            "E":  np.ascontiguousarray(nu_a.E),
+        })
+        reco_mis_negativep4 = vector.zip({
+            "px": np.ascontiguousarray(nu_b.px),
+            "py": np.ascontiguousarray(nu_b.py),
+            "pz": np.ascontiguousarray(nu_b.pz),
+            "E":  np.ascontiguousarray(nu_b.E),
+        })
+        likelihood = np.ascontiguousarray(likelihood)
+        flags_valid = np.ascontiguousarray(
+            np.where((likelihood > 0) & np.isfinite(likelihood), 1, 0)
+        )
+        return reco_mis_positivep4, reco_mis_negativep4, flags_valid, likelihood

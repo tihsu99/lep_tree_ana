@@ -9,15 +9,35 @@ GlobalConfigs:
     - "ee"
     - "mumu"
     - "emu"
+    - "pi_el"
+    - "el_pi"
+    - "pi_mu"
+    - "mu_pi"
+    - "rho_el"
+    - "el_rho"
+    - "rho_mu"
+    - "mu_rho"
+    - "zll"
+    - "zee"
+    - "zmumu"
   verbosity: 1
   luminosity: &Luminosity 46.3 # pb^-1
-  # Ztautau sample can be further split categorizes below
+  # Ztautau sample can be further split categorizes below.
+  # Lephad split: one category per (lepton, hadron) ordered combination so
+  # QIProcessor can match each lephad region to exactly one event_category.
   signal_categories:
     Ztautau_pipi: [11]
     Ztautau_pirho: [12]
     Ztautau_rhopi: [21]
     Ztautau_rhorho: [22]
-    Ztautau_lephad: [13, 31, 14, 41, 23, 24, 42, 32]
+    Ztautau_pi_el:  [13]
+    Ztautau_el_pi:  [31]
+    Ztautau_pi_mu:  [14]
+    Ztautau_mu_pi:  [41]
+    Ztautau_rho_el: [23]
+    Ztautau_el_rho: [32]
+    Ztautau_rho_mu: [24]
+    Ztautau_mu_rho: [42]
     Ztautau_ee: [33]
     Ztautau_mumu: [44]
     Ztautau_emu: [34]
@@ -82,7 +102,9 @@ Processors:
   #     - "pion"
   NeutrinoReconstructionProcessor:
     output_dir_name: "neutrino_reco"
-    mmc_regions: ["ee", "mumu", "emu"]
+    mmc_regions: ["ee", "mumu", "emu",
+                  "pi_el", "el_pi", "pi_mu", "mu_pi",
+                  "rho_el", "el_rho", "rho_mu", "mu_rho"]
     regions:
       - pipi
       - pirho
@@ -90,6 +112,14 @@ Processors:
       - ee
       - mumu
       - emu
+      - pi_el
+      - el_pi
+      - pi_mu
+      - mu_pi
+      - rho_el
+      - el_rho
+      - rho_mu
+      - mu_rho
 
   QIProcessor:
     output_dir_name: "QI_analysis"
@@ -100,6 +130,14 @@ Processors:
       ee: ["Ztautau_ee"]
       mumu: ["Ztautau_mumu"]
       emu: ["Ztautau_emu", "Ztautau_mue"]
+      pi_el:  ["Ztautau_pi_el"]
+      el_pi:  ["Ztautau_el_pi"]
+      pi_mu:  ["Ztautau_pi_mu"]
+      mu_pi:  ["Ztautau_mu_pi"]
+      rho_el: ["Ztautau_rho_el"]
+      el_rho: ["Ztautau_el_rho"]
+      rho_mu: ["Ztautau_rho_mu"]
+      mu_rho: ["Ztautau_mu_rho"]
 
   ControlPlotProcessor:
     output_dir_name: "control_plots"
@@ -110,6 +148,17 @@ Processors:
       - "ee"
       - "mumu"
       - "emu"
+      - "pi_el"
+      - "el_pi"
+      - "pi_mu"
+      - "mu_pi"
+      - "rho_el"
+      - "el_rho"
+      - "rho_mu"
+      - "mu_rho"
+      - "zll"
+      - "zee"
+      - "zmumu"
 
   # IDAnaProcessor:
   #   output_dir_name: "ID_analysis"

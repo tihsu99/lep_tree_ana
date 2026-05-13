@@ -12,6 +12,8 @@ import Preprocess.DefineVariables as DefineVariables
 import Preprocess.BaselineSelections as BaselineSelections
 import Preprocess.HadHadSelections as HadHadSelections
 import Preprocess.LepLepSelections as LepLepSelections
+import Preprocess.LepHadSelections as LepHadSelections
+import Preprocess.ZllSelections as ZllSelections
 
 from tqdm import tqdm
 
@@ -71,6 +73,25 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
     }
     for channel, selection in lepton_channel_selections.items():
         flag_passes = apply_selection(raw_events, filter_log_dict, selection, flag_passes_leplep)
+        raw_events[f'{channel}_cut'] = flag_passes
+        flags[channel] = flag_passes
+
+    # Lephad sub-regions: 8 ordered (hadron-flavor x lepton-flavor x side)
+    # combinations parented on the baseline selection.
+    for region_name, is_lepton_positive, lepton_type, hadron_type in LepHadSelections.LEPHAD_SUBREGIONS:
+        lephad_selection = LepHadSelections.LepHadSelection(is_lepton_positive, lepton_type, hadron_type)
+        flag_passes_lephad = apply_selection(raw_events, filter_log_dict, lephad_selection, flag_passes_baseline)
+        raw_events[f'{region_name}_cut'] = flag_passes_lephad
+        flags[region_name] = flag_passes_lephad
+
+    # Zll control region (Z->ll on shell) and its zee / zmumu sub-regions.
+    zll_selection = ZllSelections.ZllSelection()
+    flag_passes_zll = apply_selection(raw_events, filter_log_dict, zll_selection, flag_passes_baseline)
+    raw_events['zll_cut'] = flag_passes_zll
+    flags['zll'] = flag_passes_zll
+    for channel, selection in (('zee', ZllSelections.ZeeSelection()),
+                                ('zmumu', ZllSelections.ZmumuSelection())):
+        flag_passes = apply_selection(raw_events, filter_log_dict, selection, flag_passes_zll)
         raw_events[f'{channel}_cut'] = flag_passes
         flags[channel] = flag_passes
 
