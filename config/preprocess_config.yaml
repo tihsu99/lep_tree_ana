@@ -1,7 +1,7 @@
 GlobalConfigs:
-  default_output_dir: "./20260427-dataset/"
-  max_input_slice_size_gb: 25
-  num_workers: 10
+  default_output_dir: "./20260512-dataset/"
+  max_input_slice_size_gb: 50
+  num_workers: 200
   luminosity: &Luminosity 46.3 # pb^-1
 
 DataLoaders:
@@ -20,7 +20,7 @@ DataLoaders:
     is_signal: false
     norm_factor: 1458.9 # pb
     input_files:
-      - "/eos/user/y/yulei/Ztautau/ntuple/simu_20251130/v94c/Z_tautau_v3/simana_*_ttree.root"
+      - "/global/cfs/cdirs/m5019/Ztautau_LEP/treefied_ntuples/tautau_v3p1/*_ttree.root"
       
   Zll:
     name: "Zll"

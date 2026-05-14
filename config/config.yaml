@@ -1,6 +1,7 @@
 GlobalConfigs:
-  default_output_dir: "./20260427-baseline"
-  processed_data_dir: "./20260427-dataset/"
+  default_output_dir: "./20260512-fit/"
+  # default_output_dir: "./20260512-closure-test/"
+  processed_data_dir: "./20260512-dataset/"
   load_regions:
     - "baseline"
     - "pipi"
@@ -80,16 +81,25 @@ Processors:
   #     - Ztautau_leplep
   #   regions:
   #     - "pion"
-  NeutrinoReconstructionProcessor:
-    output_dir_name: "neutrino_reco"
-    mmc_regions: ["ee", "mumu", "emu"]
-    regions:
-      - pipi
-      - pirho
-      - rhopi
-      - ee
-      - mumu
-      - emu
+  # NeutrinoReconstructionProcessor:
+  #   output_dir_name: "neutrino_reco"
+  #   mmc_regions: ["ee", "mumu", "emu"]
+  #   regions:
+  #     # - baseline
+  #     - pipi
+  #     - pirho
+  #     - rhopi
+  #     # - ee
+  #     - mumu
+  #     # - emu
+
+  ForwardFoldingProcessor:
+    output_dir_name: "ForwardFoldingProcessor"
+    dict_region_to_signals:
+      pipi: ["Ztautau_pipi", "Ztautau_pirho", "Ztautau_rhopi"]
+      mumu: ["Ztautau_mumu"]
+      pirho: ["Ztautau_pirho", "Ztautau_rhorho"]
+      rhopi: ["Ztautau_rhopi", "Ztautau_rhorho"]
 
   QIProcessor:
     output_dir_name: "QI_analysis"
