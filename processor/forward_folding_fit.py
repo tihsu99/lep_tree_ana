@@ -5,6 +5,9 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.stats import chi2
 
+ONE_SIGMA_DELTA_NEG2_LOG_LIKELIHOOD = 1.0
+ONE_SIGMA_CONFIDENCE_LEVEL = float(chi2.cdf(ONE_SIGMA_DELTA_NEG2_LOG_LIKELIHOOD, df=1))
+
 
 @dataclass(frozen=True)
 class NuisanceParameterSpec:
@@ -28,15 +31,54 @@ class FitParameterSnapshot:
 
 
 @dataclass(frozen=True)
+class LikelihoodIntervalResult:
+    label: str
+    threshold_delta_neg2_log_likelihood: float
+    confidence_level: float | None = None
+    tail_probability_definition: str = "custom_threshold"
+    interval_lower: float | None = None
+    interval_upper: float | None = None
+
+    def to_dict(self):
+        return {
+            "label": self.label,
+            "threshold_delta_neg2_log_likelihood": float(
+                self.threshold_delta_neg2_log_likelihood
+            ),
+            "confidence_level": self.confidence_level,
+            "tail_probability_definition": self.tail_probability_definition,
+            "interval_lower": self.interval_lower,
+            "interval_upper": self.interval_upper,
+        }
+
+
+@dataclass(frozen=True)
 class LikelihoodScanResult:
     poi_values: tuple[float, ...] = ()
     neg2_log_likelihood_values: tuple[float, ...] = ()
     delta_neg2_log_likelihood_values: tuple[float, ...] = ()
-    threshold_delta_neg2_log_likelihood: float = 1.0
-    confidence_level: float | None = None
-    tail_probability_definition: str = "two_sided"
-    interval_lower: float | None = None
-    interval_upper: float | None = None
+    one_sigma_interval: LikelihoodIntervalResult | None = None
+    intervals: tuple[LikelihoodIntervalResult, ...] = ()
+
+    @property
+    def threshold_delta_neg2_log_likelihood(self):
+        return None if self.one_sigma_interval is None else self.one_sigma_interval.threshold_delta_neg2_log_likelihood
+
+    @property
+    def confidence_level(self):
+        return None if self.one_sigma_interval is None else self.one_sigma_interval.confidence_level
+
+    @property
+    def tail_probability_definition(self):
+        return None if self.one_sigma_interval is None else self.one_sigma_interval.tail_probability_definition
+
+    @property
+    def interval_lower(self):
+        return None if self.one_sigma_interval is None else self.one_sigma_interval.interval_lower
+
+    @property
+    def interval_upper(self):
+        return None if self.one_sigma_interval is None else self.one_sigma_interval.interval_upper
 
     def to_dict(self):
         return {
@@ -45,9 +87,11 @@ class LikelihoodScanResult:
             "delta_neg2_log_likelihood_values": list(
                 self.delta_neg2_log_likelihood_values
             ),
-            "threshold_delta_neg2_log_likelihood": float(
-                self.threshold_delta_neg2_log_likelihood
+            "one_sigma_interval": (
+                None if self.one_sigma_interval is None else self.one_sigma_interval.to_dict()
             ),
+            "intervals": [interval.to_dict() for interval in self.intervals],
+            "threshold_delta_neg2_log_likelihood": self.threshold_delta_neg2_log_likelihood,
             "confidence_level": self.confidence_level,
             "tail_probability_definition": self.tail_probability_definition,
             "interval_lower": self.interval_lower,
@@ -96,8 +140,8 @@ class SinglePOIFitter:
         build_expected_values,
         uncertainty_method="Likelihood_Scan",
         likelihood_scan_points=101,
-        likelihood_scan_threshold=None,
-        likelihood_scan_confidence_level=None,
+        likelihood_scan_thresholds=None,
+        likelihood_scan_confidence_levels=None,
         likelihood_scan_tail="two_sided",
     ):
         self.poi_name = poi_name
@@ -111,13 +155,10 @@ class SinglePOIFitter:
         self.build_expected_values = build_expected_values
         self.likelihood_scan_points = max(int(likelihood_scan_points), 3)
         self.last_likelihood_scan = None
-        (
-            self.likelihood_scan_threshold,
-            self.likelihood_scan_confidence_level,
-            self.likelihood_scan_tail,
-        ) = self.resolve_likelihood_scan_configuration(
-            likelihood_scan_threshold,
-            likelihood_scan_confidence_level,
+        # The scan can report multiple confidence intervals
+        self.likelihood_scan_intervals = self.resolve_likelihood_scan_configuration(
+            likelihood_scan_thresholds,
+            likelihood_scan_confidence_levels,
             likelihood_scan_tail,
         )
 
@@ -152,38 +193,39 @@ class SinglePOIFitter:
             confidence_level /= 100.0
         if not 0.0 < confidence_level < 1.0:
             raise ValueError(
-                "likelihood_scan_confidence_level must be between 0 and 1, "
+                "likelihood_scan_confidence_levels values must be between 0 and 1, "
                 "or between 0 and 100 when given as a percentage."
             )
         return confidence_level
 
-    @classmethod
-    def resolve_likelihood_scan_configuration(
-        cls,
-        threshold,
-        confidence_level,
-        tail,
-    ):
-        if threshold is not None:
-            resolved_threshold = float(threshold)
-            if resolved_threshold <= 0:
-                raise ValueError("likelihood_scan_threshold must be positive.")
-            return (
-                resolved_threshold,
-                None,
-                "custom_threshold",
-            )
+    @staticmethod
+    def ensure_config_list(value):
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set, np.ndarray)):
+            return list(value)
+        return [value]
 
+    @classmethod
+    def make_interval_spec_from_threshold(cls, threshold):
+        resolved_threshold = float(threshold)
+        if resolved_threshold <= 0:
+            raise ValueError("likelihood_scan_thresholds values must be positive.")
+        return LikelihoodIntervalResult(
+            label=f"Delta(-2lnL)={resolved_threshold:.3f}",
+            threshold_delta_neg2_log_likelihood=resolved_threshold,
+            confidence_level=None,
+            tail_probability_definition="custom_threshold",
+        )
+
+    @classmethod
+    def make_interval_spec_from_confidence_level(cls, confidence_level, tail):
+        resolved_confidence_level = cls.parse_confidence_level(confidence_level)
         resolved_tail = str(tail).strip().lower()
         if resolved_tail not in {"two_sided", "one_sided"}:
             raise ValueError(
                 "likelihood_scan_tail must be either 'two_sided' or 'one_sided'."
             )
-
-        resolved_confidence_level = cls.parse_confidence_level(confidence_level)
-        if resolved_confidence_level is None:
-            resolved_confidence_level = float(chi2.cdf(1.0, df=1))
-
         if resolved_tail == "two_sided":
             resolved_threshold = float(chi2.ppf(resolved_confidence_level, df=1))
         else:
@@ -194,12 +236,46 @@ class SinglePOIFitter:
             resolved_threshold = float(
                 chi2.ppf(2.0 * resolved_confidence_level - 1.0, df=1)
             )
-
-        return (
-            resolved_threshold,
-            resolved_confidence_level,
-            resolved_tail,
+        return LikelihoodIntervalResult(
+            label=f"{100.0 * resolved_confidence_level:.1f}% CL",
+            threshold_delta_neg2_log_likelihood=resolved_threshold,
+            confidence_level=resolved_confidence_level,
+            tail_probability_definition=resolved_tail,
         )
+
+    @classmethod
+    def resolve_likelihood_scan_configuration(
+        cls,
+        thresholds,
+        confidence_levels,
+        tail,
+    ):
+        interval_specs = [
+            LikelihoodIntervalResult(
+                label="1 sigma",
+                threshold_delta_neg2_log_likelihood=ONE_SIGMA_DELTA_NEG2_LOG_LIKELIHOOD,
+                confidence_level=ONE_SIGMA_CONFIDENCE_LEVEL,
+                tail_probability_definition="two_sided",
+            )
+        ]
+        interval_specs.extend(
+            cls.make_interval_spec_from_confidence_level(level, tail)
+            for level in cls.ensure_config_list(confidence_levels)
+        )
+        interval_specs.extend(
+            cls.make_interval_spec_from_threshold(scan_threshold)
+            for scan_threshold in cls.ensure_config_list(thresholds)
+        )
+
+        deduplicated_specs = OrderedDict()
+        for spec in interval_specs:
+            dedup_key = (
+                round(spec.threshold_delta_neg2_log_likelihood, 12),
+                spec.tail_probability_definition,
+            )
+            if dedup_key not in deduplicated_specs:
+                deduplicated_specs[dedup_key] = spec
+        return tuple(deduplicated_specs.values())
 
     def fit(self):
         x0 = [self.nominal_poi_value]
@@ -316,8 +392,44 @@ class SinglePOIFitter:
         fraction = np.clip(fraction, 0.0, 1.0)
         return float(x0 + fraction * (x1 - x0))
 
+    def extract_interval(self, poi_values, delta_neg2_log_likelihood_values, threshold):
+        interval_lower = None
+        interval_upper = None
+        best_index = int(np.argmin(delta_neg2_log_likelihood_values))
+
+        for idx in range(best_index, 0, -1):
+            y0 = delta_neg2_log_likelihood_values[idx - 1]
+            y1 = delta_neg2_log_likelihood_values[idx]
+            if y0 > threshold and y1 <= threshold:
+                interval_lower = self.interpolate_crossing(
+                    poi_values[idx - 1],
+                    y0,
+                    poi_values[idx],
+                    y1,
+                    threshold,
+                )
+                break
+        if interval_lower is None and delta_neg2_log_likelihood_values[0] <= threshold:
+            interval_lower = float(poi_values[0])
+
+        for idx in range(best_index, len(poi_values) - 1):
+            y0 = delta_neg2_log_likelihood_values[idx]
+            y1 = delta_neg2_log_likelihood_values[idx + 1]
+            if y0 <= threshold and y1 > threshold:
+                interval_upper = self.interpolate_crossing(
+                    poi_values[idx],
+                    y0,
+                    poi_values[idx + 1],
+                    y1,
+                    threshold,
+                )
+                break
+        if interval_upper is None and delta_neg2_log_likelihood_values[-1] <= threshold:
+            interval_upper = float(poi_values[-1])
+
+        return interval_lower, interval_upper
+
     def build_likelihood_scan(self, best_value, best_nuisance_values):
-        scan_threshold = self.likelihood_scan_threshold
         total_points = self.likelihood_scan_points
         points_left = max(total_points // 2, 1)
         points_right = max(total_points - points_left - 1, 1)
@@ -363,42 +475,35 @@ class SinglePOIFitter:
             neg2_log_likelihood_values - float(np.min(neg2_log_likelihood_values))
         )
 
-        interval_lower = None
-        interval_upper = None
-        best_index = int(np.argmin(delta_neg2_log_likelihood_values))
-
-        for idx in range(best_index, 0, -1):
-            y0 = delta_neg2_log_likelihood_values[idx - 1]
-            y1 = delta_neg2_log_likelihood_values[idx]
-            if y0 > scan_threshold and y1 <= scan_threshold:
-                interval_lower = self.interpolate_crossing(
-                    poi_values[idx - 1],
-                    y0,
-                    poi_values[idx],
-                    y1,
-                    scan_threshold,
+        intervals = []
+        for spec in self.likelihood_scan_intervals:
+            interval_lower, interval_upper = self.extract_interval(
+                poi_values,
+                delta_neg2_log_likelihood_values,
+                spec.threshold_delta_neg2_log_likelihood,
+            )
+            intervals.append(
+                LikelihoodIntervalResult(
+                    label=spec.label,
+                    threshold_delta_neg2_log_likelihood=spec.threshold_delta_neg2_log_likelihood,
+                    confidence_level=spec.confidence_level,
+                    tail_probability_definition=spec.tail_probability_definition,
+                    interval_lower=interval_lower,
+                    interval_upper=interval_upper,
                 )
-                break
-        if interval_lower is None and delta_neg2_log_likelihood_values[0] <= scan_threshold:
-            interval_lower = float(poi_values[0])
+            )
 
-        for idx in range(best_index, len(poi_values) - 1):
-            y0 = delta_neg2_log_likelihood_values[idx]
-            y1 = delta_neg2_log_likelihood_values[idx + 1]
-            if y0 <= scan_threshold and y1 > scan_threshold:
-                interval_upper = self.interpolate_crossing(
-                    poi_values[idx],
-                    y0,
-                    poi_values[idx + 1],
-                    y1,
-                    scan_threshold,
+        one_sigma_interval = next(
+            (
+                interval
+                for interval in intervals
+                if np.isclose(
+                    interval.threshold_delta_neg2_log_likelihood,
+                    ONE_SIGMA_DELTA_NEG2_LOG_LIKELIHOOD,
                 )
-                break
-        if (
-            interval_upper is None
-            and delta_neg2_log_likelihood_values[-1] <= scan_threshold
-        ):
-            interval_upper = float(poi_values[-1])
+            ),
+            None,
+        )
 
         return LikelihoodScanResult(
             poi_values=tuple(float(value) for value in poi_values),
@@ -408,11 +513,8 @@ class SinglePOIFitter:
             delta_neg2_log_likelihood_values=tuple(
                 float(value) for value in delta_neg2_log_likelihood_values
             ),
-            threshold_delta_neg2_log_likelihood=scan_threshold,
-            confidence_level=self.likelihood_scan_confidence_level,
-            tail_probability_definition=self.likelihood_scan_tail,
-            interval_lower=interval_lower,
-            interval_upper=interval_upper,
+            one_sigma_interval=one_sigma_interval,
+            intervals=tuple(intervals),
         )
 
     def uncertainty_from_second_derivative(self, best_value, nuisance_values):

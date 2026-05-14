@@ -235,9 +235,9 @@ class ForwardFoldingProcessor(BaseProcessor):
             ),
             uncertainty_method=self.config.get("uncertainty_method", "Likelihood_Scan"),
             likelihood_scan_points=self.config.get("likelihood_scan_points", 101),
-            likelihood_scan_threshold=self.config.get("likelihood_scan_threshold"),
-            likelihood_scan_confidence_level=self.config.get(
-                "likelihood_scan_confidence_level"
+            likelihood_scan_thresholds=self.config.get("likelihood_scan_thresholds"),
+            likelihood_scan_confidence_levels=self.config.get(
+                "likelihood_scan_confidence_levels"
             ),
             likelihood_scan_tail=self.config.get("likelihood_scan_tail", "two_sided"),
         )
@@ -349,17 +349,6 @@ class ForwardFoldingProcessor(BaseProcessor):
 
         fig, ax = plt.subplots(figsize=(7, 5))
         ax.plot(poi_values, delta_values, color="tab:blue", linewidth=2)
-        ax.axhline(
-            scan_result.threshold_delta_neg2_log_likelihood,
-            color="tab:red",
-            linestyle="--",
-            linewidth=1.2,
-            label=(
-                f"{100.0 * scan_result.confidence_level:.1f}% CL"
-                if scan_result.confidence_level is not None
-                else "Likelihood threshold"
-            ),
-        )
         ax.axvline(
             best_fit_value,
             color="black",
@@ -368,6 +357,8 @@ class ForwardFoldingProcessor(BaseProcessor):
             label=f"Best fit = {best_fit_value:.4f}",
         )
 
+        # Highlight the 1 sigma band because that is the interval used to define
+        # the quoted fit uncertainty.
         if scan_result.interval_lower is not None:
             ax.axvline(
                 scan_result.interval_lower,
@@ -392,10 +383,48 @@ class ForwardFoldingProcessor(BaseProcessor):
                 color="tab:green",
                 alpha=0.12,
                 label=(
-                    f"68% interval: "
+                    f"1 sigma interval: "
                     f"[{scan_result.interval_lower:.4f}, {scan_result.interval_upper:.4f}]"
                 ),
             )
+
+        interval_colors = [
+            "tab:red",
+            "tab:orange",
+            "tab:purple",
+            "tab:brown",
+            "tab:pink",
+        ]
+        extra_intervals = [
+            interval
+            for interval in scan_result.intervals
+            if not np.isclose(interval.threshold_delta_neg2_log_likelihood, 1.0)
+        ]
+        for idx, interval in enumerate(extra_intervals):
+            color = interval_colors[idx % len(interval_colors)]
+            ax.axhline(
+                interval.threshold_delta_neg2_log_likelihood,
+                color=color,
+                linestyle="--",
+                linewidth=1.1,
+                label=interval.label,
+            )
+            if interval.interval_lower is not None:
+                ax.axvline(
+                    interval.interval_lower,
+                    color=color,
+                    linestyle=":",
+                    linewidth=1.0,
+                    alpha=0.75,
+                )
+            if interval.interval_upper is not None:
+                ax.axvline(
+                    interval.interval_upper,
+                    color=color,
+                    linestyle=":",
+                    linewidth=1.0,
+                    alpha=0.75,
+                )
 
         ax.set_xlabel(bc_name)
         ax.set_ylabel(r"$\Delta(-2\ln\mathcal{L})$")
