@@ -429,13 +429,14 @@ class SinglePOIFitter:
 
         return interval_lower, interval_upper
 
-    def build_likelihood_scan(self, best_value, best_nuisance_values):
+    def build_likelihood_scan(self, best_value, best_nuisance_values, scan_bounds=None):
         total_points = self.likelihood_scan_points
         points_left = max(total_points // 2, 1)
         points_right = max(total_points - points_left - 1, 1)
 
-        left_grid = np.linspace(best_value, self.poi_bounds[0], points_left + 1)
-        right_grid = np.linspace(best_value, self.poi_bounds[1], points_right + 1)
+        scan_bounds = scan_bounds if (scan_bounds is not None) else self.poi_bounds
+        left_grid = np.linspace(best_value, scan_bounds[0], points_left + 1)
+        right_grid = np.linspace(best_value, scan_bounds[1], points_right + 1)
 
         left_points = []
         current_nuisance = OrderedDict(best_nuisance_values)
@@ -535,9 +536,11 @@ class SinglePOIFitter:
         return unc, unc
 
     def uncertainty_from_likelihood_scan(self, best_value, nuisance_values):
+        poi_unc, _ = self.uncertainty_from_second_derivative(best_value, nuisance_values)
         self.last_likelihood_scan = self.build_likelihood_scan(
             best_value,
             nuisance_values,
+            scan_bounds = [best_value - 2.5*poi_unc, best_value + 2.5*poi_unc]
         )
         lower = self.last_likelihood_scan.interval_lower
         upper = self.last_likelihood_scan.interval_upper

@@ -237,7 +237,7 @@ class ForwardFoldingProcessor(BaseProcessor):
             likelihood_scan_points=self.config.get("likelihood_scan_points", 101),
             likelihood_scan_thresholds=self.config.get("likelihood_scan_thresholds"),
             likelihood_scan_confidence_levels=self.config.get(
-                "likelihood_scan_confidence_levels"
+                "likelihood_scan_confidence_levels", [0.95]
             ),
             likelihood_scan_tail=self.config.get("likelihood_scan_tail", "two_sided"),
         )
@@ -407,7 +407,7 @@ class ForwardFoldingProcessor(BaseProcessor):
                 color=color,
                 linestyle="--",
                 linewidth=1.1,
-                label=interval.label,
+                label=f"{interval.label}: [{interval.interval_lower:.4f}, {interval.interval_upper:.4f}]"
             )
             if interval.interval_lower is not None:
                 ax.axvline(
