@@ -10,8 +10,11 @@ import awkward as ak
 import copy
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
             get_all_p4_from_ak_events, cme, rebuild_p4, deltaR_nearby
-from quantum.observables_builder import build_observables, get_analyzing_power_ary
-from NeutrinoReconstructionProcessor import compute_neutrino_momenta
+from quantum.observables_builder import build_observables, get_observable_names, get_bc_name_from_variable_name, get_theoretical_distribution
+import quantum.unfold as unfold
+import utils.tau_decay as tau_decay
+from utils.tau_decay import get_analyzing_powers_from_event_categories, get_analyzing_powers_from_event_category
+from processor.NeutrinoReconstructionProcessor import compute_neutrino_momenta
 from mmc.MMC import MMC
 
 
@@ -265,15 +268,44 @@ def define_signal_exclusive_variables(events: ak.Array):
 
     # analyzing power
     # non-tau, pion, rho, ele, mu, other
-    analyzing_power_ary = get_analyzing_power_ary()
-    event_category = events['event_category']
-
-    pos_power = analyzing_power_ary[event_category // 10]
-    neg_power = analyzing_power_ary[event_category % 10]
+    pos_power, neg_power = get_analyzing_powers_from_event_categories(events['event_category'])
     events['analyzing_power_a'] = pos_power
     events['analyzing_power_b'] = neg_power
     events['analyzing_power'] = pos_power * neg_power
 
+    # reweight events to get expected distributions for QI observables at truth level (remove bias from tau decay and selection)
+    mask_reweight = events['truth_QI_region'] & (events['analyzing_power'] != 0)
+    bins_reweighting = np.linspace(-1, 1, 101)
+    bins_centers = 0.5 * (bins_reweighting[:-1] + bins_reweighting[1:])
+
+    weight_original = ak.to_numpy(events['weight'])
+    for obs_name in [obs for obs in get_observable_names() if 'cos' in obs]:
+        reweight_sf = np.ones_like(weight_original)
+
+        # retrieve observable values and specify events to be reweighted
+        obs_values = ak.to_numpy(events[f'truth_{obs_name}'])
+        obs_binned = unfold.bin_variable(var=obs_values, bin_edges=bins_reweighting)
+        mask_obs = mask_reweight & (obs_values > -1) & (obs_values < 1)
+
+        # calculate sf channel-wise
+        for c_pos in range(1, 5):
+            for c_neg in range(1, 5):
+                channel = 10 * c_pos + c_neg
+                mask_channel = mask_obs & (events['event_category'] == channel)
+                sum_weights_per_bin, _ = np.histogram(obs_values[mask_channel], bins=bins_reweighting, weights=weight_original[mask_channel])
+                sum_weights_total = np.sum(sum_weights_per_bin)
+
+                target_distribution, _ = get_theoretical_distribution(var_name=obs_name, signal_category=channel, norm=sum_weights_total, bin_edges=bins_reweighting)
+
+                # calculate sf per bin and apply to events in the bin
+                sf_per_bin = np.ones_like(sum_weights_per_bin)
+                nonzero_mask = sum_weights_per_bin > 0
+                sf_per_bin[nonzero_mask] = target_distribution[nonzero_mask] / sum_weights_per_bin[nonzero_mask]
+                for i in range(len(sf_per_bin)):
+                    mask_bin = mask_channel & (obs_binned == i)
+                    reweight_sf[mask_bin] = sf_per_bin[i]
+        events[f'{obs_name}_reweight_sf'] = reweight_sf
+                
     return events
 
 
@@ -292,7 +324,7 @@ def define_region_specific_variables(events: ak.Array):
     mask_do_mmc = np.zeros(num_events, dtype=bool)
     # MMC for certain regions
     mmc_regions = ['ee', 'mumu', 'emu']
-    mmc_engine = MMC({'mmc_regions': mmc_regions})
+    mmc_engine = MMC({'mmc_regions': mmc_regions, 'mmc_workers': 200})
     for region in mmc_regions:
         mask_region = events[f'{region}_cut']
         mask_do_mmc = mask_do_mmc | mask_region
@@ -307,17 +339,17 @@ def define_region_specific_variables(events: ak.Array):
         flags_valid_array[mask_region] = tmp_flag_valid
         mmc_likelihood[mask_region] = tmp_mmc_likelihood
 
-    # Analytical solution for the rest of the events (non-MMC regions)
-    mask_non_mmc = ~mask_do_mmc
-    if np.any(mask_non_mmc):
-        tmp_v1_p4, tmp_v2_p4, flags_valid_array_non_mmc = compute_neutrino_momenta(
-            vis1_p4=reco_vis_positive_p4[mask_non_mmc],
-            vis2_p4=reco_vis_negative_p4[mask_non_mmc],
+    # Analytical solution for the rest of the events (baseline region - MMC regions)
+    mask_analytical = (~mask_do_mmc) & events['baseline_cut']
+    if np.any(mask_analytical):
+        tmp_v1_p4, tmp_v2_p4, flags_valid_array_analytical = compute_neutrino_momenta(
+            vis1_p4=reco_vis_positive_p4[mask_analytical],
+            vis2_p4=reco_vis_negative_p4[mask_analytical],
         )
-        nu_pos_px[mask_non_mmc], nu_pos_py[mask_non_mmc], nu_pos_pz[mask_non_mmc], nu_pos_E[mask_non_mmc] = tmp_v1_p4.px, tmp_v1_p4.py, tmp_v1_p4.pz, tmp_v1_p4.E
-        nu_neg_px[mask_non_mmc], nu_neg_py[mask_non_mmc], nu_neg_pz[mask_non_mmc], nu_neg_E[mask_non_mmc] = tmp_v2_p4.px, tmp_v2_p4.py, tmp_v2_p4.pz, tmp_v2_p4.E
-        flags_valid_array[mask_non_mmc] = flags_valid_array_non_mmc
-        mmc_likelihood[mask_non_mmc] = np.ones_like(nu_neg_px[mask_non_mmc])  
+        nu_pos_px[mask_analytical], nu_pos_py[mask_analytical], nu_pos_pz[mask_analytical], nu_pos_E[mask_analytical] = tmp_v1_p4.px, tmp_v1_p4.py, tmp_v1_p4.pz, tmp_v1_p4.E
+        nu_neg_px[mask_analytical], nu_neg_py[mask_analytical], nu_neg_pz[mask_analytical], nu_neg_E[mask_analytical] = tmp_v2_p4.px, tmp_v2_p4.py, tmp_v2_p4.pz, tmp_v2_p4.E
+        flags_valid_array[mask_analytical] = flags_valid_array_analytical
+        mmc_likelihood[mask_analytical] = np.ones_like(nu_neg_px[mask_analytical])  
 
     events[f'lead_a_missing_p4'] = vector.zip({"px": nu_pos_px, "py": nu_pos_py, "pz": nu_pos_pz, "E": nu_pos_E})
     events[f'lead_b_missing_p4'] = vector.zip({"px": nu_neg_px, "py": nu_neg_py, "pz": nu_neg_pz, "E": nu_neg_E})

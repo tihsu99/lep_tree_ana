@@ -38,8 +38,6 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
     raw_events = events
 
     raw_events = DefineVariables.define_recon_level_variables(raw_events)
-    if is_Ztautau:
-        raw_events = DefineVariables.define_signal_exclusive_variables(raw_events)
     
     flags = {}
     baseline_selection = BaselineSelections.BaselineSelection()
@@ -287,12 +285,20 @@ class Preprocessor:
                     self.regions = list(flags.keys())
 
             self.raw_events = ak.concatenate(self.raw_events, axis=0)
-        # reconstruct neutrinos of Ztautau raw events for later use in unfolding
+
+        self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
+        self.raw_events['weight_nominal'] = self.weight
+        self.raw_events['weight'] = self.raw_events['weight_nominal'] # default weight
+        self.raw_events['initial_total_num_events'] = self.initial_total_num_events
+
+        # reconstruct neutrinos and define region-specific variables (QI variables for example)
+        self.raw_events = DefineVariables.define_region_specific_variables(self.raw_events)
+
+        # define signal-exclusive variables for Ztautau sample
         if self.is_Ztautau:
-            self.raw_events = DefineVariables.define_region_specific_variables(self.raw_events)
+            self.raw_events = DefineVariables.define_signal_exclusive_variables(self.raw_events)
 
         # Store the raw events with all the defined variables
-        self.raw_events['initial_total_num_events'] = self.initial_total_num_events
         output_file_name = self.output_dir + f"/filtered___raw.parquet"
         ak.to_parquet(self.raw_events, output_file_name, compression='snappy')
         log.info(f"Raw data saved to {output_file_name}.")
@@ -304,8 +310,6 @@ class Preprocessor:
             ak.to_parquet(data, output_file_name, compression='snappy')
             log.info(f"Data for region {key} saved to {output_file_name}.")
 
-
-        self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
 
         # Log filter results
         if self.filter_results['initial_total_num_events'] > 0:
