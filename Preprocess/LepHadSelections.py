@@ -39,8 +39,7 @@ class LepHadSelection(RegionSelection):
             self.selection_name = f'{hadron_type}{lepton_type}'
         self.cut_descriptions = (
             f'{self.selection_name}: 1-vs-1 topology with strict {lepton_type} ID on the leptonic side',
-            f'{self.selection_name}: E/p < 0.6 on the hadronic side',
-            f'{self.selection_name}: photon and visible-mass cuts for the hadronic side',
+            f'{self.selection_name}: ID requirement on the hadronic side'
         )
 
     def get_cuts(self, events: ak.Array):
@@ -48,21 +47,10 @@ class LepHadSelection(RegionSelection):
         had_id = 'b' if self.is_lepton_positive else 'a'
         lepton_flag = events[f'lead_{lep_id}_{LEPTON_PID_FIELD[self.lepton_type]}']
 
-        # Topology + lepton PID
         cut_topology = (events['nprong'] == 2) & events['is_leading_OS'] & lepton_flag
 
-        # E/p < 0.6 on the hadronic side, mirroring PiPi
-        cut_e_over_p = events[f'lead_{had_id}_E_over_p'] < 0.6
+        hadron_flag_name = f'lead_{had_id}_is_' + ('pion' if self.hadron_type=='pi' else 'rho')
+        cut_hadron_id = events[hadron_flag_name]
 
-        # Photon count and rho mass on the hadronic side
-        n_phot = events[f'num_photon_near_lead_{had_id}']
-        if self.hadron_type == 'pi':
-            cut_hadron_shape = n_phot == 0
-        else:  # rho
-            rho_mass = events[f'lead_{had_id}_visible_p4'].mass
-            cut_hadron_shape = (
-                (n_phot >= 1) & (n_phot <= 2)
-                & (rho_mass > 0.5) & (rho_mass < 1.04)
-            )
 
-        return (cut_topology, cut_e_over_p, cut_hadron_shape)
+        return (cut_topology, cut_hadron_id)
