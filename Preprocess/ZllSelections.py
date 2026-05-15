@@ -23,10 +23,11 @@ class ZllSelection(RegionSelection):
     def get_cuts(self, events: ak.Array):
         p_a = events['lead_a_p4'].p
         p_b = events['lead_b_p4'].p
+        lead_pair_mass = (events['lead_a_p4'] + events['lead_b_p4']).mass
         return (
             events['nprong'] == 2,
             events['is_leading_OS'],
-            events['lead_pair_mass'] > 70.0,
+            lead_pair_mass > 70.0,
             events['charged_E'] > 60.0,
             events['P_rad'] > 1.0,
             (p_a > 40.0) & (p_a < 50.0) & (p_b > 40.0) & (p_b < 50.0),

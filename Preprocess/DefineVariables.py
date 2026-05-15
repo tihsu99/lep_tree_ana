@@ -8,6 +8,7 @@ import glob
 import os
 import awkward as ak
 import copy
+import itertools
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
             get_all_p4_from_ak_events, cme, rebuild_p4, deltaR_nearby
 from quantum.observables_builder import build_observables, get_observable_names, get_bc_name_from_variable_name, get_theoretical_distribution
@@ -327,9 +328,10 @@ def define_region_specific_variables(events: ak.Array):
     mask_do_mmc = np.zeros(num_events, dtype=bool)
     # MMC for certain regions
     mmc_regions = ['ee', 'mumu', 'emu']
-    for lep, had in iter.product(['e', 'mu'], ['pi', 'rho']):
+    mmc_regions = []
+    for lep, had in itertools.product(['e', 'mu'], ['pi', 'rho']):
         mmc_regions.extend([f'{lep}{had}', f'{had}{lep}'])
-    mmc_engine = MMC({'mmc_regions': mmc_regions, 'mmc_workers': 200})
+    mmc_engine = MMC({'mmc_regions': mmc_regions, 'mmc_workers': 1})
     for region in mmc_regions:
         mask_region = events[f'{region}_cut']
         mask_do_mmc = mask_do_mmc | mask_region

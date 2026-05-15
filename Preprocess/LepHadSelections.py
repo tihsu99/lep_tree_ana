@@ -10,17 +10,17 @@ from Preprocess.SelectionBase import RegionSelection
 # ordered sub-regions in total: pi_el, el_pi, pi_mu, mu_pi, rho_el, el_rho,
 # rho_mu, mu_rho.
 LEPHAD_SUBREGIONS = [
-    ('pi_el',  False, 'el', 'pi'),   # hadron in a, lepton in b
-    ('pi_mu',  False, 'mu', 'pi'),
-    ('rho_el', False, 'el', 'rho'),
-    ('rho_mu', False, 'mu', 'rho'),
-    ('el_pi',  True,  'el', 'pi'),   # lepton in a, hadron in b
-    ('mu_pi',  True,  'mu', 'pi'),
-    ('el_rho', True,  'el', 'rho'),
-    ('mu_rho', True,  'mu', 'rho'),
+    ('pie',  False, 'e', 'pi'),   # hadron in a, lepton in b
+    ('pimu',  False, 'mu', 'pi'),
+    ('rhoe', False, 'e', 'rho'),
+    ('rhomu', False, 'mu', 'rho'),
+    ('epi',  True,  'e', 'pi'),   # lepton in a, hadron in b
+    ('mupi',  True,  'mu', 'pi'),
+    ('erho', True,  'e', 'rho'),
+    ('murho', True,  'mu', 'rho'),
 ]
 
-LEPTON_PID_FIELD = {'el': 'is_electron', 'mu': 'is_muon'}
+LEPTON_PID_FIELD = {'e': 'is_electron', 'mu': 'is_muon'}
 
 
 class LepHadSelection(RegionSelection):

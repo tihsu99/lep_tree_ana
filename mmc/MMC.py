@@ -60,8 +60,8 @@ class MMC:
                 (self.pdfs['electron'], self.pdfs['muon']),
                 (self.pdfs['muon'], self.pdfs['electron'])
             ]
-        elif region_name in {'pi_el', 'el_pi', 'pi_mu', 'mu_pi',
-                             'rho_el', 'el_rho', 'rho_mu', 'mu_rho'}:
+        elif region_name in {'pie', 'epi', 'pimu', 'mupi',
+                             'rhoe', 'erho', 'rhomu', 'murho'}:
             # Lephad regions: hadronic side is determined by the algebraic
             # m_miss = 0 condition (handled inside MMCLepHad via
             # compute_neutrino_momenta); leptonic side scans m_inv_lep against
@@ -121,10 +121,20 @@ class MMC:
         """
         from mmc.mmc_lephad import MMCLepHad
 
-        had_a, lep_a = region_name.split('_')
-        had_on_a = had_a in ('pi', 'rho')
-        lep_flavor = lep_a if had_on_a else had_a
-        lep_pdf = self.pdfs['electron'] if lep_flavor == 'el' else self.pdfs['muon']
+        if region_name.startswith('pi'):
+            had_on_a = True
+            lep_flavor = region_name[2:]
+        elif region_name.startswith('rho'):
+            had_on_a = True
+            lep_flavor = region_name[3:]
+        elif region_name.startswith('e'):
+            had_on_a = False
+            lep_flavor = region_name[1:]
+        elif region_name.startswith('mu'):
+            had_on_a = False
+            lep_flavor = region_name[2:]
+
+        lep_pdf = self.pdfs['electron'] if lep_flavor == 'e' else self.pdfs['muon']
         engine = MMCLepHad(lep_hist_array=lep_pdf, sqrt_s=cme)
 
         if had_on_a:
