@@ -5,7 +5,7 @@ from Preprocess.SelectionBase import RegionSelection
 
 
 class HadHadSelection(RegionSelection):
-    selection_name = 'had-had'
+    selection_name = 'hadhad'
     cut_descriptions = (
         'lg(1 - thrust) within (2.5, 4.5)',
         'nprong=2',
@@ -24,7 +24,7 @@ class HadHadSelection(RegionSelection):
 
 
 class PiPiSelection(RegionSelection):
-    selection_name = 'pi-pi'
+    selection_name = 'pipi'
     cut_descriptions = (
         'pi-pi: E/p for both leading particles < 0.6',
         'pi-pi: number of photons near leading pion == 0 in each hemisphere',
@@ -40,7 +40,7 @@ class PiPiSelection(RegionSelection):
 class PiRhoSelection(RegionSelection):
     def __init__(self, is_pion_positive: bool):
         self.is_pion_positive = is_pion_positive
-        self.selection_name = 'pi-rho' if is_pion_positive else 'rho-pi'
+        self.selection_name = 'pirho' if is_pion_positive else 'rhopi'
         self.cut_descriptions = (
             f'{self.selection_name}: E/p for both leading particles < 0.6',
             f'{self.selection_name}: photon and mass selections',

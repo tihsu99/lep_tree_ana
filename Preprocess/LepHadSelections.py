@@ -34,9 +34,9 @@ class LepHadSelection(RegionSelection):
         self.lepton_type = lepton_type
         self.hadron_type = hadron_type
         if is_lepton_positive:
-            self.selection_name = f'{lepton_type}-{hadron_type}'
+            self.selection_name = f'{lepton_type}{hadron_type}'
         else:
-            self.selection_name = f'{hadron_type}-{lepton_type}'
+            self.selection_name = f'{hadron_type}{lepton_type}'
         self.cut_descriptions = (
             f'{self.selection_name}: 1-vs-1 topology with strict {lepton_type} ID on the leptonic side',
             f'{self.selection_name}: E/p < 0.6 on the hadronic side',

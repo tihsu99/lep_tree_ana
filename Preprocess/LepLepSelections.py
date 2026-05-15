@@ -4,7 +4,7 @@ from Preprocess.SelectionBase import RegionSelection
 
 
 class LepLepSelection(RegionSelection):
-    selection_name = 'lep-lep'
+    selection_name = 'leplep'
     cut_descriptions = (
         'leading particles are opposite-charge leptons',
     )
