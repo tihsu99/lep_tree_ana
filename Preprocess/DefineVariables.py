@@ -333,6 +333,8 @@ def define_region_specific_variables(events: ak.Array):
     mmc_engine = MMC({'mmc_regions': mmc_regions, 'mmc_workers': 1})
     for region in mmc_regions:
         mask_region = events[f'{region}_cut']
+        if ak.sum(mask_region) == 0:
+            continue
         mask_do_mmc = mask_do_mmc | mask_region
         tmp_v1_p4, tmp_v2_p4, tmp_flag_valid, tmp_mmc_likelihood = mmc_engine.calculate(
             vis_a_p4=reco_vis_positive_p4[mask_region],
