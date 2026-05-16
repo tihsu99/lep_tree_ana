@@ -832,7 +832,7 @@ class ControlPlotProcessor(BaseProcessor):
                     log_scale=False,
                 )
             
-            for hadhad_region_name in ['hadhad', 'pipi', 'pirho', 'rhopi']:
+            for hadhad_region_name in ['hadhad', 'pipi', 'pirho', 'rhopi', 'rhorho']:
                 if hadhad_region_name in self.regions:
                     print(f"Processing {hadhad_region_name} region")
                     output_dir_hadhad = f"{self.output_dir}/{hadhad_region_name}/"
