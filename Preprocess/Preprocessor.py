@@ -55,6 +55,11 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
     raw_events['pipi_cut'] = flag_passes_pipi
     flags['pipi'] = flag_passes_pipi
 
+    rhorho_selection = HadHadSelections.RhoRhoSelection()
+    flag_passes_rhorho = apply_selection(raw_events, filter_log_dict, rhorho_selection, flag_passes_hadhad)
+    raw_events['rhorho_cut'] = flag_passes_rhorho
+    flags['rhorho'] = flag_passes_rhorho
+
     for region_name, is_pion_positive in [('pirho', True), ('rhopi', False)]:
         pirho_selection = HadHadSelections.PiRhoSelection(is_pion_positive)
         flag_passes_pirho = apply_selection(raw_events, filter_log_dict, pirho_selection, flag_passes_hadhad)

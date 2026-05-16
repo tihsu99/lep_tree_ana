@@ -8,6 +8,7 @@ import glob
 import os
 import awkward as ak
 import copy
+import itertools
 from utils.common_functions import get_p4_from_ak_events, get_color_iterator, get_sum_p4_from_ak_events,\
             get_all_p4_from_ak_events, cme, rebuild_p4, deltaR_nearby
 from quantum.observables_builder import build_observables, get_observable_names, get_bc_name_from_variable_name, get_theoretical_distribution
@@ -90,7 +91,6 @@ def define_recon_level_variables(events: ak.Array):
         events[f'Part_angle_to_lead_{hemisphere}'] = events[f'lead_{hemisphere}_p4'].deltaangle(events['Part_p4']) * 180 / np.pi
 
         # find leading pions/electrons/muons and their nearby photons in each hemisphere
-        events[f'lead_{hemisphere}_is_pion'] = ak.fill_none(ak.any(lead_flag & (abs(events['Part_pdgId']) == 41) & (events['Part_charge'] != 0), axis=1), False)
         lead_p = events[f'lead_{hemisphere}_p4'].p + 1e-10
         events[f'lead_{hemisphere}_E_over_p'] = ak.fill_none(ak.firsts(events['Part_hpcTotalShowerEnergy'][lead_flag]) / lead_p, -999)
 
@@ -103,6 +103,10 @@ def define_recon_level_variables(events: ak.Array):
 
         sum_hemisphere_photon_p4 = get_sum_p4_from_ak_events(events, (events['Part_pdgId'] == 21) & (events['Part_charge'] == 0) & events[f'Part_in_hemisphere_{hemisphere}'])
         events[f'hemisphere_{hemisphere}_visible_p4'] = events[f'lead_{hemisphere}_p4'] + sum_hemisphere_photon_p4
+        lead_is_pion_baseline = lead_flag & (abs(events['Part_pdgId']) == 41) & (events['Part_charge'] != 0) & (events[f'lead_{hemisphere}_E_over_p'] < 0.6)
+        events[f'lead_{hemisphere}_is_pion'] = ak.fill_none(ak.any(lead_is_pion_baseline & (events[f'num_photon_near_lead_{hemisphere}'] == 0), axis=1), False)
+        lead_vis_mass = events[f'lead_{hemisphere}_visible_p4'].mass
+        events[f'lead_{hemisphere}_is_rho'] = ak.fill_none(ak.any(lead_is_pion_baseline & (events[f'num_photon_near_lead_{hemisphere}'] >= 1) & (events[f'num_photon_near_lead_{hemisphere}'] <= 2) & (lead_vis_mass > 0.5) & (lead_vis_mass < 1.04), axis=1), False)
 
 
     """
@@ -324,9 +328,13 @@ def define_region_specific_variables(events: ak.Array):
     mask_do_mmc = np.zeros(num_events, dtype=bool)
     # MMC for certain regions
     mmc_regions = ['ee', 'mumu', 'emu']
-    mmc_engine = MMC({'mmc_regions': mmc_regions, 'mmc_workers': 200})
+    for lep, had in itertools.product(['e', 'mu'], ['pi', 'rho']):
+        mmc_regions.extend([f'{lep}{had}', f'{had}{lep}'])
+    mmc_engine = MMC({'mmc_regions': mmc_regions, 'mmc_workers': 1})
     for region in mmc_regions:
         mask_region = events[f'{region}_cut']
+        if ak.sum(mask_region) == 0:
+            continue
         mask_do_mmc = mask_do_mmc | mask_region
         tmp_v1_p4, tmp_v2_p4, tmp_flag_valid, tmp_mmc_likelihood = mmc_engine.calculate(
             vis_a_p4=reco_vis_positive_p4[mask_region],
