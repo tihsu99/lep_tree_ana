@@ -108,7 +108,7 @@ def do_control_plot_from_hists(
     - ax: matplotlib Axes object with the plot.
     - ax_ratio: matplotlib Axes object with the ratio plot.
     """
-    fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 6), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
+    fig, (ax, ax_ratio) = plt.subplots(2, 1, dpi=300, figsize=(8, 6), gridspec_kw={'height_ratios': [6, 1]}, sharex=True)
 
     num_bins = len(bin_edges) - 1
     # Calculate sum of MC yields
@@ -153,7 +153,15 @@ def do_control_plot_from_hists(
     else:
         ax.set_ylabel('Events')
     ax.set_title(title)
-    ax.legend(loc='best')
+    # ax.legend(loc='best')
+    ax.legend(
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        fontsize=8,
+        frameon=True
+    )
+    fig.subplots_adjust(right=0.75)
+    
 
     # Create ratio plot
     ratio = hist_data / cumulative_MC
