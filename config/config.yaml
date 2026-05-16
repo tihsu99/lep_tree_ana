@@ -1,23 +1,24 @@
 GlobalConfigs:
-  default_output_dir: "./20260512-fit/"
+  default_output_dir: "./20260515-baseline/"
   # default_output_dir: "./20260512-closure-test/"
-  processed_data_dir: "./20260512-dataset/"
+  processed_data_dir: "./20260515-dataset/"
   load_regions:
     - "baseline"
     - "pipi"
     - "pirho"
     - "rhopi"
+    - "rhorho"
     - "ee"
     - "mumu"
     - "emu"
-    - "pi_el"
-    - "el_pi"
-    - "pi_mu"
-    - "mu_pi"
-    - "rho_el"
-    - "el_rho"
-    - "rho_mu"
-    - "mu_rho"
+    - "pie"
+    - "epi"
+    - "pimu"
+    - "mupi"
+    - "rhoe"
+    - "erho"
+    - "rhomu"
+    - "murho"
     - "zll"
     - "zee"
     - "zmumu"
@@ -31,14 +32,14 @@ GlobalConfigs:
     Ztautau_pirho: [12]
     Ztautau_rhopi: [21]
     Ztautau_rhorho: [22]
-    Ztautau_pi_el:  [13]
-    Ztautau_el_pi:  [31]
-    Ztautau_pi_mu:  [14]
-    Ztautau_mu_pi:  [41]
-    Ztautau_rho_el: [23]
-    Ztautau_el_rho: [32]
-    Ztautau_rho_mu: [24]
-    Ztautau_mu_rho: [42]
+    Ztautau_pie:  [13]
+    Ztautau_epi:  [31]
+    Ztautau_pimu:  [14]
+    Ztautau_mupi:  [41]
+    Ztautau_rhoe: [23]
+    Ztautau_erho: [32]
+    Ztautau_rhomu: [24]
+    Ztautau_murho: [42]
     Ztautau_ee: [33]
     Ztautau_mumu: [44]
     Ztautau_emu: [34]
@@ -117,9 +118,20 @@ Processors:
     output_dir_name: "ForwardFoldingProcessor"
     dict_region_to_signals:
       pipi: ["Ztautau_pipi", "Ztautau_pirho", "Ztautau_rhopi"]
-      mumu: ["Ztautau_mumu"]
       pirho: ["Ztautau_pirho", "Ztautau_rhorho"]
       rhopi: ["Ztautau_rhopi", "Ztautau_rhorho"]
+      rhorho: ["Ztautau_rhorho"]
+      ee: ["Ztautau_ee"]
+      mumu: ["Ztautau_mumu"]
+      emu: ["Ztautau_emu", "Ztautau_mue"]
+      pie:  ["Ztautau_pie"]
+      epi:  ["Ztautau_epi"]
+      pimu:  ["Ztautau_pimu"]
+      mupi:  ["Ztautau_mupi"]
+      rhoe: ["Ztautau_rhoe"]
+      erho: ["Ztautau_erho"]
+      rhomu: ["Ztautau_rhomu"]
+      murho: ["Ztautau_murho"]
 
   QIProcessor:
     output_dir_name: "QI_analysis"
@@ -130,35 +142,36 @@ Processors:
       ee: ["Ztautau_ee"]
       mumu: ["Ztautau_mumu"]
       emu: ["Ztautau_emu", "Ztautau_mue"]
-      pi_el:  ["Ztautau_pi_el"]
-      el_pi:  ["Ztautau_el_pi"]
-      pi_mu:  ["Ztautau_pi_mu"]
-      mu_pi:  ["Ztautau_mu_pi"]
-      rho_el: ["Ztautau_rho_el"]
-      el_rho: ["Ztautau_el_rho"]
-      rho_mu: ["Ztautau_rho_mu"]
-      mu_rho: ["Ztautau_mu_rho"]
+      pie:  ["Ztautau_pie"]
+      epi:  ["Ztautau_epi"]
+      pimu:  ["Ztautau_pimu"]
+      mupi:  ["Ztautau_mupi"]
+      rhoe: ["Ztautau_rhoe"]
+      erho: ["Ztautau_erho"]
+      rhomu: ["Ztautau_rhomu"]
+      murho: ["Ztautau_murho"]
 
-  ControlPlotProcessor:
-    output_dir_name: "control_plots"
-    regions:
-      - "pipi"
-      - "pirho"
-      - "rhopi"
-      - "ee"
-      - "mumu"
-      - "emu"
-      - "pi_el"
-      - "el_pi"
-      - "pi_mu"
-      - "mu_pi"
-      - "rho_el"
-      - "el_rho"
-      - "rho_mu"
-      - "mu_rho"
-      - "zll"
-      - "zee"
-      - "zmumu"
+  # ControlPlotProcessor:
+  #   output_dir_name: "control_plots"
+  #   regions:
+  #     - "pipi"
+  #     - "pirho"
+  #     - "rhopi"
+  #     - "rhorho"
+  #     - "ee"
+  #     - "mumu"
+  #     - "emu"
+  #     - "pie"
+  #     - "epi"
+  #     - "pimu"
+  #     - "mupi"
+  #     - "rhoe"
+  #     - "erho"
+  #     - "rhomu"
+  #     - "murho"
+  #     - "zll"
+  #     - "zee"
+  #     - "zmumu"
 
   # IDAnaProcessor:
   #   output_dir_name: "ID_analysis"
