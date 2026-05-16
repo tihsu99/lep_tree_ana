@@ -328,7 +328,6 @@ def define_region_specific_variables(events: ak.Array):
     mask_do_mmc = np.zeros(num_events, dtype=bool)
     # MMC for certain regions
     mmc_regions = ['ee', 'mumu', 'emu']
-    mmc_regions = []
     for lep, had in itertools.product(['e', 'mu'], ['pi', 'rho']):
         mmc_regions.extend([f'{lep}{had}', f'{had}{lep}'])
     mmc_engine = MMC({'mmc_regions': mmc_regions, 'mmc_workers': 1})
