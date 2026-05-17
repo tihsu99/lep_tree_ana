@@ -9,40 +9,19 @@ from pandas import DataFrame
 from scipy.linalg import sqrtm, eig
 from collections import namedtuple
 
-from utils.common_functions import get_p4_from_ak_events, get_sum_p4_from_ak_events
+from utils.common_functions import get_p4_from_ak_events, get_sum_p4_from_ak_events, print_and_write_to_opened_file
+from utils.tau_decay import ANALYZING_POWERS, NOMINAL_BC_VALUES, get_analyzing_powers_from_event_category
 
 Hist = namedtuple('Hist', ['bin_edges', 'values', 'errors'])
 ValueWithUncertainty = namedtuple('ValueWithUncertainty', ['value', 'err_up', 'err_down'])
-AnalyzingPowerAry = np.array([0, 1, 0.41, -0.33, -0.34, 0]) # order: [notTauDecay, pi, rho, el, mu, others]
-NominalBCValues = {
-    'B_An': 0.0,
-    'B_Ar': 0.000054,
-    'B_Ak': 0.149663,
-    'B_Bn': 0.0,
-    'B_Br': 0.000054,
-    'B_Bk': 0.149663,
-    'C_nn': 0.784523,
-    'C_rr': -0.78451,
-    'C_kk': 0.999987,
-    'C_nr': 0.0,
-    'C_nk': 0.0,
-    'C_rk': 0.000724757,
-    'C_rn': 0.0,
-    'C_kn': 0.0,
-    'C_kr': 0.000724757,
-}
 
 def get_analyzing_power_ary():
     # order: [notTauDecay, pi, rho, el, mu, others]
-    return AnalyzingPowerAry
+    return ANALYZING_POWERS
 
 
 def get_analyzing_power_from_event_category(event_category):
-    pos_idx = event_category // 10
-    neg_idx = event_category % 10
-    assert pos_idx < len(AnalyzingPowerAry), f"Positive index {pos_idx} out of range for analyzing power array"
-    assert neg_idx < len(AnalyzingPowerAry), f"Negative index {neg_idx} out of range for analyzing power array"
-    return AnalyzingPowerAry[pos_idx], AnalyzingPowerAry[neg_idx]
+    return get_analyzing_powers_from_event_category(event_category)
 
 
 def get_bc_name_from_variable_name(variable_name):
@@ -57,56 +36,65 @@ def get_bc_name_from_variable_name(variable_name):
     return None
 
 
+def get_theoretical_distribution(var_name, signal_category, norm=1, bin_edges=None, num_bins=None, bc_value=None):
+    if bin_edges is not None:
+        num_bins = len(bin_edges) - 1
+        bin_edges = np.array(bin_edges)
+    elif num_bins is not None:
+        bin_edges = np.linspace(-1, 1, num_bins + 1)
+    else:
+        raise ValueError("Either bin_edges or num_bins must be provided")
+
+    assert np.all(bin_edges <= 1) and np.all(bin_edges >= -1), "Bin edges must be in the range (-1, 1)"
+
+    # get theo distribution with finer bins
+    raw_num_bins = 10000
+    raw_bin_edges = np.linspace(-1, 1, raw_num_bins + 1)
+    raw_bin_centers = (raw_bin_edges[:-1] + raw_bin_edges[1:]) / 2
+
+    bc_name = get_bc_name_from_variable_name(var_name)
+    bc_value = bc_value if bc_value is not None else NOMINAL_BC_VALUES[bc_name]
+    ap_pos, ap_neg = get_analyzing_powers_from_event_category(signal_category)
+
+    slope = bc_value
+    extra_factor = 1
+    if bc_name.startswith('B_A'):
+        slope *= ap_pos
+    elif bc_name.startswith('B_B'):
+        slope *= ap_neg
+    elif bc_name.startswith('C_'):
+        slope *= ap_pos * ap_neg
+        extra_factor = -np.log(np.clip(np.abs(raw_bin_centers), 1e-16, None))
+    raw_hist = 0.5 * (1 + slope * raw_bin_centers) * extra_factor
+    raw_hist = raw_hist / np.sum(raw_hist) * norm
+
+    # rebin the raw hist to the desired binning
+    hist_theo, _ = np.histogram(raw_bin_centers, bins=bin_edges, weights=raw_hist)
+
+    return hist_theo, bin_edges
+
+
 def reweight_correlation(ary_observable, ary_spin_analyzing_power, weight, element_name, variation):
     assert len(ary_observable) == len(weight)
     assert len(ary_observable) == len(ary_spin_analyzing_power)
-    assert element_name in NominalBCValues, f"Element name {element_name} not found in nominal BC values"
-    original_value = NominalBCValues[element_name]
+    assert element_name in NOMINAL_BC_VALUES, f"Element name {element_name} not found in nominal BC values"
+    original_value = NOMINAL_BC_VALUES[element_name]
     target_value = original_value + variation
     scale_factor = (1 + target_value * ary_spin_analyzing_power * ary_observable) / (1 + original_value * ary_spin_analyzing_power * ary_observable)
     new_weight = weight * scale_factor
     return new_weight
 
 
-def safe_boost_to_cm(cm_p4: ak.Array) -> ak.Array:
-    px = np.asarray(cm_p4.px, dtype=np.float64)
-    py = np.asarray(cm_p4.py, dtype=np.float64)
-    pz = np.asarray(cm_p4.pz, dtype=np.float64)
-    energy = np.asarray(cm_p4.energy, dtype=np.float64)
-
-    p2 = px * px + py * py + pz * pz
-
-    zero_or_bad = (
-        ~np.isfinite(energy)
-        | ~np.isfinite(px)
-        | ~np.isfinite(py)
-        | ~np.isfinite(pz)
-        | (np.abs(energy) < 1e-12)
-        | (p2 < 1e-24)
-    )
-
-    bx = np.zeros_like(px)
-    by = np.zeros_like(py)
-    bz = np.zeros_like(pz)
-
-    good = ~zero_or_bad
-    bx[good] = -px[good] / energy[good]
-    by[good] = -py[good] / energy[good]
-    bz[good] = -pz[good] / energy[good]
-
-    return vector.zip({"x": bx, "y": by, "z": bz})
-
 def shift_SDM_element(events, element_name, variation):
     observable_name, analyzing_power = None, None
     if element_name.startswith('C_'):
         observable_name = f'truth_cos_theta_A_{element_name[-2]}_times_cos_theta_B_{element_name[-1]}'
-        analyzing_power = ak.to_numpy(events[f'analyzing_power_a'])*(-1) * ak.to_numpy(events[f'analyzing_power_b'])
+        analyzing_power = ak.to_numpy(events[f'analyzing_power_a']) * ak.to_numpy(events[f'analyzing_power_b'])
     elif element_name.startswith('B_'):
         target_object = element_name[-2].upper()  # 'A' or 'B'
         axis = element_name[-1].lower()  # 'n', 'r', or 'k'
         observable_name = f'truth_cos_theta_{target_object}_{axis}'
-        sign = -1 if target_object == 'A' else 1
-        analyzing_power = ak.to_numpy(events[f'analyzing_power_{target_object.lower()}'] * sign)
+        analyzing_power = ak.to_numpy(events[f'analyzing_power_{target_object.lower()}'])
     else:
         raise ValueError(f"Unknown SDM element name: {element_name}")
     
@@ -171,8 +159,6 @@ def build_observables(tau_a_p4, tau_b_p4, vis_a_p4, vis_b_p4):
         where A and B are the two visible particles, and n, r, k are the helicity basis vectors defined in the rest frame of the tau a.
     """
     cm_p4 = tau_a_p4 + tau_b_p4
-
-
     boost_to_cm = -cm_p4.to_beta3()
 
     # boost all relevant 4-vectors to the CM frame
@@ -439,3 +425,11 @@ if __name__ == "__main__":
         plt.ylim(0, None)
         plt.legend()
         plt.savefig(f'{output_dir}/{obs_name}.png')
+
+def print_results(f_out, results, label=None):
+    if label is not None:
+        print_and_write_to_opened_file(f"\n{label}:", f_out)
+    for key, value in results.items():
+        print_and_write_to_opened_file(
+            f"        {key} {value.value:.4f} +{value.err_up:.4f} -{value.err_down:.4f}", f_out
+        )

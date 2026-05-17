@@ -1,23 +1,45 @@
 GlobalConfigs:
-  default_output_dir: "./20260427-baseline"
-  processed_data_dir: "./20260427-dataset/"
+  default_output_dir: "./20260515-baseline/"
+  # default_output_dir: "./20260512-closure-test/"
+  processed_data_dir: "./20260515-dataset/"
   load_regions:
     - "baseline"
     - "pipi"
     - "pirho"
     - "rhopi"
+    - "rhorho"
     - "ee"
     - "mumu"
     - "emu"
+    - "pie"
+    - "epi"
+    - "pimu"
+    - "mupi"
+    - "rhoe"
+    - "erho"
+    - "rhomu"
+    - "murho"
+    - "zll"
+    - "zee"
+    - "zmumu"
   verbosity: 1
   luminosity: &Luminosity 46.3 # pb^-1
-  # Ztautau sample can be further split categorizes below
+  # Ztautau sample can be further split categorizes below.
+  # Lephad split: one category per (lepton, hadron) ordered combination so
+  # QIProcessor can match each lephad region to exactly one event_category.
   signal_categories:
     Ztautau_pipi: [11]
     Ztautau_pirho: [12]
     Ztautau_rhopi: [21]
     Ztautau_rhorho: [22]
-    Ztautau_lephad: [13, 31, 14, 41, 23, 24, 42, 32]
+    Ztautau_pie:  [13]
+    Ztautau_epi:  [31]
+    Ztautau_pimu:  [14]
+    Ztautau_mupi:  [41]
+    Ztautau_rhoe: [23]
+    Ztautau_erho: [32]
+    Ztautau_rhomu: [24]
+    Ztautau_murho: [42]
     Ztautau_ee: [33]
     Ztautau_mumu: [44]
     Ztautau_emu: [34]
@@ -80,16 +102,36 @@ Processors:
   #     - Ztautau_leplep
   #   regions:
   #     - "pion"
-  NeutrinoReconstructionProcessor:
-    output_dir_name: "neutrino_reco"
-    mmc_regions: ["ee", "mumu", "emu"]
-    regions:
-      - pipi
-      - pirho
-      - rhopi
-      - ee
-      - mumu
-      - emu
+  # NeutrinoReconstructionProcessor:
+  #   output_dir_name: "neutrino_reco"
+  #   mmc_regions: ["ee", "mumu", "emu"]
+  #   regions:
+  #     # - baseline
+  #     - pipi
+  #     - pirho
+  #     - rhopi
+  #     # - ee
+  #     - mumu
+  #     # - emu
+
+  ForwardFoldingProcessor:
+    output_dir_name: "ForwardFoldingProcessor"
+    dict_region_to_signals:
+      pipi: ["Ztautau_pipi", "Ztautau_pirho", "Ztautau_rhopi"]
+      pirho: ["Ztautau_pirho", "Ztautau_rhorho"]
+      rhopi: ["Ztautau_rhopi", "Ztautau_rhorho"]
+      rhorho: ["Ztautau_rhorho"]
+      ee: ["Ztautau_ee"]
+      mumu: ["Ztautau_mumu"]
+      emu: ["Ztautau_emu", "Ztautau_mue"]
+      pie:  ["Ztautau_pie"]
+      epi:  ["Ztautau_epi"]
+      pimu:  ["Ztautau_pimu"]
+      mupi:  ["Ztautau_mupi"]
+      rhoe: ["Ztautau_rhoe"]
+      erho: ["Ztautau_erho"]
+      rhomu: ["Ztautau_rhomu"]
+      murho: ["Ztautau_murho"]
 
   QIProcessor:
     output_dir_name: "QI_analysis"
@@ -100,16 +142,36 @@ Processors:
       ee: ["Ztautau_ee"]
       mumu: ["Ztautau_mumu"]
       emu: ["Ztautau_emu", "Ztautau_mue"]
+      pie:  ["Ztautau_pie"]
+      epi:  ["Ztautau_epi"]
+      pimu:  ["Ztautau_pimu"]
+      mupi:  ["Ztautau_mupi"]
+      rhoe: ["Ztautau_rhoe"]
+      erho: ["Ztautau_erho"]
+      rhomu: ["Ztautau_rhomu"]
+      murho: ["Ztautau_murho"]
 
-  ControlPlotProcessor:
-    output_dir_name: "control_plots"
-    regions:
-      - "pipi"
-      - "pirho"
-      - "rhopi"
-      - "ee"
-      - "mumu"
-      - "emu"
+  # ControlPlotProcessor:
+  #   output_dir_name: "control_plots"
+  #   regions:
+  #     - "pipi"
+  #     - "pirho"
+  #     - "rhopi"
+  #     - "rhorho"
+  #     - "ee"
+  #     - "mumu"
+  #     - "emu"
+  #     - "pie"
+  #     - "epi"
+  #     - "pimu"
+  #     - "mupi"
+  #     - "rhoe"
+  #     - "erho"
+  #     - "rhomu"
+  #     - "murho"
+  #     - "zll"
+  #     - "zee"
+  #     - "zmumu"
 
   # IDAnaProcessor:
   #   output_dir_name: "ID_analysis"

@@ -12,6 +12,8 @@ import Preprocess.DefineVariables as DefineVariables
 import Preprocess.BaselineSelections as BaselineSelections
 import Preprocess.HadHadSelections as HadHadSelections
 import Preprocess.LepLepSelections as LepLepSelections
+import Preprocess.LepHadSelections as LepHadSelections
+import Preprocess.ZllSelections as ZllSelections
 
 from tqdm import tqdm
 
@@ -36,8 +38,6 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
     raw_events = events
 
     raw_events = DefineVariables.define_recon_level_variables(raw_events)
-    if is_Ztautau:
-        raw_events = DefineVariables.define_signal_exclusive_variables(raw_events)
     
     flags = {}
     baseline_selection = BaselineSelections.BaselineSelection()
@@ -55,6 +55,11 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
     raw_events['pipi_cut'] = flag_passes_pipi
     flags['pipi'] = flag_passes_pipi
 
+    rhorho_selection = HadHadSelections.RhoRhoSelection()
+    flag_passes_rhorho = apply_selection(raw_events, filter_log_dict, rhorho_selection, flag_passes_hadhad)
+    raw_events['rhorho_cut'] = flag_passes_rhorho
+    flags['rhorho'] = flag_passes_rhorho
+
     for region_name, is_pion_positive in [('pirho', True), ('rhopi', False)]:
         pirho_selection = HadHadSelections.PiRhoSelection(is_pion_positive)
         flag_passes_pirho = apply_selection(raw_events, filter_log_dict, pirho_selection, flag_passes_hadhad)
@@ -71,6 +76,25 @@ def filter_event(events: ak.Array, filter_log_dict: dict, is_Ztautau=False):
     }
     for channel, selection in lepton_channel_selections.items():
         flag_passes = apply_selection(raw_events, filter_log_dict, selection, flag_passes_leplep)
+        raw_events[f'{channel}_cut'] = flag_passes
+        flags[channel] = flag_passes
+
+    # Lephad sub-regions: 8 ordered (hadron-flavor x lepton-flavor x side)
+    # combinations parented on the baseline selection.
+    for region_name, is_lepton_positive, lepton_type, hadron_type in LepHadSelections.LEPHAD_SUBREGIONS:
+        lephad_selection = LepHadSelections.LepHadSelection(is_lepton_positive, lepton_type, hadron_type)
+        flag_passes_lephad = apply_selection(raw_events, filter_log_dict, lephad_selection, flag_passes_baseline)
+        raw_events[f'{region_name}_cut'] = flag_passes_lephad
+        flags[region_name] = flag_passes_lephad
+
+    # Zll control region (Z->ll on shell) and its zee / zmumu sub-regions.
+    zll_selection = ZllSelections.ZllSelection()
+    flag_passes_zll = apply_selection(raw_events, filter_log_dict, zll_selection, flag_passes_baseline)
+    raw_events['zll_cut'] = flag_passes_zll
+    flags['zll'] = flag_passes_zll
+    for channel, selection in (('zee', ZllSelections.ZeeSelection()),
+                                ('zmumu', ZllSelections.ZmumuSelection())):
+        flag_passes = apply_selection(raw_events, filter_log_dict, selection, flag_passes_zll)
         raw_events[f'{channel}_cut'] = flag_passes
         flags[channel] = flag_passes
 
@@ -266,12 +290,20 @@ class Preprocessor:
                     self.regions = list(flags.keys())
 
             self.raw_events = ak.concatenate(self.raw_events, axis=0)
-        # reconstruct neutrinos of Ztautau raw events for later use in unfolding
+
+        self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
+        self.raw_events['weight_nominal'] = self.weight
+        self.raw_events['weight'] = self.raw_events['weight_nominal'] # default weight
+        self.raw_events['initial_total_num_events'] = self.initial_total_num_events
+
+        # reconstruct neutrinos and define region-specific variables (QI variables for example)
+        self.raw_events = DefineVariables.define_region_specific_variables(self.raw_events)
+
+        # define signal-exclusive variables for Ztautau sample
         if self.is_Ztautau:
-            self.raw_events = DefineVariables.define_region_specific_variables(self.raw_events)
+            self.raw_events = DefineVariables.define_signal_exclusive_variables(self.raw_events)
 
         # Store the raw events with all the defined variables
-        self.raw_events['initial_total_num_events'] = self.initial_total_num_events
         output_file_name = self.output_dir + f"/filtered___raw.parquet"
         ak.to_parquet(self.raw_events, output_file_name, compression='snappy')
         log.info(f"Raw data saved to {output_file_name}.")
@@ -283,8 +315,6 @@ class Preprocessor:
             ak.to_parquet(data, output_file_name, compression='snappy')
             log.info(f"Data for region {key} saved to {output_file_name}.")
 
-
-        self.weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
 
         # Log filter results
         if self.filter_results['initial_total_num_events'] > 0:

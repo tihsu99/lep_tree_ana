@@ -4,9 +4,11 @@ import DataLoader
 import matplotlib.pyplot as plt
 import os
 import awkward as ak
-from utils.common_functions import print_and_write_to_opened_file, get_event_category_from_signal_name
+from utils.common_functions import print_and_write_to_opened_file
 from utils.plotter import do_control_plot
+from utils.tau_decay import get_event_category_from_signal_name
 from quantum.observables_builder import get_observable_names, derive_results, shift_SDM_element
+import quantum.observables_builder as ob
 import quantum.unfold as unfold
 from processor.ResponseMatricesManager import ResponseMatricesManager
 import ROOT
@@ -24,6 +26,8 @@ def plot_quantum_observables(dl_dict, output_dir, region_name="hadhad", log_scal
             flag_valid = events['flags_valid'] > 0
             obs_values = obs_values[flag_valid]
             weights = events['weight'][flag_valid]
+            # weight_sf = events[f'{obs}_reweight_sf'][flag_valid]
+            # weights = weights * weight_sf
             return obs_values, weights
         bin_edges = np.linspace(-1, 1, 11)
         fig, ax, ax_ratio = do_control_plot(
@@ -86,23 +90,25 @@ class QIProcessor(BaseProcessor):
         return np.concatenate([self.get_binned_observable(var, events) for events in events_list]).astype(float, copy=False)
 
     def run(self, dl_dict):
-        f_out = open(f"{self.output_dir}/results.txt", 'w')
+        f_results = open(f"{self.output_dir}/results.txt", 'w')
+        f_running_log = open(f"{self.output_dir}/running_log.txt", 'w')
         # for region in self.regions:
         for region in self.dict_region_to_signals.keys():
-            print_and_write_to_opened_file(f"\n\nRegion: {region}", f_out)
-            print_and_write_to_opened_file("    Valid Fraction (unweighted):", f_out)
+            print_and_write_to_opened_file(f"Region: {region}", f_results)
+            print_and_write_to_opened_file(f"Region: {region}", f_running_log)
+            print_and_write_to_opened_file("    Valid Fraction (unweighted):", f_running_log)
             for dl_name, dl in dl_dict.items():
                 events = dl.data[region]
                 if len(events) == 0:
                     continue
                 valid_fraction = ak.sum(events['flags_valid'] > 0) / len(events)
-                print_and_write_to_opened_file(f"        {dl_name}: {valid_fraction:.4f}", f_out)
+                print_and_write_to_opened_file(f"        {dl_name}: {valid_fraction:.4f}", f_running_log)
 
             output_dir = f"{self.output_dir}/{region}/"
             os.makedirs(output_dir, exist_ok=True)
 
             # plot quantum observables
-            if self.verbosity > 0:
+            if self.verbosity >= 2:
                 plot_quantum_observables(
                     dl_dict, 
                     f"{output_dir}/plots/",
@@ -114,7 +120,7 @@ class QIProcessor(BaseProcessor):
 
             # unfold (under development)
             for signal_name in self.dict_region_to_signals.get(region, []):
-                print_and_write_to_opened_file(f"\n\nUnfolding results for signal {signal_name} in region {region}:", f_out)
+                print_and_write_to_opened_file(f"\n\nUnfolding signal {signal_name} in region {region}:", f_running_log)
                 output_dir_unfold = f"{output_dir}/unfolding/{signal_name}/"
                 os.makedirs(output_dir_unfold, exist_ok=True)
 
@@ -168,6 +174,11 @@ class QIProcessor(BaseProcessor):
                 for var in self.unfold_vars:
                     print(f"Unfolding {var}...")
 
+                    # apply weight sf
+                    # weight_data = weight_data * np.concatenate([ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False) for events in data_events])
+                    # weight_bkg = weight_bkg * np.concatenate([ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False) for events in background_events])
+                    # weight_signal = weight_signal * np.concatenate([ak.to_numpy(events[f'{var}_reweight_sf'], allow_missing=False) for events in signal_events])
+
                     # unfold the variable
                     # get binned_vars and weights for both data and background to be unfolded
                     binned_var_data = self.concat_binned_observable(var, data_events)
@@ -193,6 +204,10 @@ class QIProcessor(BaseProcessor):
 
                     response_matrix = self.response_manager.get_response_matrix(region, signal_name, var)
                     unfold_result = ROOT.RooUnfoldBayes(response_matrix, h_measure, niter=4, handleFakes=True).Hunfold(2)
+                    # h_fakes = response_matrix.Hfakes()
+                    # h_measure.Add(h_fakes, -1.0)
+                    # unfold_result = ROOT.RooUnfoldBayes(response_matrix, h_measure, niter=10, handleFakes=False).Hunfold(2)
+                    # unfold_result = ROOT.RooUnfoldSvd(response_matrix, h_measure, 5).Hunfold(2)
 
                     # build truth distribution using truth region events for comparison
                     var_truth_binned = self.get_binned_observable(f'truth_{var}', truth_events)
@@ -205,23 +220,21 @@ class QIProcessor(BaseProcessor):
                     truth_histograms[var] = unfold.build_Hist_from_TH1D(h_truth, bin_edges=self.bin_edges)
 
                 # derive quantum results using unfolded histograms
-                analyzing_power_a = truth_events['analyzing_power_a'][0]*(-1)
+                analyzing_power_a = truth_events['analyzing_power_a'][0]
                 analyzing_power_b = truth_events['analyzing_power_b'][0]
                 unfolded_BC_matrices, unfolded_quantum_results = derive_results(unfold_histograms, analyzing_power_a=analyzing_power_a, analyzing_power_b=analyzing_power_b)
                 truth_BC_matrices, truth_quantum_results = derive_results(truth_histograms, analyzing_power_a=analyzing_power_a, analyzing_power_b=analyzing_power_b)
+                ob.print_results(f_results, unfolded_BC_matrices)
+                ob.print_results(f_results, unfolded_quantum_results)
+
                 for res_type, results in zip(['Unfolded', 'Truth'], [unfolded_BC_matrices, truth_BC_matrices]):
-                    print_and_write_to_opened_file(f"\n    {res_type} B and C matrices:", f_out)
-                    for key, value in results.items():
-                        nominal, err_up, err_down = value.value, value.err_up, value.err_down
-                        print_and_write_to_opened_file(f"        {key}: {nominal:.4f} +{err_up:.4f}/-{err_down:.4f}", f_out)
+                    ob.print_results(f_running_log, results, label=f"{res_type} B and C matrices")
 
                 for res_type, results in zip(['Unfolded', 'Truth'], [unfolded_quantum_results, truth_quantum_results]):
-                    print_and_write_to_opened_file(f"\n    {res_type} Quantum results:", f_out)
-                    for key, value in results.items():
-                        nominal, err_up, err_down = value.value, value.err_up, value.err_down
-                        print_and_write_to_opened_file(f"        {key}: {nominal:.4f} +{err_up:.4f}/-{err_down:.4f}", f_out)
+                    ob.print_results(f_running_log, results, label=f"{res_type} Quantum results")
 
-        f_out.close()
+        f_results.close()
+        f_running_log.close()
 
     def finalize(self):
         pass

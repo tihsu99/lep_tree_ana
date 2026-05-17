@@ -1,0 +1,56 @@
+import awkward as ak
+
+from Preprocess.SelectionBase import RegionSelection
+
+
+# Lephad selections: one charged lepton (e or mu) in one hemisphere and one
+# charged hadron (pi or rho) in the other. Modeled on PiRhoSelection: an
+# `is_lepton_positive` flag picks which hemisphere (a vs b) holds the lepton,
+# `lepton_type` is 'el' or 'mu', and `hadron_type` is 'pi' or 'rho'. Eight
+# ordered sub-regions in total: pi_el, el_pi, pi_mu, mu_pi, rho_el, el_rho,
+# rho_mu, mu_rho.
+LEPHAD_SUBREGIONS = [
+    ('pie',  False, 'e', 'pi'),   # hadron in a, lepton in b
+    ('pimu',  False, 'mu', 'pi'),
+    ('rhoe', False, 'e', 'rho'),
+    ('rhomu', False, 'mu', 'rho'),
+    ('epi',  True,  'e', 'pi'),   # lepton in a, hadron in b
+    ('mupi',  True,  'mu', 'pi'),
+    ('erho', True,  'e', 'rho'),
+    ('murho', True,  'mu', 'rho'),
+]
+
+LEPTON_PID_FIELD = {'e': 'is_electron', 'mu': 'is_muon'}
+
+
+class LepHadSelection(RegionSelection):
+    """One lephad sub-region. Cumulative cuts are evaluated relative to the
+    baseline selection (and conceptually parallel to PiPi/PiRho on the hadronic
+    side).
+    """
+
+    def __init__(self, is_lepton_positive: bool, lepton_type: str, hadron_type: str):
+        self.is_lepton_positive = is_lepton_positive
+        self.lepton_type = lepton_type
+        self.hadron_type = hadron_type
+        if is_lepton_positive:
+            self.selection_name = f'{lepton_type}{hadron_type}'
+        else:
+            self.selection_name = f'{hadron_type}{lepton_type}'
+        self.cut_descriptions = (
+            f'{self.selection_name}: 1-vs-1 topology with strict {lepton_type} ID on the leptonic side',
+            f'{self.selection_name}: ID requirement on the hadronic side'
+        )
+
+    def get_cuts(self, events: ak.Array):
+        lep_id = 'a' if self.is_lepton_positive else 'b'
+        had_id = 'b' if self.is_lepton_positive else 'a'
+        lepton_flag = events[f'lead_{lep_id}_{LEPTON_PID_FIELD[self.lepton_type]}']
+
+        cut_topology = (events['nprong'] == 2) & events['is_leading_OS'] & lepton_flag
+
+        hadron_flag_name = f'lead_{had_id}_is_' + ('pion' if self.hadron_type=='pi' else 'rho')
+        cut_hadron_id = events[hadron_flag_name]
+
+
+        return (cut_topology, cut_hadron_id)

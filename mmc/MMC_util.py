@@ -62,7 +62,7 @@ def parallel_worker(args):
     return mmc.calculation(vis_1, vis_2)
 
 
-def parallel_calculation(mmc, vis_1, vis_2, num_workers=None, batch_size=500):
+def parallel_calculation(mmc, vis_1, vis_2, num_workers=None, batch_size=10000):
     """
     Parallel execution of calculation() using multiprocessing.
     """
