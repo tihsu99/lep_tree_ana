@@ -155,7 +155,7 @@ class DataLoader:
         else:
             weight = 1 if self.is_data else self.norm_factor / self.initial_total_num_events * self.luminosity
         for ch, ch_events in self.data.items():
-            ch_events['weight_nominal'] = weight * ak.ones_like(ch_events['evtNumber'], dtype=np.float32)
+            ch_events['weight_nominal'] = weight * ak.ones_like(ch_events['weight'], dtype=np.float32)
             ch_events['weight'] = ch_events['weight_nominal'] # default weight is nominal weight
         self.current_variation = ('nominal', 0.0)
 
