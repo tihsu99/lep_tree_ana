@@ -77,9 +77,7 @@ class DataLoader:
                 cutflow = json.load(f)
                 assert cutflow[0]['cut'] == 'initial_total_num_events', f"First cut in cutflow should be 'initial_total_num_events' but got {cutflow[0]['cut']} in {cutflow_file}"
                 initial_total_num_events += cutflow[0]['events']
-                if (total_weights != 0) and (not is_data):
-                    assert abs(cutflow[0]['weighted_events'] - total_weights) < 1e-6, f"Weighted events in cutflow do not match across samples for {sample_name}. Please check cutflow files. {total_weights} vs {cutflow[0]['weighted_events']}"
-                total_weights = cutflow[0]['weighted_events']
+                total_weights += cutflow[0]['weighted_events']
 
         # # split Ztautau into train and test set 
         # if sample_name=='Ztautau':
@@ -97,6 +95,10 @@ class DataLoader:
         #         # print(f"Using test set for sample {sample_name} from {len(sample_dirs)} slices: {sample_dirs}")
         
         events['initial_total_num_events'] = initial_total_num_events
+        if 'predict_weight' in events.fields:
+            events['weight_nominal'] = ak.values_astype(events['predict_weight'], np.float32)
+            events['weight'] = events['weight_nominal']
+            return events, initial_total_num_events
         weight = 1.0 if is_data else total_weights / initial_total_num_events if initial_total_num_events > 0 else 1.0
         events['weight_nominal'] = weight
         events['weight'] = events['weight_nominal'] # default weight is nominal weight
@@ -148,6 +150,12 @@ class DataLoader:
 
 
     def postprocess(self):
+        if all('predict_weight' in events.fields for events in self.data.values()):
+            for ch_events in self.data.values():
+                ch_events['weight_nominal'] = ak.values_astype(ch_events['predict_weight'], np.float32)
+                ch_events['weight'] = ch_events['weight_nominal']
+            self.current_variation = ('nominal', 0.0)
+            return
         # define weight for each event
         if self.initial_total_num_events == 0:
             log.warning("Initial total number of events is 0. This may be due to all events being filtered out or an issue in loading data. Setting weight to 1 for all events to avoid division by zero.")
